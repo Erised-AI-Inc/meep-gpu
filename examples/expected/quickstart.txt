@@ -1,0 +1,12 @@
+# Recorded output of examples/run_examples.py --record.
+# Host: Darwin arm64, python 3.12.13, numpy 2.4.3.
+# MEEP 1.33.0, single precision: True.
+# GPU route: metal.
+# Lines are compared by --check, except the step path, which
+# describes the recording host.
+
+supported: True []
+steps: 840  MEEP time: 35.0
+step path: fused
+flux: 9.709987e-06 7.775076e-02 -3.754030e-06
+max |Ez|: 1.436078e-01

@@ -1,0 +1,128 @@
+# The CPU-only subset of the suites: both suites, on a host with no GPU.
+#
+# What this can and cannot show. A hosted runner has no CUDA device and no Apple
+# GPU, so no compiled kernel runs here: a test that needs a device, a device
+# library or MEEP skips by its declared resource, and the summary counts those
+# skips by resource. What runs is the array path, the lift's own logic, the
+# planner, and every kernel table's predicates and emitters. Certification of the
+# kernels is the harness under parity/meep_gpu, on the hardware it names.
+#
+# Both suites run in full, with one exception that is stated: the certification
+# suite (the ledger, weld and record contracts, and the tests that wait on the
+# certification round; pytest marker `certification`) is not run by default. A
+# separate step runs it with `-m certification` and reports it.
+# tools/ci/check_failures.py then accepts only the failures declared in
+# tools/ci/pending_certification.txt, all of which belong to that suite. A test
+# that needs something this host lacks (MEEP, PyTorch, the evidence archive of
+# the certification campaigns) skips by the resource it declares, directly or in
+# tools/ci/declared_resources.txt, and the summary counts those skips by resource.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OMP_NUM_THREADS: "1"
+  MPLBACKEND: Agg
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  reference:
+    name: CPU only, without MEEP (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+      - name: The import needs nothing but NumPy
+        run: python -c "import meep_gpu; print(meep_gpu.available_gpu(), meep_gpu.missing_dependencies())"
+      - name: The wheel carries the ledgers and not the harness
+        run: python tools/ci/check_wheel.py
+      - name: Package suite
+        run: python -m pytest meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/meep_gpu.xml
+        continue-on-error: true
+      - name: Harness suite
+        run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
+        continue-on-error: true
+      - name: Certification suite (red until the certification round; reported)
+        run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
+        continue-on-error: true
+      - name: Every failure is a declared one
+        run: python tools/ci/check_failures.py reports/meep_gpu.xml reports/harness.xml reports/certification.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-without-meep-${{ matrix.python }}
+          path: reports/
+
+  with-meep:
+    # NOT YET A GATE. The MEEP builds on conda-forge are double-precision builds
+    # and the engine steps single precision. The tests whose premise is a
+    # single-precision MEEP skip by a declared resource, and the two monitor tests
+    # compare against the bound of the MEEP they find. The suites have been run in
+    # this configuration (conda-forge MEEP 1.33.0, no GPU library) on one Apple
+    # host, not yet on this runner; until a run here has been read, this job
+    # reports and does not decide. MEEP is pinned to 1.33.0, the release the
+    # files under environments/ install.
+    name: CPU only, with MEEP 1.33.0 from conda-forge (reported, not judged)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: suite
+          create-args: >-
+            python=3.12
+            pymeep=1.33.0=nompi*
+            numpy=2.2
+            scipy
+            pytest
+          channels: conda-forge
+      - name: Install the package
+        run: python -m pip install -e . --no-deps
+      - name: The MEEP build this host has
+        run: python -c "import meep as mp; print(mp.__version__, 'single precision:', mp.is_single_precision())"
+      - name: Package suite
+        run: python -m pytest meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/meep_gpu.xml
+        continue-on-error: true
+      - name: Harness suite
+        run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
+        continue-on-error: true
+      - name: Certification suite (red until the certification round; reported)
+        run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
+        continue-on-error: true
+      - name: Examples, reference and MEEP legs
+        run: python examples/run_examples.py --check
+        continue-on-error: true
+      - name: Every failure is a declared one
+        run: python tools/ci/check_failures.py reports/meep_gpu.xml reports/harness.xml reports/certification.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-with-meep
+          path: reports/

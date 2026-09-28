@@ -1,0 +1,66 @@
+# The distribution name in the title and the repository URL are changed by
+# tools/rename_distribution.py, never by hand.
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it using the metadata below, and cite
+  MEEP, which builds every simulation this package steps.
+type: software
+title: "meep-gpu: single-GPU time stepping for MEEP simulations on NVIDIA and Apple hardware"
+abstract: >-
+  An add-on to MEEP, the open-source finite-difference time-domain package. It
+  takes a simulation built by the user's own MEEP installation and time-steps it
+  on one GPU, with Triton or CUDA kernels on NVIDIA hardware and Metal kernels on
+  Apple hardware; MEEP keeps setup and post-processing. It is aimed at large
+  three-dimensional problems run without a cluster. One simulation runs per GPU.
+  It is an independent project, not affiliated with or endorsed by the MEEP
+  developers.
+authors:
+  - family-names: "Biggs"
+    given-names: "Ivan"
+    affiliation: "Department of Mechanical and Aerospace Engineering, University of California, Los Angeles"
+    email: "biggsic@ucla.edu"
+  - family-names: "Zeng"
+    given-names: "Alicia"
+    affiliation: "Erised AI"
+  - family-names: "Dou"
+    given-names: "Yanlin"
+contact:
+  - family-names: "Biggs"
+    given-names: "Ivan"
+    affiliation: "Department of Mechanical and Aerospace Engineering, University of California, Los Angeles"
+    email: "biggsic@ucla.edu"
+version: "0.9.0"
+date-released: "2026-09-28"
+license: GPL-2.0-or-later
+repository-code: "https://github.com/Erised-AI-Inc/meep-gpu"
+keywords:
+  - FDTD
+  - MEEP
+  - GPU
+  - CUDA
+  - Metal
+  - computational electromagnetics
+  - photonics
+references:
+  - type: article
+    title: "MEEP: A flexible free-software package for electromagnetic simulations by the FDTD method"
+    authors:
+      - family-names: Oskooi
+        given-names: "A. F."
+      - family-names: Roundy
+        given-names: "D."
+      - family-names: Ibanescu
+        given-names: "M."
+      - family-names: Bermel
+        given-names: "P."
+      - family-names: Joannopoulos
+        given-names: "J. D."
+      - family-names: Johnson
+        given-names: "S. G."
+    journal: "Computer Physics Communications"
+    volume: 181
+    issue: 3
+    start: 687
+    end: 702
+    year: 2010
+    doi: "10.1016/j.cpc.2009.11.008"

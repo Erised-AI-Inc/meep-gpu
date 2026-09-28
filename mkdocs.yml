@@ -1,0 +1,107 @@
+site_name: meep-gpu manual
+site_description: User manual for meep_gpu, single-GPU time stepping for MEEP simulations.
+# The distribution name and the repository owner are set by
+# tools/rename_distribution.py (--name, --repository-owner); do not edit them
+# by hand. No repo_name is given: it would carry the owner outside a URL, where
+# that tool does not look.
+repo_url: https://github.com/Erised-AI-Inc/meep-gpu
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+exclude_docs: |
+  requirements.txt
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/section-numbering.js
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.path
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.action.edit
+    - content.action.view
+    - content.code.copy
+    - toc.integrate
+    - toc.follow
+  palette:
+    - scheme: slate
+      primary: black
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light theme
+    - scheme: default
+      primary: blue grey
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark theme
+  font:
+    text: Segoe UI
+    code: Roboto Mono
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/index.md
+      - Installation: getting-started/installation.md
+      - First lifted simulation: getting-started/first-lift.md
+      - Reading what ran: getting-started/reading-what-ran.md
+      - MEEP user entry points: getting-started/meep-entry-points.md
+  - Using meep-gpu:
+      - guides/index.md
+      - Will it help?: guides/will-it-help.md
+      - Time your own simulation: guides/time-your-simulation.md
+      - Compatibility and refusals: guides/compatibility.md
+      - Monitors and results: guides/monitors-and-results.md
+      - Compiled-kernel dispatch: guides/kernel-dispatch.md
+      - Troubleshooting: guides/troubleshooting.md
+      - Validation and performance: guides/validation-and-performance.md
+  - Reference:
+      - reference/index.md
+      - Public Python API: reference/public-api.md
+      - Glossary: reference/glossary.md
+      - INSTALL.md: https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md
+  - Design:
+      - design/index.md
+      - Floating-point contract: design/floating-point.md
+  - Development:
+      - development/index.md
+      - Execution backends and kernel tables: development/execution-backends.md
+      - The three kernel tables: development/kernel-tables.md
+      - Running the tests: development/testing.md
+      - Running the certification harness: development/certification.md
+      - Capability coverage checklist: guides/capability-coverage.md
+  - How to cite: citing.md
+  - License: license.md

@@ -1,0 +1,21 @@
+meep_gpu: GPU time stepping for MEEP simulations
+
+Every file in this repository is licensed under the GNU General Public License,
+version 2 or (at your option) any later version
+(SPDX identifier GPL-2.0-or-later), whether or not the file carries
+its own notice. The full license text is in LICENSE, copied verbatim from
+MEEP's own distribution.
+
+This package is derived from MEEP (https://github.com/NanoComp/meep):
+  Copyright (C) 2005-2025 Massachusetts Institute of Technology and MEEP
+  contributors.
+Modifications and additions:
+  Copyright (C) 2026 Ivan Biggs.
+
+The time-stepping engine follows the algorithms of MEEP's C++ implementation;
+the modules that do so cite the MEEP source files they follow. The package
+imports the user's own MEEP installation to build a simulation and does not
+include or redistribute MEEP itself.
+
+This is an independent project. It is not affiliated with, sponsored by or
+endorsed by the MEEP developers or the Massachusetts Institute of Technology.

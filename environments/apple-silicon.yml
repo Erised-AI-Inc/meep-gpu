@@ -1,0 +1,44 @@
+# ROUTE 2: the GPU of an Apple silicon Mac.
+#
+# What this file is for: a new conda environment holding MEEP and PyTorch at the
+# versions that were tested. It does NOT install this package; INSTALL.md,
+# "Route 2", gives the command that does.
+#
+#   conda env create -n meep-gpu -f environments/apple-silicon.yml
+#   conda activate meep-gpu
+#   python -m pip install .          # from the repository root; no extras
+#
+# What it installs:
+#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   Python 3.12     the interpreter the Metal kernels were certified on
+#   NumPy 2.4       the NumPy series the Metal kernels were certified with
+#   OpenBLAS 0.3.34 in its pthreads build, which loads no OpenMP runtime. NumPy
+#                   and MEEP use it for linear algebra
+#   PyTorch 2.10.0  from PyPI: the certified version. It supplies the MPS device
+#                   and the Metal shader compiler the kernels launch through
+#
+# ONE OpenMP RUNTIME. A process may hold one OpenMP runtime; a second one stops
+# it with 'OMP: Error #15'. The PyTorch wheels from PyPI carry their own, and the
+# OpenMP build of OpenBLAS, which conda-forge otherwise selects, loads the
+# environment's llvm-openmp. With the pthreads build, PyTorch's runtime is the
+# only one, so the order of the imports does not matter, and a newer PyTorch
+# from PyPI can replace 2.10.0 in this environment. INSTALL.md, section
+# "One OpenMP runtime on an Apple silicon Mac".
+#
+# The second half of the certified identity is the Metal frontend of macOS,
+# version 32023.850.10. It belongs to the operating system and cannot be
+# installed; tools/check_install.py reports the one this Mac has.
+#
+# The Metal Toolchain component of Xcode is not required.
+name: meep-gpu
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pymeep=1.33.0=nompi_*
+  - numpy=2.4
+  - libopenblas=0.3.34=pthreads_*
+  - pip
+  - pip:
+      - torch==2.10.0

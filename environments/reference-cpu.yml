@@ -1,0 +1,28 @@
+# ROUTE 3: no GPU. The NumPy reference only.
+#
+# What this file is for: a new conda environment holding MEEP and NumPy at the
+# versions that were tested, on Linux x86_64 or on an Apple silicon Mac. It does
+# NOT install this package; INSTALL.md, "Route 3", gives the command that does.
+#
+#   conda env create -n meep-gpu-reference -f environments/reference-cpu.yml
+#   conda activate meep-gpu-reference
+#   python -m pip install .          # from the repository root; no extras
+#
+# What it installs:
+#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   Python 3.12
+#   NumPy 2.2
+#
+# The reference steps on the CPU and is not built for speed. It is for checking
+# a lift and for comparing results, not for production runs. Every call needs
+# `prefer_gpu=False`: the default of `run_on_gpu` and `lift_simulation` is this
+# host's GPU, and on a host without one the default raises.
+name: meep-gpu-reference
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pymeep=1.33.0=nompi_*
+  - numpy=2.2
+  - pip

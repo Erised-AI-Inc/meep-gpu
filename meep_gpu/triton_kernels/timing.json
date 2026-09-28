@@ -1,0 +1,2375 @@
+{
+ "attribution": {
+  "not_attributed": 33,
+  "why": "rows-times-products left unpriced: a product is priced only as its plan's sole fused product, or as the plan's one bracketed product"
+ },
+ "contention": {
+  "admitted_without_an_after_probe": 0
+ },
+ "cut": {
+  "allow_unpinned_subject": [],
+  "by": "parity/meep_gpu/cut_timing_record.py",
+  "min_rows": 2,
+  "require_box_after": false,
+  "select_route": null,
+  "table": "triton"
+ },
+ "excluded": [
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "dispersive_2d",
+   "line": 4,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_2d",
+   "line": 6,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "cylindrical_m0",
+   "line": 8,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_2d",
+   "line": 9,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "nonlinear_1d",
+   "line": 13,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "pml_3d_diagonal",
+   "line": 14,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "offdiag_2d",
+   "line": 16,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "bloch_2d",
+   "line": 22,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_nobloch_2d",
+   "line": 23,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_beta_2d",
+   "line": 24,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_beta_2d",
+   "line": 25,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_1d",
+   "line": 26,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_3d_thinline",
+   "line": 27,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_3d",
+   "line": 28,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_3d",
+   "line": 29,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_kz2d_3d",
+   "line": 30,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_offdiag_2d",
+   "line": 31,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_nobloch_offdiag_2d",
+   "line": 32,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_beta_bloch_2d",
+   "line": 33,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "folded_complex_beta_bloch_2d",
+   "line": 34,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "complex_no_pml_3d",
+   "line": 35,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "cylindrical_m1",
+   "line": 36,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+   "case": "cylindrical_m0_complex",
+   "line": 37,
+   "reason": "verdict SKIP-NOT-THIS-LEG"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+   "case": "folded_complex_2d",
+   "line": 1,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+   "case": "folded_complex_offdiag_2d",
+   "line": 11,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+   "case": "complex_no_pml_3d",
+   "line": 15,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+   "case": "cylindrical_m1",
+   "line": 16,
+   "reason": "floor failed: spread_within_gate"
+  },
+  {
+   "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res60/rows.jsonl",
+   "case": "offdiag_2d",
+   "line": 1,
+   "reason": "floor failed: spread_within_gate"
+  }
+ ],
+ "host": [
+  {
+   "backend": "cupy",
+   "backend_version": "13.5.1",
+   "compute_capability": "8.6",
+   "cuda_driver": 12030,
+   "cuda_runtime": 11080,
+   "device": "NVIDIA RTX A6000",
+   "triton": "3.1.0"
+  }
+ ],
+ "inputs": {
+  "files": [
+   {
+    "path": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+    "rows": 37,
+    "sha256": "77b7f2127e88ef903b88a29f99b3f1bf23e7fa6f62b1bb6283f562831f63ca61"
+   },
+   {
+    "path": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+    "rows": 17,
+    "sha256": "7fdf78c88ce66ab80673f4cdce8ec3cfb1256b99666a79699392a515f9de62b7"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res130/rows.jsonl",
+    "rows": 1,
+    "sha256": "6518065f63183b4db7cd383a7969e7b231b751ed987741ea967ca30f691e1419"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res20/rows.jsonl",
+    "rows": 1,
+    "sha256": "bcb4072ad8585169e87809c65c91f403579c549deb43e6f63935f1e2967dc0a7"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res200/rows.jsonl",
+    "rows": 1,
+    "sha256": "a880bd1832f45d4fa58a7d940ee29854f4975f0509cb8effb5e14b987044ef65"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res300/rows.jsonl",
+    "rows": 1,
+    "sha256": "fbea53e098b85578802fc3d20cde0568ebeb2192822637bb1b9d05ee32fe146f"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res60/rows.jsonl",
+    "rows": 1,
+    "sha256": "e9940ba23f11d471fcc5aad04e0801a065b1f859e42a94cf1620e65846ab904d"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res130/rows.jsonl",
+    "rows": 1,
+    "sha256": "7bd4442c65e992b134a5f9b10554b6cce1c5c0cf7f14606b9ddd8fefb08bb8c2"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res20/rows.jsonl",
+    "rows": 1,
+    "sha256": "8f2553ee7fbb32d31f1e3ea6dba41887e7ecdd54c5e497f79fffd27c672695cf"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res200/rows.jsonl",
+    "rows": 1,
+    "sha256": "5efbb96db98ff3dae45e9c75f7b1941abd7c385a8ae18129a01411024f18dedd"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res300/rows.jsonl",
+    "rows": 1,
+    "sha256": "889b2cd0ed893b872c519cbe180645eae2be52b4ff01d7d9c40a7fa2d029841c"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res60/rows.jsonl",
+    "rows": 1,
+    "sha256": "3459ebcd42a9453e47ef2177303a86d8adf49c50c2002ac873b3f7e9c17bccdb"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res130/rows.jsonl",
+    "rows": 1,
+    "sha256": "9c7921980c9eefd27df3b329ce245563a026947aed07010d1388d82da918e21e"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res20/rows.jsonl",
+    "rows": 1,
+    "sha256": "a9c806f8f5d1b33b0fbde3f45e1789efb42e9e6af06c0d3dc0981ada300d020e"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res200/rows.jsonl",
+    "rows": 1,
+    "sha256": "d83ba91c30fa9598d56f6c4d21968c31e500b461e5d3c49b0e102e2d193cbffd"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res300/rows.jsonl",
+    "rows": 1,
+    "sha256": "d353b90bc60f3aab54ae5e2c24bf6e8d3c70dbddf14735e78727ab80e66e437d"
+   },
+   {
+    "path": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res60/rows.jsonl",
+    "rows": 1,
+    "sha256": "5ccd825485fcaa06129b0670ced2b64d90d91fe205440f747737217a840d4fd7"
+   }
+  ],
+  "roots": [
+   "results/fused_timing_2026-09-20_restrict/triton",
+   "results/fused_timing_2026-09-20_restrict_licensed/triton",
+   "results/fused_timing_sweep_2026-09-20_restrict/triton"
+  ],
+  "sha256": "66bb82c84e5451222c0fcd52a93ed36526b27f4618f1a1511a59fcabba8add0e"
+ },
+ "keys": {
+  "fused pair B (folded complex)|complex|2|0|clean|6561-6561": {
+   "band": {
+    "hi_cells": 6561,
+    "lo_cells": 6561
+   },
+   "baseline_ms_per_step": 0.548299,
+   "baseline_spread": 0.026684,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex off-diagonal PML",
+    "folded complex off-diagonal"
+   ],
+   "fused_ms_per_step": 0.533779,
+   "fused_spread": 0.04682,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.548299,
+     "baseline_spread": 0.026684,
+     "case": "folded_complex_nobloch_offdiag_2d",
+     "cells": 6561,
+     "co_fused": [],
+     "fused_ms_per_step": 0.533779,
+     "fused_spread": 0.04682,
+     "grid_shape": [
+      81,
+      81,
+      1
+     ],
+     "line": 12,
+     "ratio": 1.027202,
+     "source": "bench",
+     "utc": "2026-09-21T16:31:24Z"
+    }
+   ],
+   "product": "fused pair B (folded complex)",
+   "ratio": 1.027202,
+   "ratio_max": 1.027202,
+   "ratio_min": 1.027202,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 6,561 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": -0.100706
+  },
+  "fused pair B (folded)|real|2|0|bracketed|9760-9760": {
+   "band": {
+    "hi_cells": 9760,
+    "lo_cells": 9760
+   },
+   "baseline_ms_per_step": 0.542549,
+   "baseline_spread": 0.022198,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded PML",
+    "folded"
+   ],
+   "fused_ms_per_step": 0.987881,
+   "fused_spread": 0.027037,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.542549,
+     "baseline_spread": 0.022198,
+     "case": "folded_offdiag_magnetic_2d",
+     "cells": 9760,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D (folded off-diagonal)"
+      }
+     ],
+     "fused_ms_per_step": 0.987881,
+     "fused_spread": 0.027037,
+     "grid_shape": [
+      160,
+      61,
+      1
+     ],
+     "line": 18,
+     "ratio": 0.549205,
+     "source": "bench",
+     "utc": "2026-09-21T16:19:51Z"
+    }
+   ],
+   "product": "fused pair B (folded)",
+   "ratio": 0.549205,
+   "ratio_max": 0.549205,
+   "ratio_min": 0.549205,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.40156
+  },
+  "fused pair B|real|2|0|bracketed|1014001-2399999": {
+   "band": {
+    "hi_cells": 2399999,
+    "lo_cells": 1014001
+   },
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "measurements": [],
+   "product": "fused pair B",
+   "reason": "the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them",
+   "rows": 0,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0
+  },
+  "fused pair B|real|2|0|bracketed|24000-24000": {
+   "band": {
+    "hi_cells": 24000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.511449,
+   "baseline_spread": 0.033384,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.878405,
+   "fused_spread": 0.044634,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res20/rows.jsonl",
+     "baseline_ms_per_step": 0.544115,
+     "baseline_spread": 0.016744,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.891853,
+     "fused_spread": 0.027792,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.610095,
+     "source": "bench",
+     "utc": "2026-09-21T14:02:45Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.484145,
+     "baseline_spread": 0.033384,
+     "case": "magnetic_seam_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.814081,
+     "fused_spread": 0.007949,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 2,
+     "ratio": 0.594713,
+     "source": "bench",
+     "utc": "2026-09-21T16:09:21Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.511449,
+     "baseline_spread": 0.016639,
+     "case": "offdiag_magnetic_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D (off-diagonal)"
+      }
+     ],
+     "fused_ms_per_step": 0.878405,
+     "fused_spread": 0.044634,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 17,
+     "ratio": 0.582248,
+     "source": "bench",
+     "utc": "2026-09-21T16:19:12Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 0.594713,
+   "ratio_max": 0.610095,
+   "ratio_min": 0.582248,
+   "rows": 3,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.345369
+  },
+  "fused pair B|real|2|0|bracketed|2400000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 2400000
+   },
+   "baseline_ms_per_step": 1.661228,
+   "baseline_spread": 0.000985,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.521955,
+   "fused_spread": 0.004263,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res200/rows.jsonl",
+     "baseline_ms_per_step": 1.036953,
+     "baseline_spread": 0.000985,
+     "case": "magnetic_seam_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.970259,
+     "fused_spread": 0.004263,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.068739,
+     "source": "bench",
+     "utc": "2026-09-21T14:25:37Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res300/rows.jsonl",
+     "baseline_ms_per_step": 2.285502,
+     "baseline_spread": 0.000906,
+     "case": "magnetic_seam_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 2.073651,
+     "fused_spread": 0.000732,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.102163,
+     "source": "bench",
+     "utc": "2026-09-21T14:43:53Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 1.085451,
+   "ratio_max": 1.102163,
+   "ratio_min": 1.068739,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.103801
+  },
+  "fused pair B|real|2|0|bracketed|24001-1014000": {
+   "band": {
+    "hi_cells": 1014000,
+    "lo_cells": 24001
+   },
+   "baseline_ms_per_step": 0.653371,
+   "baseline_spread": 0.023836,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.944535,
+   "fused_spread": 0.023693,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res60/rows.jsonl",
+     "baseline_ms_per_step": 0.65964,
+     "baseline_spread": 0.023836,
+     "case": "magnetic_seam_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.958433,
+     "fused_spread": 0.023693,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.688248,
+     "source": "bench",
+     "utc": "2026-09-21T14:07:57Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/magnetic_seam_2d_res130/rows.jsonl",
+     "baseline_ms_per_step": 0.647101,
+     "baseline_spread": 0.017401,
+     "case": "magnetic_seam_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair D"
+      }
+     ],
+     "fused_ms_per_step": 0.930638,
+     "fused_spread": 0.023407,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.69533,
+     "source": "bench",
+     "utc": "2026-09-21T14:14:49Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 0.691789,
+   "ratio_max": 0.69533,
+   "ratio_min": 0.688248,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.263862
+  },
+  "fused pair B|real|2|0|clean|1014001-2399999": {
+   "band": {
+    "hi_cells": 2399999,
+    "lo_cells": 1014001
+   },
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "measurements": [],
+   "product": "fused pair B",
+   "reason": "the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them",
+   "rows": 0,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0
+  },
+  "fused pair B|real|2|0|clean|24000-1014000": {
+   "band": {
+    "hi_cells": 1014000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.621765,
+   "baseline_spread": 0.012139,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.591686,
+   "fused_spread": 0.03037,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res20/rows.jsonl",
+     "baseline_ms_per_step": 0.567099,
+     "baseline_spread": 0.010877,
+     "case": "offdiag_2d",
+     "cells": 24000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.53764,
+     "fused_spread": 0.03037,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.054793,
+     "source": "bench",
+     "utc": "2026-09-21T14:04:25Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res130/rows.jsonl",
+     "baseline_ms_per_step": 0.67643,
+     "baseline_spread": 0.012139,
+     "case": "offdiag_2d",
+     "cells": 1014000,
+     "co_fused": [],
+     "fused_ms_per_step": 0.645732,
+     "fused_spread": 0.015897,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.04754,
+     "source": "bench",
+     "utc": "2026-09-21T14:17:47Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 1.051166,
+   "ratio_max": 1.054793,
+   "ratio_min": 1.04754,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 24,000 (1 row); 1,014,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.09604
+  },
+  "fused pair B|real|2|0|clean|2400000-2400000": {
+   "band": {
+    "hi_cells": 2400000,
+    "lo_cells": 2400000
+   },
+   "baseline_ms_per_step": 1.0903,
+   "baseline_spread": 0.001632,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.118402,
+   "fused_spread": 0.00057,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res200/rows.jsonl",
+     "baseline_ms_per_step": 1.0903,
+     "baseline_spread": 0.001632,
+     "case": "offdiag_2d",
+     "cells": 2400000,
+     "co_fused": [],
+     "fused_ms_per_step": 1.118402,
+     "fused_spread": 0.00057,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.974873,
+     "source": "bench",
+     "utc": "2026-09-21T14:30:23Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 0.974873,
+   "ratio_max": 0.974873,
+   "ratio_min": 0.974873,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.022925
+  },
+  "fused pair B|real|2|0|clean|2400001-5399999": {
+   "band": {
+    "hi_cells": 5399999,
+    "lo_cells": 2400001
+   },
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "measurements": [],
+   "product": "fused pair B",
+   "reason": "the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them",
+   "rows": 0,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0
+  },
+  "fused pair B|real|2|0|clean|5400000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 5400000
+   },
+   "baseline_ms_per_step": 2.407347,
+   "baseline_spread": 0.000598,
+   "bracketed": false,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 2.404377,
+   "fused_spread": 0.000278,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/offdiag_2d_res300/rows.jsonl",
+     "baseline_ms_per_step": 2.407347,
+     "baseline_spread": 0.000598,
+     "case": "offdiag_2d",
+     "cells": 5400000,
+     "co_fused": [],
+     "fused_ms_per_step": 2.404377,
+     "fused_spread": 0.000278,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.001235,
+     "source": "bench",
+     "utc": "2026-09-21T14:52:37Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 1.001235,
+   "ratio_max": 1.001235,
+   "ratio_min": 1.001235,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 5,400,000 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.002111
+  },
+  "fused pair B|real|3|0|clean|110592-110592": {
+   "band": {
+    "hi_cells": 110592,
+    "lo_cells": 110592
+   },
+   "baseline_ms_per_step": 0.563507,
+   "baseline_spread": 0.032032,
+   "bracketed": false,
+   "dimensions": 3,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.518732,
+   "fused_spread": 0.021136,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.563507,
+     "baseline_spread": 0.032032,
+     "case": "pml_3d",
+     "cells": 110592,
+     "co_fused": [],
+     "fused_ms_per_step": 0.518732,
+     "fused_spread": 0.021136,
+     "grid_shape": [
+      48,
+      48,
+      48
+     ],
+     "line": 15,
+     "ratio": 1.086318,
+     "source": "bench",
+     "utc": "2026-09-21T16:17:50Z"
+    }
+   ],
+   "product": "fused pair B",
+   "ratio": 1.086318,
+   "ratio_max": 1.086318,
+   "ratio_min": 1.086318,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 110,592 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_B",
+    "update_H"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.139486
+  },
+  "fused pair D (BFAST)|real|3|0|bracketed|250-250": {
+   "band": {
+    "hi_cells": 250,
+    "lo_cells": 250
+   },
+   "baseline_ms_per_step": 0.487658,
+   "baseline_spread": 0.014271,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "BFAST PML",
+    "BFAST run"
+   ],
+   "fused_ms_per_step": 0.883089,
+   "fused_spread": 0.009293,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.487658,
+     "baseline_spread": 0.014271,
+     "case": "bfast_1d",
+     "cells": 250,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (BFAST)"
+      }
+     ],
+     "fused_ms_per_step": 0.883089,
+     "fused_spread": 0.009293,
+     "grid_shape": [
+      1,
+      1,
+      250
+     ],
+     "line": 12,
+     "ratio": 0.552218,
+     "source": "bench",
+     "utc": "2026-09-21T16:15:34Z"
+    }
+   ],
+   "product": "fused pair D (BFAST)",
+   "ratio": 0.552218,
+   "ratio_max": 0.552218,
+   "ratio_min": 0.552218,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 250 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.424218
+  },
+  "fused pair D (complex beta)|complex|2|0|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.373045,
+   "baseline_spread": 0.037671,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "complex beta PML",
+    "complex beta run"
+   ],
+   "fused_ms_per_step": 0.806531,
+   "fused_spread": 0.033626,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.370557,
+     "baseline_spread": 0.00984,
+     "case": "complex_beta_2d",
+     "cells": 14400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 0.794055,
+     "fused_spread": 0.018617,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 4,
+     "ratio": 0.466664,
+     "source": "bench",
+     "utc": "2026-09-21T16:25:53Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.375532,
+     "baseline_spread": 0.037671,
+     "case": "complex_beta_bloch_2d",
+     "cells": 14400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 0.819008,
+     "fused_spread": 0.033626,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 13,
+     "ratio": 0.45852,
+     "source": "bench",
+     "utc": "2026-09-21T16:31:58Z"
+    }
+   ],
+   "product": "fused pair D (complex beta)",
+   "ratio": 0.462592,
+   "ratio_max": 0.466664,
+   "ratio_min": 0.45852,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.470183
+  },
+  "fused pair D (complex)|complex|1|0|bracketed|480-480": {
+   "band": {
+    "hi_cells": 480,
+    "lo_cells": 480
+   },
+   "baseline_ms_per_step": 0.479423,
+   "baseline_spread": 0.026235,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "complex PML",
+    "complex"
+   ],
+   "fused_ms_per_step": 0.868571,
+   "fused_spread": 0.0259,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.479423,
+     "baseline_spread": 0.026235,
+     "case": "complex_1d",
+     "cells": 480,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.868571,
+     "fused_spread": 0.0259,
+     "grid_shape": [
+      1,
+      1,
+      480
+     ],
+     "line": 6,
+     "ratio": 0.551968,
+     "source": "bench",
+     "utc": "2026-09-21T16:27:16Z"
+    }
+   ],
+   "product": "fused pair D (complex)",
+   "ratio": 0.551968,
+   "ratio_max": 0.551968,
+   "ratio_min": 0.551968,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 480 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.395897
+  },
+  "fused pair D (complex)|complex|2|0|bracketed|4800-24000": {
+   "band": {
+    "hi_cells": 24000,
+    "lo_cells": 4800
+   },
+   "baseline_ms_per_step": 0.424165,
+   "baseline_spread": 0.030557,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "complex PML",
+    "complex"
+   ],
+   "fused_ms_per_step": 0.83989,
+   "fused_spread": 0.028375,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.359881,
+     "baseline_spread": 0.011532,
+     "case": "bloch_2d",
+     "cells": 4800,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.787755,
+     "fused_spread": 0.008851,
+     "grid_shape": [
+      40,
+      120,
+      1
+     ],
+     "line": 2,
+     "ratio": 0.456844,
+     "source": "bench",
+     "utc": "2026-09-21T16:24:33Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.488449,
+     "baseline_spread": 0.030557,
+     "case": "complex_nobloch_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.892025,
+     "fused_spread": 0.028375,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 3,
+     "ratio": 0.547573,
+     "source": "bench",
+     "utc": "2026-09-21T16:25:12Z"
+    }
+   ],
+   "product": "fused pair D (complex)",
+   "ratio": 0.502208,
+   "ratio_max": 0.547573,
+   "ratio_min": 0.456844,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,800 (1 row); 24,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.393495
+  },
+  "fused pair D (complex)|complex|3|0|bracketed|275-64000": {
+   "band": {
+    "hi_cells": 64000,
+    "lo_cells": 275
+   },
+   "baseline_ms_per_step": 0.339091,
+   "baseline_spread": 0.02964,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "complex PML",
+    "complex"
+   ],
+   "fused_ms_per_step": 0.779929,
+   "fused_spread": 0.025651,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.394745,
+     "baseline_spread": 0.022323,
+     "case": "complex_3d_thinline",
+     "cells": 275,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.854746,
+     "fused_spread": 0.023512,
+     "grid_shape": [
+      1,
+      1,
+      275
+     ],
+     "line": 7,
+     "ratio": 0.461828,
+     "source": "bench",
+     "utc": "2026-09-21T16:27:59Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.283437,
+     "baseline_spread": 0.02964,
+     "case": "complex_3d",
+     "cells": 64000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (complex)"
+      }
+     ],
+     "fused_ms_per_step": 0.705111,
+     "fused_spread": 0.025651,
+     "grid_shape": [
+      40,
+      40,
+      40
+     ],
+     "line": 8,
+     "ratio": 0.401975,
+     "source": "bench",
+     "utc": "2026-09-21T16:28:38Z"
+    }
+   ],
+   "product": "fused pair D (complex)",
+   "ratio": 0.431902,
+   "ratio_max": 0.461828,
+   "ratio_min": 0.401975,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 275 (1 row); 64,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.492337
+  },
+  "fused pair D (conductive)|real|2|0|bracketed|19200-19200": {
+   "band": {
+    "hi_cells": 19200,
+    "lo_cells": 19200
+   },
+   "baseline_ms_per_step": 0.922874,
+   "baseline_spread": 0.030028,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "conductive PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.278418,
+   "fused_spread": 0.021396,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.922874,
+     "baseline_spread": 0.030028,
+     "case": "conductive_2d",
+     "cells": 19200,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 1.278418,
+     "fused_spread": 0.021396,
+     "grid_shape": [
+      160,
+      120,
+      1
+     ],
+     "line": 3,
+     "ratio": 0.721887,
+     "source": "bench",
+     "utc": "2026-09-21T16:09:58Z"
+    }
+   ],
+   "product": "fused pair D (conductive)",
+   "ratio": 0.721887,
+   "ratio_max": 0.721887,
+   "ratio_min": 0.721887,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.226689
+  },
+  "fused pair D (cylindrical complex)|complex|2|0|bracketed|6400-6400": {
+   "band": {
+    "hi_cells": 6400,
+    "lo_cells": 6400
+   },
+   "baseline_ms_per_step": 0.996122,
+   "baseline_spread": 0.048539,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "cylindrical complex PML",
+    "cylindrical complex"
+   ],
+   "fused_ms_per_step": 1.384008,
+   "fused_spread": 0.044706,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.996122,
+     "baseline_spread": 0.048539,
+     "case": "cylindrical_m0_complex",
+     "cells": 6400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (cylindrical complex)"
+      }
+     ],
+     "fused_ms_per_step": 1.384008,
+     "fused_spread": 0.044706,
+     "grid_shape": [
+      80,
+      1,
+      80
+     ],
+     "line": 17,
+     "ratio": 0.719737,
+     "source": "bench",
+     "utc": "2026-09-21T16:34:52Z"
+    }
+   ],
+   "product": "fused pair D (cylindrical complex)",
+   "ratio": 0.719737,
+   "ratio_max": 0.719737,
+   "ratio_min": 0.719737,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 6,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.187018
+  },
+  "fused pair D (folded complex beta)|complex|2|0|bracketed|7440-7440": {
+   "band": {
+    "hi_cells": 7440,
+    "lo_cells": 7440
+   },
+   "baseline_ms_per_step": 0.578445,
+   "baseline_spread": 0.038941,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded complex beta PML",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 1.135935,
+   "fused_spread": 0.029742,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.574632,
+     "baseline_spread": 0.014698,
+     "case": "folded_complex_beta_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 1.131029,
+     "fused_spread": 0.021284,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 5,
+     "ratio": 0.508062,
+     "source": "bench",
+     "utc": "2026-09-21T16:26:32Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.582257,
+     "baseline_spread": 0.038941,
+     "case": "folded_complex_beta_bloch_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex beta)"
+      }
+     ],
+     "fused_ms_per_step": 1.140841,
+     "fused_spread": 0.029742,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 14,
+     "ratio": 0.510375,
+     "source": "bench",
+     "utc": "2026-09-21T16:32:37Z"
+    }
+   ],
+   "product": "fused pair D (folded complex beta)",
+   "ratio": 0.509219,
+   "ratio_max": 0.510375,
+   "ratio_min": 0.508062,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.420942
+  },
+  "fused pair D (folded complex)|complex|3|0|bracketed|5580-21168": {
+   "band": {
+    "hi_cells": 21168,
+    "lo_cells": 5580
+   },
+   "baseline_ms_per_step": 0.593525,
+   "baseline_spread": 0.025953,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "folded complex PML",
+    "folded complex"
+   ],
+   "fused_ms_per_step": 1.168715,
+   "fused_spread": 0.035149,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.607289,
+     "baseline_spread": 0.024103,
+     "case": "folded_complex_kz2d_3d",
+     "cells": 5580,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex)"
+      }
+     ],
+     "fused_ms_per_step": 1.201343,
+     "fused_spread": 0.034965,
+     "grid_shape": [
+      90,
+      62,
+      1
+     ],
+     "line": 10,
+     "ratio": 0.505509,
+     "source": "bench",
+     "utc": "2026-09-21T16:30:03Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict_licensed/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.57976,
+     "baseline_spread": 0.025953,
+     "case": "folded_complex_3d",
+     "cells": 21168,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded complex)"
+      }
+     ],
+     "fused_ms_per_step": 1.136086,
+     "fused_spread": 0.035149,
+     "grid_shape": [
+      8,
+      21,
+      126
+     ],
+     "line": 9,
+     "ratio": 0.510314,
+     "source": "bench",
+     "utc": "2026-09-21T16:29:19Z"
+    }
+   ],
+   "product": "fused pair D (folded complex)",
+   "ratio": 0.507912,
+   "ratio_max": 0.510314,
+   "ratio_min": 0.505509,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 5,580 (1 row); 21,168 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "complex",
+   "susceptibilities": 0,
+   "veto_margin": 0.428584
+  },
+  "fused pair D (folded dispersive)|real|2|1|bracketed|4880-4880": {
+   "band": {
+    "hi_cells": 4880,
+    "lo_cells": 4880
+   },
+   "baseline_ms_per_step": 0.953484,
+   "baseline_spread": 0.034142,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded PML",
+    "folded dispersive"
+   ],
+   "fused_ms_per_step": 1.51523,
+   "fused_spread": 0.040203,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.953484,
+     "baseline_spread": 0.034142,
+     "case": "folded_dispersive_2d",
+     "cells": 4880,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded)"
+      }
+     ],
+     "fused_ms_per_step": 1.51523,
+     "fused_spread": 0.040203,
+     "grid_shape": [
+      80,
+      61,
+      1
+     ],
+     "line": 7,
+     "ratio": 0.629267,
+     "source": "bench",
+     "utc": "2026-09-21T16:12:53Z"
+    }
+   ],
+   "product": "fused pair D (folded dispersive)",
+   "ratio": 0.629267,
+   "ratio_max": 0.629267,
+   "ratio_min": 0.629267,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 4,880 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 1,
+   "veto_margin": 0.296388
+  },
+  "fused pair D (folded real beta)|real|2|0|bracketed|7440-7440": {
+   "band": {
+    "hi_cells": 7440,
+    "lo_cells": 7440
+   },
+   "baseline_ms_per_step": 0.497391,
+   "baseline_spread": 0.025479,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "folded real beta PML",
+    "folded beta run"
+   ],
+   "fused_ms_per_step": 1.06613,
+   "fused_spread": 0.017465,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.497391,
+     "baseline_spread": 0.025479,
+     "case": "folded_special_kz_2d",
+     "cells": 7440,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded real beta)"
+      }
+     ],
+     "fused_ms_per_step": 1.06613,
+     "fused_spread": 0.017465,
+     "grid_shape": [
+      120,
+      62,
+      1
+     ],
+     "line": 11,
+     "ratio": 0.466539,
+     "source": "bench",
+     "utc": "2026-09-21T16:14:55Z"
+    }
+   ],
+   "product": "fused pair D (folded real beta)",
+   "ratio": 0.466539,
+   "ratio_max": 0.466539,
+   "ratio_min": 0.466539,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 7,440 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.490517
+  },
+  "fused pair D (folded)|real|3|0|bracketed|33600-33600": {
+   "band": {
+    "hi_cells": 33600,
+    "lo_cells": 33600
+   },
+   "baseline_ms_per_step": 0.476547,
+   "baseline_spread": 0.019612,
+   "bracketed": true,
+   "dimensions": 3,
+   "displaces": [
+    "folded PML",
+    "folded"
+   ],
+   "fused_ms_per_step": 0.91484,
+   "fused_spread": 0.016986,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.476547,
+     "baseline_spread": 0.019612,
+     "case": "folded_3d",
+     "cells": 33600,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (folded)"
+      }
+     ],
+     "fused_ms_per_step": 0.91484,
+     "fused_spread": 0.016986,
+     "grid_shape": [
+      40,
+      21,
+      40
+     ],
+     "line": 19,
+     "ratio": 0.520907,
+     "source": "bench",
+     "utc": "2026-09-21T16:20:32Z"
+    }
+   ],
+   "product": "fused pair D (folded)",
+   "ratio": 0.520907,
+   "ratio_max": 0.520907,
+   "ratio_min": 0.520907,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 33,600 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.442495
+  },
+  "fused pair D (no-PML stored E)|real|1|5|bracketed|400-400": {
+   "band": {
+    "hi_cells": 400,
+    "lo_cells": 400
+   },
+   "baseline_ms_per_step": 1.380116,
+   "baseline_spread": 0.033655,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "conductive no-PML",
+    "no-PML stored E"
+   ],
+   "fused_ms_per_step": 1.630437,
+   "fused_spread": 0.039693,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 1.380116,
+     "baseline_spread": 0.033655,
+     "case": "absorber_1d",
+     "cells": 400,
+     "co_fused": [],
+     "fused_ms_per_step": 1.630437,
+     "fused_spread": 0.039693,
+     "grid_shape": [
+      1,
+      1,
+      400
+     ],
+     "line": 20,
+     "ratio": 0.84647,
+     "source": "bench",
+     "utc": "2026-09-21T16:21:11Z"
+    }
+   ],
+   "product": "fused pair D (no-PML stored E)",
+   "ratio": 0.84647,
+   "ratio_max": 0.84647,
+   "ratio_min": 0.84647,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 5,
+   "veto_margin": 0.080182
+  },
+  "fused pair D (no-PML stored E)|real|2|2|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.708153,
+   "baseline_spread": 0.01335,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "no-PML",
+    "no-PML stored E"
+   ],
+   "fused_ms_per_step": 0.992247,
+   "fused_spread": 0.034115,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.708153,
+     "baseline_spread": 0.01335,
+     "case": "no_pml_dispersive_2d",
+     "cells": 14400,
+     "co_fused": [],
+     "fused_ms_per_step": 0.992247,
+     "fused_spread": 0.034115,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 21,
+     "ratio": 0.713686,
+     "source": "bench",
+     "utc": "2026-09-21T16:21:53Z"
+    }
+   ],
+   "product": "fused pair D (no-PML stored E)",
+   "ratio": 0.713686,
+   "ratio_max": 0.713686,
+   "ratio_min": 0.713686,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 2,
+   "veto_margin": 0.238849
+  },
+  "fused pair D (real beta)|real|2|0|bracketed|14400-14400": {
+   "band": {
+    "hi_cells": 14400,
+    "lo_cells": 14400
+   },
+   "baseline_ms_per_step": 0.354054,
+   "baseline_spread": 0.03618,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "real beta PML",
+    "real beta run"
+   ],
+   "fused_ms_per_step": 0.797126,
+   "fused_spread": 0.022328,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.354054,
+     "baseline_spread": 0.03618,
+     "case": "special_kz_2d",
+     "cells": 14400,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B (real beta)"
+      }
+     ],
+     "fused_ms_per_step": 0.797126,
+     "fused_spread": 0.022328,
+     "grid_shape": [
+      120,
+      120,
+      1
+     ],
+     "line": 10,
+     "ratio": 0.444164,
+     "source": "bench",
+     "utc": "2026-09-21T16:14:18Z"
+    }
+   ],
+   "product": "fused pair D (real beta)",
+   "ratio": 0.444164,
+   "ratio_max": 0.444164,
+   "ratio_min": 0.444164,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.497328
+  },
+  "fused pair D|real|1|0|bracketed|640-640": {
+   "band": {
+    "hi_cells": 640,
+    "lo_cells": 640
+   },
+   "baseline_ms_per_step": 0.531705,
+   "baseline_spread": 0.02499,
+   "bracketed": true,
+   "dimensions": 1,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.913487,
+   "fused_spread": 0.016726,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.531705,
+     "baseline_spread": 0.02499,
+     "case": "pml_1d",
+     "cells": 640,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.913487,
+     "fused_spread": 0.016726,
+     "grid_shape": [
+      1,
+      1,
+      640
+     ],
+     "line": 5,
+     "ratio": 0.582061,
+     "source": "bench",
+     "utc": "2026-09-21T16:11:34Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 0.582061,
+   "ratio_max": 0.582061,
+   "ratio_min": 0.582061,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 640 (1 row)",
+   "rows": 1,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.376223
+  },
+  "fused pair D|real|2|0|bracketed|1014001-2399999": {
+   "band": {
+    "hi_cells": 2399999,
+    "lo_cells": 1014001
+   },
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "measurements": [],
+   "product": "fused pair D",
+   "reason": "the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them",
+   "rows": 0,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0
+  },
+  "fused pair D|real|2|0|bracketed|24000-24000": {
+   "band": {
+    "hi_cells": 24000,
+    "lo_cells": 24000
+   },
+   "baseline_ms_per_step": 0.506362,
+   "baseline_spread": 0.022072,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.91111,
+   "fused_spread": 0.038847,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res20/rows.jsonl",
+     "baseline_ms_per_step": 0.529438,
+     "baseline_spread": 0.022072,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.942782,
+     "fused_spread": 0.020451,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.561569,
+     "source": "bench",
+     "utc": "2026-09-21T14:01:05Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_2026-09-20_restrict/triton/rows.jsonl",
+     "baseline_ms_per_step": 0.483286,
+     "baseline_spread": 0.016825,
+     "case": "pml_2d",
+     "cells": 24000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.879437,
+     "fused_spread": 0.038847,
+     "grid_shape": [
+      200,
+      120,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.54954,
+     "source": "bench",
+     "utc": "2026-09-21T16:08:27Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 0.555554,
+   "ratio_max": 0.561569,
+   "ratio_min": 0.54954,
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "measured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.394788
+  },
+  "fused pair D|real|2|0|bracketed|2400000-5400000": {
+   "band": {
+    "hi_cells": 5400000,
+    "lo_cells": 2400000
+   },
+   "baseline_ms_per_step": 1.661982,
+   "baseline_spread": 0.000962,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 1.525235,
+   "fused_spread": 0.013442,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res200/rows.jsonl",
+     "baseline_ms_per_step": 1.040179,
+     "baseline_spread": 0.000962,
+     "case": "pml_2d",
+     "cells": 2400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.974459,
+     "fused_spread": 0.013442,
+     "grid_shape": [
+      2000,
+      1200,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.067443,
+     "source": "bench",
+     "utc": "2026-09-21T14:20:45Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res300/rows.jsonl",
+     "baseline_ms_per_step": 2.283785,
+     "baseline_spread": 0.000551,
+     "case": "pml_2d",
+     "cells": 5400000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 2.07601,
+     "fused_spread": 0.000403,
+     "grid_shape": [
+      3000,
+      1800,
+      1
+     ],
+     "line": 1,
+     "ratio": 1.100084,
+     "source": "bench",
+     "utc": "2026-09-21T14:35:10Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 1.083763,
+   "ratio_max": 1.100084,
+   "ratio_min": 1.067443,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": false,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": -0.101038
+  },
+  "fused pair D|real|2|0|bracketed|24001-1014000": {
+   "band": {
+    "hi_cells": 1014000,
+    "lo_cells": 24001
+   },
+   "baseline_ms_per_step": 0.64145,
+   "baseline_spread": 0.03265,
+   "bracketed": true,
+   "dimensions": 2,
+   "displaces": [
+    "PML",
+    "ordinary"
+   ],
+   "fused_ms_per_step": 0.963627,
+   "fused_spread": 0.027257,
+   "measurements": [
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res60/rows.jsonl",
+     "baseline_ms_per_step": 0.643119,
+     "baseline_spread": 0.03265,
+     "case": "pml_2d",
+     "cells": 216000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.968193,
+     "fused_spread": 0.010417,
+     "grid_shape": [
+      600,
+      360,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.664247,
+     "source": "bench",
+     "utc": "2026-09-21T14:06:02Z"
+    },
+    {
+     "after_probe": true,
+     "artifact": "results/fused_timing_sweep_2026-09-20_restrict/triton/pml_2d_res130/rows.jsonl",
+     "baseline_ms_per_step": 0.639781,
+     "baseline_spread": 0.006848,
+     "case": "pml_2d",
+     "cells": 1014000,
+     "co_fused": [
+      {
+       "bracketed": false,
+       "product": "fused pair B"
+      }
+     ],
+     "fused_ms_per_step": 0.959062,
+     "fused_spread": 0.027257,
+     "grid_shape": [
+      1300,
+      780,
+      1
+     ],
+     "line": 1,
+     "ratio": 0.66709,
+     "source": "bench",
+     "utc": "2026-09-21T14:11:48Z"
+    }
+   ],
+   "product": "fused pair D",
+   "ratio": 0.665668,
+   "ratio_max": 0.66709,
+   "ratio_min": 0.664247,
+   "reason": "no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row)",
+   "rows": 2,
+   "slots": [
+    "step_D",
+    "update_E"
+   ],
+   "slower_beyond_spread": true,
+   "status": "unmeasured",
+   "storage": "real",
+   "susceptibilities": 0,
+   "veto_margin": 0.292686
+  }
+ },
+ "pinned_sources": {
+  "bench": [
+   "1ddb5c3fbce22fea949021481669253f9bc55d1cc2e5eb6af1e900fc4957797e"
+  ],
+  "deposit_repair": [
+   "dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850"
+  ],
+  "driver": [
+   "e82dde7bf4583f634df5b314a610077fc447a804ae39f598313a46e4e233264a"
+  ],
+  "fastpath": [
+   "61f314fb0cb78d30bea13cf02287f069110e8dedffce4ca17288fda8f827a128"
+  ],
+  "fused_pairs": [
+   "4385f67eda597e6b06cff858181656a3946f80a026c4ede8f48f7f5cd8897e4f"
+  ],
+  "fused_polarization_pair": [
+   "b58c47173cbb4d9ecf15976945a4ba6eef2471c4b21c065d7a173cc9df121803"
+  ],
+  "metal_device": [
+   "not recorded"
+  ],
+  "metal_dispatch": [
+   "not recorded"
+  ],
+  "metal_launch": [
+   "not recorded"
+  ],
+  "phase0_harness": [
+   "not recorded"
+  ]
+ },
+ "policy": [
+  "keep"
+ ],
+ "record_sha256": "965317c136adb1cb0370e9249c88e19dc904f063ea540176aee991b9e5299ff4",
+ "recorded_utc": "2026-09-21T16:34:52Z",
+ "route": {
+  "deposit_repair_sha256": "dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850",
+  "fell_back": false,
+  "id": "dffe30aba77a:linear:1-per-step:restricted",
+  "index": "linear",
+  "repairs_per_bracketed_step": 1.0,
+  "restricted": true,
+  "restriction_counters_recorded_on": "35 of 35 bracketed rows"
+ },
+ "rows": {
+  "admitted": 41,
+  "baseline_legs": 0,
+  "duplicates": 0,
+  "excluded": 28,
+  "read": 69
+ },
+ "rules": {
+  "admission": "verdict TIMED, every recorded floor passed and all seven recorded (the same-table control among them), the plan's slots served by this table alone (substitution.tables_dispatched), lifted on the device, no foreign process on the row's device by UUID before or after, and a recorded deposit_repair digest",
+  "attribution": "a row times a plan and prices its SOLE fused product, or -- when the plan holds several -- the one and only one of them carrying the deposit-repair bracket, listing the others under co_fused; a plan whose products are all clean prices none of them",
+  "band": "per class, the sorted measured cell counts are cut into maximal runs with one verdict and each run is trimmed to sizes with at least min_rows rows; a band is [lo_cells, hi_cells] inclusive whose EDGES are those sizes, its INTERIOR is interpolated (a size between the edges need not have been run and the verdict is applied to it), the trimmed remainder and a verdict change between two adjacent sizes are explicit unmeasured keys, and outside the measured sizes there is no key: nothing is extrapolated",
+  "bracketed": "whether any slot the product holds is in the fused leg's deposit_repair_route.bracketed_slots",
+  "min_rows_per_key": 2,
+  "numbers": "fused and baseline ms/step and ratio are medians over the key's rows; fused_spread and baseline_spread are the largest window spread ((max - min) / median) any feeding row showed on that leg",
+  "one_program": "rows on more than one deposit-repair route (the whole identity: digest, index, repairs per bracketed step, restricted, fell back), fused-pair emitter, subnormal policy or device refuse to pool; a source some rows pinned and others did not refuses until it is allowed by name, and is then not compared at all",
+  "ratio": "baseline ms/step over fused ms/step, per row; above 1 the candidate is faster than what it displaces",
+  "storage": "complex when the run shape's complex_storage is true, else real",
+  "susceptibilities": "the run shape's susceptibilities count, verbatim, as the release tables pin it",
+  "veto": "a row's margin is 1 - (its fused_spread + its baseline_spread) - its ratio; veto_margin is the least margin of the key's rows and slower_beyond_spread is veto_margin > 0: EVERY row is slower by more than its own two spreads"
+ },
+ "schema": "meep_gpu.dispatch_preference.timing/2",
+ "subject_barrier": {
+  "allowed_unpinned": [],
+  "cannot_cover": "a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed",
+  "digests": {
+   "fused_pairs": [
+    "4385f67eda597e6b06cff858181656a3946f80a026c4ede8f48f7f5cd8897e4f"
+   ]
+  },
+  "rows_not_recording": {
+   "fused_pairs": 0
+  },
+  "sources": [
+   "fused_pairs"
+  ]
+ },
+ "table": "triton"
+}

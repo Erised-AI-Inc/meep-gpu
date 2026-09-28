@@ -1,0 +1,87 @@
+# Recorded output of examples/run_examples.py --record.
+# Host: Darwin arm64, python 3.12.13, numpy 2.4.3.
+# MEEP 1.33.0, single precision: True.
+# GPU route: metal.
+# [result] lines are compared by --check. [host] and [timing] lines are not:
+# they describe the recording host, and the wall times were taken on a
+# loaded machine and are not timings of record.
+
+[host] python 3.12.13 on Darwin arm64
+[host] meep 1.33.0, single precision: True
+[host] numpy 2.4.3
+[host] gpu: metal  missing: []
+[host] driver.gpu: metal
+[host] step path: fused
+[host] subnormal policy: flush
+[result] example: slab_flux_2d
+[result] leg: gpu
+[result] cells: 24000
+[result] steps: 2400
+[result] meep time: 60.000000
+[result] Ez shape: (200, 120)
+[result] Ez max abs: 2.371943e-02
+[result] Ez l2 norm: 4.562030e-01
+[result] flux 0: 1.875360e-06 1.209704e-02 3.536674e-01 1.232389e-01 1.115213e-04
+[result] flux 1: 8.274132e-06 1.174478e-02 3.123004e-01 1.053131e-01 5.761073e-05
+[host] Ez dtype: float32
+[host] Ez sha256: 4bc8d5334c182512
+[timing] step loop: 7.211 s, 8.0 million cell updates per second
+[host] meep_gpu: step path fused; 4/7 slots (step_B,update_H,step_D,update_E) via fused electric D/E pair,fused magnetic B/H pair; table metal; policy flush (requested flush), installed by dispatch OVERRIDING this run's own keep resolution; torch 2.10.0 certified, metal frontend metalfe-32023.850.10 certified; device unknown uncertified-unknown
+[host] python 3.12.13 on Darwin arm64
+[host] meep 1.33.0, single precision: True
+[host] numpy 2.4.3
+[host] gpu: metal  missing: []
+[host] driver.gpu: metal
+[host] step path: array
+[host] subnormal policy: flush
+[result] example: slab_flux_2d
+[result] leg: array
+[result] cells: 24000
+[result] steps: 2400
+[result] meep time: 60.000000
+[result] Ez shape: (200, 120)
+[result] Ez max abs: 2.371943e-02
+[result] Ez l2 norm: 4.562030e-01
+[result] flux 0: 1.875360e-06 1.209704e-02 3.536674e-01 1.232389e-01 1.115213e-04
+[result] flux 1: 8.274132e-06 1.174478e-02 3.123004e-01 1.053131e-01 5.761073e-05
+[host] Ez dtype: float32
+[host] Ez sha256: 4bc8d5334c182512
+[timing] step loop: 1.792 s, 32.1 million cell updates per second
+[host] python 3.12.13 on Darwin arm64
+[host] meep 1.33.0, single precision: True
+[host] numpy 2.4.3
+[host] driver.gpu: None
+[host] step path: array
+[host] subnormal policy: keep
+[result] example: slab_flux_2d
+[result] leg: reference
+[result] cells: 24000
+[result] steps: 2400
+[result] meep time: 60.000000
+[result] Ez shape: (200, 120)
+[result] Ez max abs: 2.371953e-02
+[result] Ez l2 norm: 4.562030e-01
+[result] flux 0: 1.875192e-06 1.209704e-02 3.536675e-01 1.232388e-01 1.115190e-04
+[result] flux 1: 8.274100e-06 1.174474e-02 3.123005e-01 1.053131e-01 5.761216e-05
+[host] Ez dtype: float32
+[host] Ez sha256: acea314b11427557
+[timing] step loop: 1.894 s, 30.4 million cell updates per second
+[host] python 3.12.13 on Darwin arm64
+[host] meep 1.33.0, single precision: True
+[host] numpy 2.4.3
+[result] example: slab_flux_2d
+[result] leg: meep
+[result] cells: 24000
+[result] meep time: 60.000000
+[result] Ez shape: (200, 120)
+[result] Ez max abs: 2.371952e-02
+[result] Ez l2 norm: 4.562031e-01
+[result] flux 0: 1.875162e-06 1.209703e-02 3.536675e-01 1.232389e-01 1.115215e-04
+[result] flux 1: 8.273984e-06 1.174477e-02 3.123006e-01 1.053131e-01 5.761284e-05
+[host] Ez dtype: float32
+[host] Ez sha256: fc32a7925c64b15f
+[timing] sim.run: 0.276 s including initialization
+
+[compare] gpu against array (policy flush): identical bytes (field identical, flux_0 identical, flux_1 identical)
+[compare] gpu against reference (default policy): field relative difference 1.044e-05, spectrum 3.917e-07
+[compare] reference against MEEP: field relative difference 7.880e-06, spectrum 3.754e-07; within the band 0.0001

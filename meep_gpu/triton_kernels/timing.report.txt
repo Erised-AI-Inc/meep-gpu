@@ -1,0 +1,93 @@
+Dispatch-preference timing record -- triton table
+record_sha256 965317c136adb1cb0370e9249c88e19dc904f063ea540176aee991b9e5299ff4
+recorded_utc 2026-09-21T16:34:52Z (the newest admitted row)
+cut by parity/meep_gpu/cut_timing_record.py from results/fused_timing_2026-09-20_restrict/triton, results/fused_timing_2026-09-20_restrict_licensed/triton, results/fused_timing_sweep_2026-09-20_restrict/triton
+route dffe30aba77a:linear:1-per-step:restricted -- deposit_repair dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850; restriction counters recorded on 35 of 35 bracketed rows
+emitters compared: fused_pairs 4385f67eda59
+the barrier cannot cover: a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed
+
+rows: read 69, duplicate lines 0, baseline legs 0, admitted 41, left out 28; admitted without an after-probe 0; rows-times-products not attributed 33
+keys: measured 4, unmeasured 28 (minimum 2 rows a key)
+
+MEASURED
+  VETO  fused pair B|real|2|0|bracketed|24000-24000  0.595x (best row 0.610, least margin +0.345), fused 0.878 against 0.511 ms/step over PML+ordinary, 3 rows
+  VETO  fused pair D (complex beta)|complex|2|0|bracketed|14400-14400  0.463x (best row 0.467, least margin +0.470), fused 0.807 against 0.373 ms/step over complex beta PML+complex beta run, 2 rows
+  VETO  fused pair D (folded complex beta)|complex|2|0|bracketed|7440-7440  0.509x (best row 0.510, least margin +0.421), fused 1.136 against 0.578 ms/step over folded complex beta PML+folded complex, 2 rows
+  VETO  fused pair D|real|2|0|bracketed|24000-24000  0.556x (best row 0.562, least margin +0.395), fused 0.911 against 0.506 ms/step over PML+ordinary, 2 rows
+
+UNMEASURED
+  fused pair B (folded complex)|complex|2|0|clean|6561-6561  no size in it carries 2 rows, so none can set a band edge: 6,561 (1 row); best row 1.027x
+  fused pair B (folded)|real|2|0|bracketed|9760-9760  no size in it carries 2 rows, so none can set a band edge: 9,760 (1 row); best row 0.549x
+  fused pair B|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
+  fused pair B|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.102x
+  fused pair B|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.695x
+  fused pair B|real|2|0|clean|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
+  fused pair B|real|2|0|clean|24000-1014000  no size in it carries 2 rows, so none can set a band edge: 24,000 (1 row); 1,014,000 (1 row); best row 1.055x
+  fused pair B|real|2|0|clean|2400000-2400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); best row 0.975x
+  fused pair B|real|2|0|clean|2400001-5399999  the verdict changes between 2,400,000 and 5,400,000 cells and no row lies between them
+  fused pair B|real|2|0|clean|5400000-5400000  no size in it carries 2 rows, so none can set a band edge: 5,400,000 (1 row); best row 1.001x
+  fused pair B|real|3|0|clean|110592-110592  no size in it carries 2 rows, so none can set a band edge: 110,592 (1 row); best row 1.086x
+  fused pair D (BFAST)|real|3|0|bracketed|250-250  no size in it carries 2 rows, so none can set a band edge: 250 (1 row); best row 0.552x
+  fused pair D (complex)|complex|1|0|bracketed|480-480  no size in it carries 2 rows, so none can set a band edge: 480 (1 row); best row 0.552x
+  fused pair D (complex)|complex|2|0|bracketed|4800-24000  no size in it carries 2 rows, so none can set a band edge: 4,800 (1 row); 24,000 (1 row); best row 0.548x
+  fused pair D (complex)|complex|3|0|bracketed|275-64000  no size in it carries 2 rows, so none can set a band edge: 275 (1 row); 64,000 (1 row); best row 0.462x
+  fused pair D (conductive)|real|2|0|bracketed|19200-19200  no size in it carries 2 rows, so none can set a band edge: 19,200 (1 row); best row 0.722x
+  fused pair D (cylindrical complex)|complex|2|0|bracketed|6400-6400  no size in it carries 2 rows, so none can set a band edge: 6,400 (1 row); best row 0.720x
+  fused pair D (folded complex)|complex|3|0|bracketed|5580-21168  no size in it carries 2 rows, so none can set a band edge: 5,580 (1 row); 21,168 (1 row); best row 0.510x
+  fused pair D (folded dispersive)|real|2|1|bracketed|4880-4880  no size in it carries 2 rows, so none can set a band edge: 4,880 (1 row); best row 0.629x
+  fused pair D (folded real beta)|real|2|0|bracketed|7440-7440  no size in it carries 2 rows, so none can set a band edge: 7,440 (1 row); best row 0.467x
+  fused pair D (folded)|real|3|0|bracketed|33600-33600  no size in it carries 2 rows, so none can set a band edge: 33,600 (1 row); best row 0.521x
+  fused pair D (no-PML stored E)|real|1|5|bracketed|400-400  no size in it carries 2 rows, so none can set a band edge: 400 (1 row); best row 0.846x
+  fused pair D (no-PML stored E)|real|2|2|bracketed|14400-14400  no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row); best row 0.714x
+  fused pair D (real beta)|real|2|0|bracketed|14400-14400  no size in it carries 2 rows, so none can set a band edge: 14,400 (1 row); best row 0.444x
+  fused pair D|real|1|0|bracketed|640-640  no size in it carries 2 rows, so none can set a band edge: 640 (1 row); best row 0.582x
+  fused pair D|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
+  fused pair D|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.100x
+  fused pair D|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.667x
+
+LEFT OUT, BY REASON
+    11  floor failed: spread_within_gate
+    17  verdict SKIP-NOT-THIS-LEG
+
+PREVIEW -- served_in_dispatch_preferred as it WOULD read if this record were in force on its own route. Nothing consults the record yet, no board reports this number, and the join below is this tool's, not a board's
+  board results/fusion_matrix_triton_2026-09-20_restrict/fusion_matrix.json
+  joined from the board's own seam_instances (predicate_admits, by product)
+  served_in_dispatch 334 / 597; instances in a vetoed band 0; served_in_dispatch_preferred (PREVIEW) 334 / 597
+  of 334 joined seam-instances 186 carry the bracket; the record vetoes 0, clears 0, and has no record for the rest:
+      63  bracketed: class_not_in_record
+      33  bracketed: key_unmeasured
+      90  bracketed: outside_the_measured_bands
+     125  clean: class_not_in_record
+       9  clean: key_unmeasured
+      14  clean: outside_the_measured_bands
+  product: dispatching on the board / joined / bracketed / vetoed / not vetoed / no record
+  dispersive fused pair: 3 / 3 / 3 / 0 / 0 / 3
+  fused pair B: 50 / 50 / 25 / 0 / 0 / 50
+  fused pair B (BFAST): 1 / 1 / 0 / 0 / 0 / 1
+  fused pair B (complex beta): 1 / 1 / 0 / 0 / 0 / 1
+  fused pair B (complex): 17 / 17 / 4 / 0 / 0 / 17
+  fused pair B (cylindrical complex): 18 / 18 / 0 / 0 / 0 / 18
+  fused pair B (cylindrical): 3 / 3 / 0 / 0 / 0 / 3
+  fused pair B (folded complex beta): 3 / 3 / 1 / 0 / 0 / 3
+  fused pair B (folded complex): 5 / 5 / 1 / 0 / 0 / 5
+  fused pair B (folded real beta): 1 / 1 / 1 / 0 / 0 / 1
+  fused pair B (folded): 74 / 74 / 23 / 0 / 0 / 74
+  fused pair B (nonlinear): 2 / 2 / 0 / 0 / 0 / 2
+  fused pair B (real beta): 1 / 1 / 0 / 0 / 0 / 1
+  fused pair D: 28 / 28 / 28 / 0 / 0 / 28
+  fused pair D (BFAST): 1 / 1 / 1 / 0 / 0 / 1
+  fused pair D (complex beta): 1 / 1 / 1 / 0 / 0 / 1
+  fused pair D (complex conductive no-PML): 4 / 4 / 0 / 0 / 0 / 4
+  fused pair D (complex): 17 / 17 / 16 / 0 / 0 / 17
+  fused pair D (conductive): 1 / 1 / 1 / 0 / 0 / 1
+  fused pair D (cylindrical complex): 18 / 18 / 18 / 0 / 0 / 18
+  fused pair D (cylindrical): 3 / 3 / 3 / 0 / 0 / 3
+  fused pair D (folded complex beta): 3 / 3 / 3 / 0 / 0 / 3
+  fused pair D (folded complex): 2 / 2 / 2 / 0 / 0 / 2
+  fused pair D (folded dispersive): 0 / 0 / 0 / 0 / 0 / 0
+  fused pair D (folded off-diagonal): 9 / 9 / 0 / 0 / 0 / 9
+  fused pair D (folded real beta): 1 / 1 / 1 / 0 / 0 / 1
+  fused pair D (folded): 54 / 54 / 50 / 0 / 0 / 54
+  fused pair D (no-PML stored E): 3 / 3 / 3 / 0 / 0 / 3
+  fused pair D (off-diagonal): 9 / 9 / 0 / 0 / 0 / 9
+  fused pair D (real beta): 1 / 1 / 1 / 0 / 0 / 1

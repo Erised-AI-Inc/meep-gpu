@@ -1,0 +1,45 @@
+# ROUTE 1: one NVIDIA GPU on Linux x86_64.
+#
+# What this file is for: a new conda environment holding MEEP and the GPU
+# libraries this package runs on, at the certified versions of the GPU
+# libraries. INSTALL.md, "Tested MEEP versions and builds", says what has been
+# run in this environment. It does NOT install this package; INSTALL.md,
+# "Route 1", gives the command that does.
+#
+#   conda env create -n meep-gpu -f environments/nvidia-linux.yml
+#   conda activate meep-gpu
+#   python -m pip install .          # from the repository root; no extras
+#
+# What it installs:
+#   MEEP 1.33.0     conda-forge package `pymeep`, serial (no MPI), double precision
+#   Python 3.10     Triton 3.1.0 has no wheel for Python 3.13
+#   NumPy 2.2       inside every pin of MEEP, CuPy and PyTorch below
+#   CuPy 13.5.1     from conda-forge, with the CUDA 11.8 runtime libraries, so no
+#                   CUDA toolkit has to be installed on the machine
+#   PyTorch 2.5.1   from PyPI. Triton selects its NVIDIA driver by importing
+#                   PyTorch, and 2.5.1 is the release that requires Triton 3.1.0
+#   Triton 3.1.0    from PyPI: the certified version of the compiled kernels
+#
+# What the machine must already have: an NVIDIA driver (`nvidia-smi` works), and
+# a C compiler on PATH (`gcc --version` works). INSTALL.md, "What you need".
+#
+# Do not add a second CuPy (`cupy-cuda11x`, `cupy-cuda12x`) to this environment,
+# and do not install this package with the `nvidia` extras here: they would put
+# a CuPy wheel beside the conda-forge CuPy.
+#
+# To use the CUDA 12 runtime instead, change `cuda-version=11.8` to
+# `cuda-version=12.2`. The certification record was cut with the CUDA 11 runtime.
+name: meep-gpu
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pymeep=1.33.0=nompi_*
+  - numpy=2.2
+  - cupy=13.5.1
+  - cuda-version=11.8
+  - pip
+  - pip:
+      - torch==2.5.1
+      - triton==3.1.0

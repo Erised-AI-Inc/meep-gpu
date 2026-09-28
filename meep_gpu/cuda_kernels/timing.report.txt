@@ -1,0 +1,64 @@
+Dispatch-preference timing record -- cuda table
+record_sha256 cff4bdae8f80a981247c30fe96383306748c4fab91b18833aafa4108a018f470
+recorded_utc 2026-09-21T15:44:08Z (the newest admitted row)
+cut by parity/meep_gpu/cut_timing_record.py from results/fused_timing_2026-09-20_restrict/cuda, results/fused_timing_2026-09-20_restrict_licensed/cuda, results/fused_timing_sweep_2026-09-20_restrict/cuda
+route dffe30aba77a:linear:1-per-step:restricted -- deposit_repair dffe30aba77aa4b78fbe98efea570c57c8bc14185b190792c23b710a13966850; restriction counters recorded on 14 of 14 bracketed rows
+emitters compared: fused_pairs 4385f67eda59, fused_polarization_pair b58c47173cbb
+the barrier cannot cover: a product's own device text comes from a per-product module (cuda_kernels/fused_electric_pair.py, the triton_kernels/ emitters, the Metal kernel sources) and no timing row pins one: this record cannot say which per-product kernel text it timed
+
+rows: read 65, duplicate lines 0, baseline legs 0, admitted 14, left out 51; admitted without an after-probe 0; rows-times-products not attributed 14
+keys: measured 2, unmeasured 8 (minimum 2 rows a key)
+
+MEASURED
+  VETO  cuda:fused electric pair|real|2|0|bracketed|24000-24000  0.409x (best row 0.416, least margin +0.553), fused 0.840 against 0.344 ms/step over cuda:PML+cuda:ordinary, 2 rows
+  VETO  cuda:fused magnetic pair|real|2|0|bracketed|24000-24000  0.439x (best row 0.448, least margin +0.515), fused 0.778 against 0.342 ms/step over cuda:PML+cuda:ordinary, 2 rows
+
+UNMEASURED
+  cuda:fused electric pair|real|1|0|bracketed|640-640  no size in it carries 2 rows, so none can set a band edge: 640 (1 row); best row 0.418x
+  cuda:fused electric pair|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
+  cuda:fused electric pair|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.027x
+  cuda:fused electric pair|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.644x
+  cuda:fused electric pair|real|3|0|bracketed|64000-64000  no size in it carries 2 rows, so none can set a band edge: 64,000 (1 row); best row 0.411x
+  cuda:fused magnetic pair|real|2|0|bracketed|1014001-2399999  the verdict changes between 1,014,000 and 2,400,000 cells and no row lies between them
+  cuda:fused magnetic pair|real|2|0|bracketed|2400000-5400000  no size in it carries 2 rows, so none can set a band edge: 2,400,000 (1 row); 5,400,000 (1 row); best row 1.027x
+  cuda:fused magnetic pair|real|2|0|bracketed|24001-1014000  no size in it carries 2 rows, so none can set a band edge: 216,000 (1 row); 1,014,000 (1 row); best row 0.680x
+
+LEFT OUT, BY REASON
+    25  floor failed: singles_are_the_same_table
+     3  floor failed: singles_are_the_same_table, spread_within_gate
+     5  the plan's slots were served by ['cuda', 'triton'], not by the 'cuda' table alone
+    18  verdict SKIP-NOT-THIS-LEG
+
+PREVIEW -- served_in_dispatch_preferred as it WOULD read if this record were in force on its own route. Nothing consults the record yet, no board reports this number, and the join below is this tool's, not a board's
+  board results/fusion_matrix_cuda_2026-09-20_restrict/fusion_matrix_cuda.json
+  joined from the census's per-product predicate blocks (covered_modulo_backend); the board lists no per-instance rows, so slot arbitration between products is NOT applied and the displaced arms are taken from the record
+  served_in_dispatch 352 / 597; instances in a vetoed band 0; served_in_dispatch_preferred (PREVIEW) 352 / 597
+  of 352 joined seam-instances 189 carry the bracket; the record vetoes 0, clears 0, and has no record for the rest:
+      74  bracketed: class_not_in_record
+      43  bracketed: key_unmeasured
+      81  bracketed: outside_the_measured_bands
+     154  clean: class_not_in_record
+  product: dispatching on the board / joined / bracketed / vetoed / not vetoed / no record
+  cuda:BFAST fused electric pair: 1 / 1 / 1 / 0 / 0 / 1
+  cuda:BFAST fused magnetic pair: 1 / 1 / 0 / 0 / 0 / 1
+  cuda:complex beta fused electric pair: 4 / 4 / 4 / 0 / 0 / 4
+  cuda:complex beta fused magnetic pair: 4 / 4 / 1 / 0 / 0 / 4
+  cuda:complex fused electric pair: 17 / 17 / 16 / 0 / 0 / 17
+  cuda:complex fused magnetic pair: 17 / 17 / 4 / 0 / 0 / 17
+  cuda:complex no-absorber three-slot weld: 8 / 8 / 0 / 0 / 0 / 8
+  cuda:conductive fused electric pair: 1 / 1 / 1 / 0 / 0 / 1
+  cuda:cylindrical fused electric pair: 18 / 18 / 18 / 0 / 0 / 18
+  cuda:cylindrical fused magnetic pair: 18 / 18 / 0 / 0 / 0 / 18
+  cuda:cylindrical real fused electric pair: 3 / 3 / 3 / 0 / 0 / 3
+  cuda:cylindrical real fused magnetic pair: 3 / 3 / 0 / 0 / 0 / 3
+  cuda:folded complex fused electric pair: 2 / 2 / 2 / 0 / 0 / 2
+  cuda:folded complex fused magnetic pair: 5 / 5 / 1 / 0 / 0 / 5
+  cuda:folded complex off-diagonal stencil weld: 1 / 1 / 0 / 0 / 0 / 1
+  cuda:folded off-diagonal stencil weld: 9 / 9 / 0 / 0 / 0 / 9
+  cuda:fused electric pair: 82 / 82 / 78 / 0 / 0 / 82
+  cuda:fused magnetic pair: 127 / 127 / 48 / 0 / 0 / 127
+  cuda:no-absorber three-slot dispersive weld: 4 / 4 / 2 / 0 / 0 / 4
+  cuda:off-diagonal stencil weld: 9 / 9 / 0 / 0 / 0 / 9
+  cuda:special_kz fused electric pair: 2 / 2 / 2 / 0 / 0 / 2
+  cuda:special_kz fused magnetic pair: 2 / 2 / 1 / 0 / 0 / 2
+  cuda:three-slot dispersive weld: 14 / 14 / 7 / 0 / 0 / 14

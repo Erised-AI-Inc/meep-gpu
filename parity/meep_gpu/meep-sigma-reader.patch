@@ -1,0 +1,202 @@
+Per-Yee-point susceptibility-sigma reader for MEEP, mirroring get_chi1inv.
+
+Adds to libmeep (no SWIG changes -- %include "meep.hpp" wraps the new
+declarations, and the std::vector<double> out-typemap predates the include):
+
+  fields/structure::get_num_susceptibilities(field_type)   -> chain length
+  fields/structure::get_susceptibility_params(ft, n)       -> dump_params' payload
+  fields/structure/chunks::get_susceptibility_sigma(c,d,iloc,n) -> per-point sigma
+  susceptibility::get_params_list()                        -> in-memory dump_params
+
+Written against the meep-1.33.0 release tarball; applied by
+build_meep_133_macos.sh when MEEP_SIGMA_PATCH=1.  Carried into MEEP's own tree,
+python/tests/test_get_susceptibility_sigma.py would also be registered in
+python/Makefile.am, with a NEWS.md line.
+
+diff -ruN a/src/meep.hpp b/src/meep.hpp
+--- a/src/meep.hpp	2026-08-04 00:22:12
++++ b/src/meep.hpp	2026-08-04 00:23:37
+@@ -218,6 +218,10 @@
+     (void)start;
+   }
+   virtual int get_num_params() { return 0; }
++  /* in-memory twin of dump_params: the same payload as a std::vector, so a
++     caller can identify a chain entry by its physical parameters without
++     round-tripping through HDF5.  Base class: no parameters. */
++  virtual std::vector<double> get_params_list() const { return std::vector<double>(); }
+   // This should only be used when dumping and loading susceptibility data to hdf5
+   void set_id(int new_id) { id = new_id; };
+ 
+@@ -271,6 +275,11 @@
+ 
+   virtual void dump_params(h5file *h5f, size_t *start);
+   virtual int get_num_params() { return 4; }
++  virtual std::vector<double> get_params_list() const {
++    double params[] = {4, (double)get_id(), (double)omega_0, (double)gamma,
++                       (double)no_omega_0_denominator};
++    return std::vector<double>(params, params + 5);
++  }
+ 
+ protected:
+   realnum omega_0, gamma;
+@@ -293,6 +302,11 @@
+ 
+   virtual void dump_params(h5file *h5f, size_t *start);
+   virtual int get_num_params() { return 5; }
++  virtual std::vector<double> get_params_list() const {
++    double params[] = {5, (double)get_id(), (double)noise_amp, (double)omega_0, (double)gamma,
++                       (double)no_omega_0_denominator};
++    return std::vector<double>(params, params + 6);
++  }
+ 
+ protected:
+   realnum noise_amp;
+@@ -641,6 +655,8 @@
+                                          bool *is_frequency_dependent = NULL) const;
+   std::complex<double> get_chi1inv(component, direction, const ivec &iloc, double frequency = 0,
+                                    bool *is_frequency_dependent = NULL) const;
++  double get_susceptibility_sigma_at_pt(component c, direction d, int idx, int n) const;
++  double get_susceptibility_sigma(component c, direction d, const ivec &iloc, int n) const;
+   std::complex<double> get_inveps(component c, direction d, const ivec &iloc,
+                                   double frequency = 0) const {
+     return get_chi1inv(c, d, iloc, frequency);
+@@ -900,6 +916,10 @@
+                                   double frequency = 0) const {
+     return get_chi1inv(c, d, loc, frequency);
+   }
++  int get_num_susceptibilities(field_type ft) const;
++  std::vector<double> get_susceptibility_params(field_type ft, int n) const;
++  double get_susceptibility_sigma(component c, direction d, const ivec &origloc, int n,
++                                  bool parallel = true) const;
+   std::complex<double> get_eps(const vec &loc, double frequency = 0) const;
+   std::complex<double> get_mu(const vec &loc, double frequency = 0) const;
+   double max_eps() const;
+@@ -1549,6 +1569,7 @@
+ 
+   std::complex<double> get_chi1inv(component, direction, const ivec &iloc, double frequency = 0,
+                                    bool *is_frequency_dependent = NULL) const;
++  double get_susceptibility_sigma(component c, direction d, const ivec &iloc, int n) const;
+   // Returns the vector of sources volumes for field type `ft`.
+   const std::vector<src_vol> &get_sources(field_type ft) const { return sources[ft]; }
+   // Adds a source volume of field type `ft` and takes ownership of `src`.
+@@ -2311,6 +2332,10 @@
+   std::complex<double> get_field(component c, const ivec &iloc, bool parallel = true) const;
+   std::complex<double> get_chi1inv(component, direction, const ivec &iloc, double frequency = 0,
+                                    bool parallel = true, bool *is_frequency_dependent = NULL) const;
++  double get_susceptibility_sigma(component c, direction d, const ivec &origloc, int n,
++                                  bool parallel = true) const;
++  int get_num_susceptibilities(field_type ft) const;
++  std::vector<double> get_susceptibility_params(field_type ft, int n) const;
+   // boundaries.cpp
+   bool locate_component_point(component *, ivec *, std::complex<double> *) const;
+   // time.cpp
+diff -ruN a/src/monitor.cpp b/src/monitor.cpp
+--- a/src/monitor.cpp	2026-08-04 00:22:12
++++ b/src/monitor.cpp	2026-08-04 00:24:08
+@@ -374,6 +374,106 @@
+   return get_chi1inv_at_pt(c, d, gv.index(c, iloc), frequency, is_frequency_dependent);
+ }
+ 
++/* Per-Yee-point susceptibility-sigma readers, mirroring the get_chi1inv family
++   above.  `n` is the 0-based index into the chiP[type(c)] chain (head first);
++   enumerate the chain with get_num_susceptibilities and identify entries by
++   get_susceptibility_params (the in-memory twin of dump_params).  Semantics
++   differ from chi1inv in exactly one place: a NULL sigma array means the value
++   is identically zero (trivial_sigma, meep.hpp), not vacuum-1 -- and outside
++   the computational cell the answer is 0.0 for every (c, d), because vacuum
++   carries no susceptibility.  Sigma is a rank-2 tensor row exactly like
++   chi1inv, so the symmetry transform and off-diagonal sign flip carry over
++   unchanged. */
++
++double structure_chunk::get_susceptibility_sigma_at_pt(component c, direction d, int idx,
++                                                       int n) const {
++  if (!is_mine()) return 0.0;
++  susceptibility *sus = chiP[type(c)];
++  for (int i = 0; i < n && sus; ++i)
++    sus = sus->next;
++  if (!sus) meep::abort("susceptibility index %d out of range in get_susceptibility_sigma", n);
++  return sus->sigma[c][d] ? (double)sus->sigma[c][d][idx] : 0.0;
++}
++
++double structure_chunk::get_susceptibility_sigma(component c, direction d, const ivec &iloc,
++                                                 int n) const {
++  return get_susceptibility_sigma_at_pt(c, d, gv.index(c, iloc), n);
++}
++
++int structure::get_num_susceptibilities(field_type ft) const {
++  /* every process builds the full clone chain on every chunk (only the sigma
++     FILL is is_mine()-guarded, the chain itself is not), so chunk 0 answers
++     for all of them */
++  if (num_chunks <= 0) return 0;
++  int count = 0;
++  for (susceptibility *sus = chunks[0]->chiP[ft]; sus; sus = sus->next)
++    ++count;
++  return count;
++}
++
++std::vector<double> structure::get_susceptibility_params(field_type ft, int n) const {
++  if (num_chunks <= 0) meep::abort("no chunks in get_susceptibility_params");
++  susceptibility *sus = chunks[0]->chiP[ft];
++  for (int i = 0; i < n && sus; ++i)
++    sus = sus->next;
++  if (!sus) meep::abort("susceptibility index %d out of range in get_susceptibility_params", n);
++  return sus->get_params_list();
++}
++
++double structure::get_susceptibility_sigma(component c, direction d, const ivec &origloc, int n,
++                                           bool parallel) const {
++  ivec iloc = origloc;
++  for (int sn = 0; sn < S.multiplicity(); sn++)
++    for (int i = 0; i < num_chunks; i++)
++      if (chunks[i]->gv.owns(S.transform(iloc, sn))) {
++        signed_direction ds = S.transform(d, sn);
++        double val = chunks[i]->get_susceptibility_sigma(S.transform(c, sn), ds.d,
++                                                         S.transform(iloc, sn), n) *
++                     (ds.flipped ^ S.transform(component_direction(c), sn).flipped ? -1 : 1);
++        return parallel ? sum_to_all(val) : val;
++      }
++  return 0.0; // outside the computational cell: vacuum carries no susceptibility
++}
++
++double fields_chunk::get_susceptibility_sigma(component c, direction d, const ivec &iloc,
++                                              int n) const {
++  return s->get_susceptibility_sigma(c, d, iloc, n);
++}
++
++double fields::get_susceptibility_sigma(component c, direction d, const ivec &origloc, int n,
++                                        bool parallel) const {
++  ivec iloc = origloc;
++  complex<double> aaack = 1.0;
++  locate_point_in_user_volume(&iloc, &aaack);
++  for (int sn = 0; sn < S.multiplicity(); sn++)
++    for (int i = 0; i < num_chunks; i++)
++      if (chunks[i]->gv.owns(S.transform(iloc, sn))) {
++        signed_direction ds = S.transform(d, sn);
++        double val = chunks[i]->get_susceptibility_sigma(S.transform(c, sn), ds.d,
++                                                         S.transform(iloc, sn), n) *
++                     (ds.flipped ^ S.transform(component_direction(c), sn).flipped ? -1 : 1);
++        return parallel ? sum_to_all(val) : val;
++      }
++  return 0.0; // outside the computational cell: vacuum carries no susceptibility
++}
++
++int fields::get_num_susceptibilities(field_type ft) const {
++  if (num_chunks <= 0) return 0;
++  int count = 0;
++  for (susceptibility *sus = chunks[0]->s->chiP[ft]; sus; sus = sus->next)
++    ++count;
++  return count;
++}
++
++std::vector<double> fields::get_susceptibility_params(field_type ft, int n) const {
++  if (num_chunks <= 0) meep::abort("no chunks in get_susceptibility_params");
++  susceptibility *sus = chunks[0]->s->chiP[ft];
++  for (int i = 0; i < n && sus; ++i)
++    sus = sus->next;
++  if (!sus) meep::abort("susceptibility index %d out of range in get_susceptibility_params", n);
++  return sus->get_params_list();
++}
++
+ complex<double> structure::get_chi1inv(component c, direction d, const vec &loc, double frequency,
+                                        bool parallel, bool *is_frequency_dependent) const {
+   ivec ilocs[8];

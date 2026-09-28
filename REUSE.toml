@@ -1,0 +1,43 @@
+# Licence and copyright declared by path (REUSE specification 3.3,
+# https://reuse.software/spec-3.3/). Under meep_gpu/ and parity/, 251 files carry
+# MEEP's copyright and licence lines themselves; "aggregate" precedence adds this
+# file's copyright to theirs, so a file derived from MEEP names both holders. Every
+# other file takes what this file declares ("closest" precedence) without being
+# edited. The licence text is LICENSES/GPL-2.0-or-later.txt, the same text as
+# LICENSE.
+version = 1
+
+# The package and its certification harness: derived from MEEP.
+[[annotations]]
+path = ["meep_gpu/**", "parity/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = [
+  "2005-2025 Massachusetts Institute of Technology and MEEP contributors",
+  "2026 Ivan Biggs"
+]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# Front matter, documentation, environment files, examples and tooling.
+[[annotations]]
+path = [
+  "README.md",
+  "INSTALL.md",
+  "CHANGELOG.md",
+  "AGENTS.md",
+  "CONTRIBUTING.md",
+  "CITATION.cff",
+  ".gitignore",
+  "NOTICE",
+  "REUSE.toml",
+  "pyproject.toml",
+  "mkdocs.yml",
+  "conftest.py",
+  ".github/**",
+  "docs/**",
+  "environments/**",
+  "examples/**",
+  "tools/**"
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Ivan Biggs"
+SPDX-License-Identifier = "GPL-2.0-or-later"

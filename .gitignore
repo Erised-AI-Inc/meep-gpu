@@ -1,0 +1,29 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# The generated manual
+site/
+
+# Test reports written by the workflow
+reports/
+
+# Artifact trees written by gate, probe and benchmark runs. They are evidence,
+# not source: archived separately, never tracked here.
+parity/meep_gpu/results/
+_scratch/
+
+# Editor and operating-system droppings
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

@@ -1,0 +1,188 @@
+:root {
+  --manual-radius: 2px;
+}
+
+[data-md-color-scheme="slate"] {
+  --manual-accent: #00ffff;
+  --manual-page: #141414;
+  --manual-panel: #242424;
+  --manual-panel-strong: #1b1b1b;
+  --manual-border: #404040;
+  --manual-text: #e6e6e6;
+  --manual-muted: #a1adb2;
+  --manual-code: #2e2e2e;
+  --md-default-bg-color: var(--manual-page);
+  --md-default-fg-color: var(--manual-text);
+  --md-default-fg-color--light: var(--manual-muted);
+  --md-primary-fg-color: var(--manual-page);
+  --md-primary-bg-color: var(--manual-text);
+  --md-accent-fg-color: var(--manual-accent);
+  --md-accent-fg-color--transparent: rgba(0, 255, 255, 0.1);
+  --md-typeset-a-color: var(--manual-accent);
+  --md-code-bg-color: var(--manual-code);
+  --md-footer-bg-color: var(--manual-panel-strong);
+}
+
+[data-md-color-scheme="default"] {
+  --manual-accent: #008c9c;
+  --manual-page: #f3f5f7;
+  --manual-panel: #ffffff;
+  --manual-panel-strong: #edf1f4;
+  --manual-border: #c7d0d8;
+  --manual-text: #12212a;
+  --manual-muted: #5f6e79;
+  --manual-code: #edf2f6;
+  --md-default-bg-color: var(--manual-page);
+  --md-default-fg-color: var(--manual-text);
+  --md-default-fg-color--light: var(--manual-muted);
+  --md-primary-fg-color: var(--manual-panel);
+  --md-primary-bg-color: var(--manual-text);
+  --md-accent-fg-color: var(--manual-accent);
+  --md-accent-fg-color--transparent: rgba(0, 140, 156, 0.12);
+  --md-typeset-a-color: var(--manual-accent);
+  --md-code-bg-color: var(--manual-code);
+  --md-footer-bg-color: var(--manual-panel-strong);
+}
+
+.md-header,
+.md-tabs {
+  background: linear-gradient(135deg, var(--manual-panel) 0%, var(--manual-panel-strong) 100%);
+  border-bottom: 1px solid var(--manual-border);
+}
+
+.md-typeset h1,
+.md-typeset h2 {
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.md-typeset h1 {
+  color: var(--manual-accent);
+}
+
+.manual-hero {
+  box-sizing: border-box;
+  border: 1px solid var(--manual-border);
+  border-radius: var(--manual-radius);
+  background: linear-gradient(135deg, var(--manual-panel) 0%, var(--manual-page) 100%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--manual-accent) 12%, transparent);
+  margin: 1rem 0 1.8rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 1.6rem;
+}
+
+.manual-kicker {
+  color: var(--manual-accent);
+  font-family: var(--md-code-font-family);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.manual-hero h1 {
+  margin: 0;
+}
+
+.manual-hero p:last-child {
+  margin-bottom: 0;
+}
+
+.manual-cards {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  margin: 1.25rem 0 1.75rem;
+}
+
+.manual-cards > * {
+  min-width: 0;
+}
+
+.manual-card {
+  box-sizing: border-box;
+  background: var(--manual-panel);
+  border: 1px solid var(--manual-border);
+  border-radius: var(--manual-radius);
+  color: inherit;
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 1rem 1.1rem;
+  text-decoration: none;
+}
+
+.manual-card:hover,
+.manual-card:focus {
+  border-color: var(--manual-accent);
+  box-shadow: 0 0 0 1px var(--manual-accent);
+}
+
+.manual-card strong {
+  color: var(--manual-accent);
+  display: block;
+  margin-bottom: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.manual-card span {
+  color: var(--manual-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.meep-reference {
+  box-sizing: border-box;
+  margin: 1rem 0 1.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--manual-accent);
+  border-radius: var(--manual-radius);
+  background: color-mix(in srgb, var(--manual-accent) 9%, var(--manual-panel));
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.meep-reference p:last-child {
+  margin-bottom: 0;
+}
+
+.md-typeset table:not([class]) {
+  border: 1px solid var(--manual-border);
+  border-radius: var(--manual-radius);
+  display: table;
+  overflow: hidden;
+}
+
+.md-typeset__scrollwrap {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: auto;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--manual-panel-strong);
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  background: var(--manual-panel);
+  border-radius: var(--manual-radius);
+}
+
+.manual-section-number,
+.manual-heading-number {
+  color: var(--manual-accent);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  margin-right: 0.35em;
+  vertical-align: baseline;
+}
