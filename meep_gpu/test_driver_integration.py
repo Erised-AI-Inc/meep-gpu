@@ -1662,16 +1662,20 @@ def test_dft_region_registration_matches_cpu_meep_everywhere(meep_reference, tag
             worst = max(worst, (error, f"{name}/{component}"))
 
             # ...and against MEEP's own get_dft_array for that request, reduced the
-            # way MEEP reduces it. A rank-3 volume collapsed to rank 0 — a point
-            # between cell centres on all three axes — is excluded: MEEP's own
-            # `collapse_array` returns one corner scaled by 1/8 there instead of the
-            # interpolated value (measured 7.0e+00 against a manual interpolation of
-            # MEEP's *own* atlas), so it cannot serve as an oracle. Every case with
-            # one or two zero-thickness axes reduces correctly and is compared.
+            # way MEEP reduces it. A POINT request (zero thickness on all three axes)
+            # is excluded: get_dft_array cannot serve one on any platform. Between
+            # cell centres its `collapse_array` returns one corner scaled by 1/8
+            # (measured 7.0e+00 against a manual interpolation of MEEP's own atlas);
+            # on a single grid site it returns 0, because a rank-0 region has no
+            # chunk in `process_dft_component` (MEEP 1.33.0 dft.cpp:1180-1183;
+            # measured 0.0 at (0.25, 0.25, 0.25) on x86-64 and on arm64, against an
+            # atlas cell of 0.27). A point exactly on a site only appeared to be
+            # served on arm64, whose MEEP build fuses the multiply-add in its grid
+            # rounding and so adds a zero-weight neighbour there that x86-64 does
+            # not. Points are compared against the atlas above; every case with one
+            # or two zero-thickness axes reduces correctly and is compared here too.
             flat_axes = [axis for axis in range(3) if size[axis] == 0.0]
-            two_cell_flat = [axis for axis in flat_axes
-                             if monitor.region[2 * axis + 1] - monitor.region[2 * axis] == 2]
-            if len(two_cell_flat) == 3:
+            if len(flat_axes) == 3:
                 continue
             direct = np.asarray(reference[f"reg_{tag}_{name}_{component}"])
             collapsed = _meep_collapsed(got, _WRAP_CELL, resolution, centre, size)

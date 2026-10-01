@@ -10,7 +10,7 @@ names a defect the suite cannot see.
 The mutations are chosen to be silent: none of them crashes, and every one leaves
 a smooth, finite, complete field behind. That is the point.
 
-Rule 7: one flushed line per mutation, results appended as they land.
+Progress reporting: one flushed line per mutation, results appended as they land.
 
 Usage (from ``the repository root``)::
 

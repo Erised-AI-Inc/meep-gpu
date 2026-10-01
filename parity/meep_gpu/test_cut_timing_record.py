@@ -15,7 +15,9 @@ row per LEG). Groups, in the repository's order for a new decision engine:
   differing restriction counters, REFUSE to pool; so do two fused-pair emitters;
 * SCALING -- bands are runs of measured sizes with one verdict, a verdict change
   between two sizes is an explicit unmeasured gap, and nothing is extrapolated;
-* SHAPE / SERIALIZATION -- deterministic bytes, no wall clock, ``--check``;
+* SHAPE / SERIALIZATION -- deterministic bytes, no wall clock, ``--check``, and the ONE
+  name a record may be written under: the one ``dispatch_preference.record_path`` gives
+  the compute capability its admitted rows stamp;
 * REALISTIC -- the shipped records recut byte-for-byte from the rows on disk.
 """
 
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import sys
 
 import pytest
@@ -40,6 +43,13 @@ SHA_A = "a1" * 32
 SHA_B = "b2" * 32
 PAIRS_SHA = "c3" * 32
 BENCH_SHA = "d4" * 32
+
+#: The compute capability every synthetic row below stamps, and so the one the cut
+#: record prices: ONE RECORD PRICES ONE ARCHITECTURE, the capability is read off the
+#: ROWS rather than typed on the command line, and it is what names the file
+#: (:func:`dp.record_path`). ``OTHER_CAPABILITY`` is a card no tree here was timed on.
+CAPABILITY = "8.6"
+OTHER_CAPABILITY = "9.0"
 
 PINNED_GPU = "GPU-00000000-aaaa"
 OTHER_GPU = "GPU-11111111-bbbb"
@@ -97,7 +107,8 @@ def bench_row(case="pml_2d", table="triton", grid=(200, 120, 1), fused_ms=1.4,
     plan = {"run_shape": shape, "arms": dict(unfused, **novel),
             "environment": {"backend": "cupy", "backend_version": "13.5.1",
                             "triton": "3.1.0",
-                            "device": {"name": "EXAMPLE GPU", "compute_capability": "8.6",
+                            "device": {"name": "EXAMPLE GPU",
+                                       "compute_capability": CAPABILITY,
                                        "cuda_driver": 12030, "cuda_runtime": 11080}},
             "subnormal": {"gate": {"policy_in_force": "keep"}}}
     return {
@@ -181,6 +192,7 @@ def ask_cells(record, cells, product="fused pair D", bracketed=True,
     """The outcome a run of ``cells`` gets from this record, asked as its own tree."""
     return dp.consult(
         record, table=record["table"], candidate=product, displaces=displaces,
+        capability=dp.record_capabilities(record)[0],
         run_shape={"dimensions": 2, "grid_shape": [cells, 1, 1]}, bracketed=bracketed,
         mode="measured", repair_route=record["route"],
         subject_sha256=dp.compared_emitters(record)).outcome
@@ -246,6 +258,7 @@ def test_the_cut_record_vetoes_exactly_the_slower_product(tmp_path):
              "susceptibilities": 0}
     asked = dict(table="triton", displaces=("PML", "ordinary"), run_shape=shape,
                  mode="measured", repair_route=record["route"],
+                 capability=dp.record_capabilities(record)[0],
                  subject_sha256=dp.compared_emitters(record))
     assert dp.consult(record, candidate="fused pair D", bracketed=True, **asked).vetoed
     clean = dp.consult(record, candidate="fused pair B", bracketed=False, **asked)
@@ -512,6 +525,7 @@ def test_too_few_rows_writes_the_key_as_unmeasured_with_the_reason(tmp_path):
     verdict = dp.consult(record, table="triton", candidate="fused pair D",
                          displaces=("PML", "ordinary"), run_shape=shape, bracketed=True,
                          mode="measured", repair_route=record["route"],
+                         capability=dp.record_capabilities(record)[0],
                          subject_sha256=dp.compared_emitters(record))
     assert verdict.outcome == "no_record" and verdict.reason == "key_unmeasured"
     assert entries(cut_tree(tmp_path, min_rows=1), "fused pair D")[0]["status"] == "measured"
@@ -953,13 +967,23 @@ def run(tmp_path, *arguments):
     return cut.main(["--base", str(tmp_path), *arguments])
 
 
+def out_path(tmp_path, table="triton", capability=CAPABILITY):
+    """Where a cut of these rows may be written, ASKED rather than spelled.
+
+    The cutter refuses any other basename, so a test that composed the name would
+    pass while writing a record under a name nothing looks up -- or under another
+    architecture's. The parent is the cutter's to create.
+    """
+    return pathlib.Path(dp.record_path(table, capability, root=str(tmp_path)))
+
+
 def test_the_command_line_cuts_writes_a_report_and_checks(tmp_path, capsys):
     standard_tree(tmp_path)
-    out = tmp_path / "kernels" / "timing.json"
+    out = out_path(tmp_path)
     assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
                "--out", str(out)) == 0
     printed = capsys.readouterr().out
-    report = (tmp_path / "kernels" / "timing.report.txt").read_text()
+    report = pathlib.Path(str(out)[:-5] + ".report.txt").read_text()
     assert report in printed
     assert "measured 2" in report and "unmeasured 0" in report
     assert "fused pair D|real|2|0|bracketed|24000-24000" in report
@@ -970,7 +994,7 @@ def test_the_command_line_cuts_writes_a_report_and_checks(tmp_path, capsys):
 
 def test_check_refuses_on_any_difference(tmp_path, capsys):
     standard_tree(tmp_path)
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
                "--out", str(out)) == 0
     with open(tmp_path / "tree/triton/rows.jsonl", "a") as handle:
@@ -983,7 +1007,7 @@ def test_check_refuses_on_any_difference(tmp_path, capsys):
 
 def test_check_refuses_a_new_file_under_a_root_it_was_cut_from(tmp_path):
     standard_tree(tmp_path)
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"), "--out", str(out))
     write(tmp_path, "tree/late/rows.jsonl", [bench_row(case="late")])
     assert run(tmp_path, "--check", str(out)) == cut.EXIT_DIFFERS
@@ -991,7 +1015,7 @@ def test_check_refuses_a_new_file_under_a_root_it_was_cut_from(tmp_path):
 
 def test_check_says_artifacts_absent_rather_than_pass_or_differ(tmp_path, capsys):
     standard_tree(tmp_path)
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"), "--out", str(out))
     os.remove(tmp_path / "tree/triton/rows.jsonl")
     os.rmdir(tmp_path / "tree/triton")
@@ -1003,7 +1027,7 @@ def test_check_says_artifacts_absent_rather_than_pass_or_differ(tmp_path, capsys
 
 def test_check_refuses_a_hand_edited_record_by_name(tmp_path, capsys):
     standard_tree(tmp_path)
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"), "--out", str(out))
     record = json.loads(out.read_text())
     next(iter(record["keys"].values()))["fused_ms_per_step"] = 0.1
@@ -1015,7 +1039,7 @@ def test_check_refuses_a_hand_edited_record_by_name(tmp_path, capsys):
 
 def test_a_refusal_on_the_command_line_names_itself_and_writes_nothing(tmp_path, capsys):
     write(tmp_path, "tree/rows.jsonl", [bench_row(), bench_row(case="after", sha=SHA_B)])
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
                "--out", str(out)) == cut.EXIT_REFUSED
     assert "mixed_repair_route" in capsys.readouterr().out
@@ -1029,11 +1053,40 @@ def test_a_record_the_reader_would_refuse_is_a_named_refusal_not_a_traceback(
     undated = bench_row(case="undated")
     undated["utc"] = None
     write(tmp_path, "tree/rows.jsonl", [bench_row(), undated])
-    out = tmp_path / "timing.json"
+    out = out_path(tmp_path)
     assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
                "--out", str(out)) == cut.EXIT_REFUSED
     assert "REFUSED malformed_record" in capsys.readouterr().out
     assert not out.exists()
+
+
+def test_an_out_named_for_another_capability_is_refused_and_writes_nothing(
+        tmp_path, capsys):
+    """The capability is read off the ROWS and the name is the one it owns.
+
+    A record written under another architecture's name is a record a consult reads for
+    a card its rows never ran on -- the false veto the file name exists to prevent --
+    and one written under a name nothing looks up is evidence no consult will ever see.
+    So the cut refuses both, by name, before it writes either file.
+    """
+    standard_tree(tmp_path)
+    mine = str(out_path(tmp_path))
+    for out in (str(out_path(tmp_path, capability=OTHER_CAPABILITY)),
+                os.path.join(str(tmp_path), "triton_kernels", "timing.json")):
+        assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
+                   "--out", out) == cut.EXIT_REFUSED, out
+        said = capsys.readouterr().out
+        assert "out_names_another_capability" in said, out
+        # and it says which name these rows own, rather than only that this one is wrong
+        assert os.path.basename(mine) in said, out
+        assert not os.path.exists(out) and not os.path.exists(out[:-5] + ".report.txt")
+    # the name that capability owns is the one that writes, and what lands under it
+    # states the architecture it prices
+    assert run(tmp_path, "--table", "triton", "--rows", str(tmp_path / "tree"),
+               "--out", mine) == cut.EXIT_OK
+    assert os.path.exists(mine[:-5] + ".report.txt")
+    written = dp.load_record(mine, expect_table="triton")
+    assert dp.record_capabilities(written) == (CAPABILITY,)
 
 
 def test_the_admitted_rows_say_whether_their_device_was_probed_afterwards(tmp_path):
@@ -1217,8 +1270,15 @@ def test_the_preview_says_when_the_board_carries_no_instances(tmp_path):
 # Realistic: the shipped records, recut from the rows on disk
 # ---------------------------------------------------------------------------
 
+#: The architecture the shipped records were cut on. One record per capability since
+#: 0.9.1, so the path is asked for rather than composed -- a test that spelled it would
+#: pass while reading a record cut for another card.
+SHIPPED_CAPABILITY = "8.6"
+
+
 def shipped(table):
-    return os.path.join(REPO_API, "meep_gpu", f"{table}_kernels", "timing.json")
+    return dp.record_path(table, SHIPPED_CAPABILITY, root=os.path.join(
+        REPO_API, "meep_gpu"))
 
 
 def _rows_on_disk(table):

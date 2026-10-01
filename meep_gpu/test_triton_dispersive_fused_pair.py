@@ -26,7 +26,6 @@ from meep_gpu.triton_kernels import dispersive_fused_pair as module
 
 PACKAGE_DIR = pathlib.Path(module.__file__).parent
 PROBE = PACKAGE_DIR.parents[1] / "parity" / "meep_gpu" / "probe_triton_dispersive_fused_pair.py"
-SLURM = PACKAGE_DIR.parents[1] / "parity" / "meep_gpu" / "run_triton_dispersive_fused_pair.slurm"
 
 
 def _live_probe_is_welded(record, weld_name, repo_key, path):
@@ -304,8 +303,6 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
 
     gate = record["dispersive_fused_pair_gate"]
     assert record["current_host_gate"] in record
-    assert gate["slurm_job_id"] == 2319
-    assert gate["slurm_state"] == "COMPLETED 0:0"
     # 36/36 -> 48/48 ON 2026-08-30, and the number moved because the GATE GAINED A
     # CASE, not because this pin was loosened. The 2026-08-11 run measured three
     # pole products at 12 complete steps each; the 2026-08-30 re-run measures four,
@@ -357,14 +354,12 @@ def test_the_fused_dispersive_record_is_welded_to_every_live_dependency():
     # The response this tree already uses for a re-run is to ADD a record, never
     # to re-type an old one: every ``recert_*`` block here says the fields above
     # are true about that job and its bytes. So the historical ``probe_sha256``
-    # keeps naming job 2319's probe, and the live file is pinned by the
+    # keeps naming the certifying run's probe, and the live file is pinned by the
     # 2026-08-19 device weld instead — which is what a later reader must consult
     # to learn what the shipping probe was measured to do.
     _live_probe_is_welded(record, "triton_dispersive_fused_pair_device_gate",
                           "parity/meep_gpu/probe_triton_dispersive_fused_pair.py",
                           PROBE)
-    assert gate["slurm_launcher_sha256"] == hashlib.sha256(
-        SLURM.read_bytes()).hexdigest()
     for name in ("dispersive_fused_pair_coverage",
                  "plan_dispersive_fused_pair"):
         assert name in public.__all__ and callable(getattr(public, name))

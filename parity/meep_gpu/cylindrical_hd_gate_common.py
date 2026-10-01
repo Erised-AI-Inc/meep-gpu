@@ -31,7 +31,7 @@ own tally (3 per run), the shipped compile memo's launch count (the two ``RawKer
 launches) and a wrapper around ``cupy.cumsum`` (the one scan) -- and the product leg
 requires all three to have moved on every case.
 
-Rule 7: one flushed line per case; the artifact is rewritten after every leg.
+Progress reporting: one flushed line per case; the artifact is rewritten after every leg.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

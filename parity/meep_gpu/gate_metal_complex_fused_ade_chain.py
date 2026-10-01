@@ -72,7 +72,7 @@ LEGS
   9  mutation          armed defects, each CAUGHT or NULL CONFIRMED
  10  disarm            the same harness, shipped bytes, must not diverge
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
 Usage (from the repository root)::
 

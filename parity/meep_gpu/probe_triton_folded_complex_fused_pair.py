@@ -72,7 +72,7 @@ WHAT THE GATE REFUSES TO INFER
 Usage::
 
     # laptop, no CUDA, no Triton — the legs that need neither
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/probe_triton_folded_complex_fused_pair.py --no-device \\
         --out parity/meep_gpu/results/<fresh-dir>
 

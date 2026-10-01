@@ -65,7 +65,7 @@ A DIVERGENCE IS STOP-AND-REPORT. The comparison never repairs, re-runs, or
 loosens a tolerance; it records the arrays that differ, their worst element, and
 stops the case.
 
-Rule 7: one flushed line per case per leg, and the JSONL row is appended as each
+Progress reporting: one flushed line per case per leg, and the JSONL row is appended as each
 case lands, so an interrupted run keeps everything up to the failure.
 
 Run (the GPU host, ONE pinned GPU)::
@@ -1703,7 +1703,7 @@ def main() -> int:
             row["traceback"] = traceback.format_exc()[-4000:]
         row["case_wall_s"] = round(time.time() - started, 2)
         rows.append(row)
-        with open(rows_path, "a", encoding="utf-8") as handle:  # incremental, rule 7
+        with open(rows_path, "a", encoding="utf-8") as handle:  # incremental progress reporting
             handle.write(json.dumps(row, default=str) + "\n")
             handle.flush()
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "

@@ -45,7 +45,7 @@ WHAT SEPARATES THIS GATE FROM ITS COMPLEX TWIN, and it is more than the dtype:
 WRITTEN FOR THE UNWIRED TREE: every clause that depends on the wiring tables is
 RECORDED, never asserted.
 
-Rule 7: one flushed timestamped line per unit of work; every leg appended and fsynced
+Progress reporting: one flushed timestamped line per unit of work; every leg appended and fsynced
 as it lands; the lift writes one JSON per corpus row as it lands.
 """
 

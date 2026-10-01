@@ -122,7 +122,7 @@ LEGS
                      counters were stamped at install time, on caches that were
                      already warm; this leg is what turns that into a measurement
 
-Rule 7: one flushed line per case, and the artifact is rewritten after every leg, so
+Progress reporting: one flushed line per case, and the artifact is rewritten after every leg, so
 an interrupted run keeps everything that landed.
 """
 

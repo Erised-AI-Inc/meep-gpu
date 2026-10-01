@@ -69,7 +69,7 @@ is refused BY NAME on the configurations it must refuse; the refusal names
 ``INSTALLABLE`` False; the composer's SELECTION on every fixture is unchanged with the
 product registered; and the released neighbours keep their slots.
 
-Rule 7: one flushed timestamped line per unit of work; every row appended and fsynced
+Progress reporting: one flushed timestamped line per unit of work; every row appended and fsynced
 as it lands.
 """
 
@@ -1812,7 +1812,7 @@ def leg_lift(product: Product, out_dir: Path, steps: int,
              only: Optional[Sequence[str]]) -> Dict[str, Any]:
     """Every corpus row in the product's cells, re-lifted in its own interpreter.
 
-    Rule 7: one JSON per row as it lands, plus a progress log the child appends to per
+    Progress reporting: one JSON per row as it lands, plus a progress log the child appends to per
     step, so an interrupted lift keeps everything up to the failure.
     """
     import measure_predicate_coverage as census_module  # noqa: PLC0415

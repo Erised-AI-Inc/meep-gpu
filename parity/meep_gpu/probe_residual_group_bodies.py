@@ -959,7 +959,7 @@ def _normalize_legacy_expansion_probe(record: Dict[str, Any],
                                       source: Any) -> Dict[str, Any]:
     """Bring a pre-2026-08-15 probe artifact up to the schema the licence reads.
 
-    THE ARTIFACT THIS BATTERY LOADS WAS CUT ON 2026-08-12 (job 2345) and predates
+    THE ARTIFACT THIS BATTERY LOADS WAS CUT ON 2026-08-12 and predates
     two fields the licence rule now requires, so as it stands it REFUSES:
 
     * ``subnormal_policy.resolved`` — the artifact names its policy

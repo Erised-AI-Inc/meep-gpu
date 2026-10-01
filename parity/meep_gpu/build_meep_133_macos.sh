@@ -27,7 +27,7 @@
 #   3. nompi HDF5/h5py make MEEP configure without H5Pset_fapl_mpio, which deadlocks
 #      multi-rank output. The env below pins the mpi_openmpi builds of both.
 #
-# Rule 7: every stage prints a flushed marker and the whole run is logged.
+# progress reporting: every stage prints a flushed marker and the whole run is logged.
 set -euo pipefail
 
 MEEP_VERSION=1.33.0

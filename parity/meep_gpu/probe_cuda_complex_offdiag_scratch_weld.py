@@ -55,7 +55,7 @@ the substitution, the launch counts and the device mutation battery belong to
 ``gate_cuda_complex_offdiag_stencil_welds.py``. What it removes is the possibility of
 discovering the ARITHMETIC is wrong from inside a device slot.
 
-Host-only: NumPy, no CuPy. Rule 7: one flushed line per case, one fsynced JSONL row.
+Host-only: NumPy, no CuPy. Progress reporting: one flushed line per case, one fsynced JSONL row.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

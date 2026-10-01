@@ -8,9 +8,9 @@ does it take a corpus row WHOLE-STEP?
 The arithmetic answer is arranged rather than computed, and it is the reason this
 family exists. A no-PML, non-dispersive run's heavy step is five slots::
 
-    step_B   -> no_pml.plain_curl_step            (certified, job 2315)
+    step_B   -> no_pml.plain_curl_step            (certified)
     update_H -> no_pml_constitutive               (this family: a null)
-    step_D   -> no_pml.plain_curl_step            (certified, job 2315)
+    step_D   -> no_pml.plain_curl_step            (certified)
     update_E -> no_pml_constitutive               (this family: a null)
     update_P -> array-path no-op, stepping.py:1425-1426 (no polarizations)
 

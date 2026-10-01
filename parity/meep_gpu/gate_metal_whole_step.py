@@ -72,7 +72,7 @@ LEGS
   4  subnormal     the checked precondition, as a WINDOW with its floors
   5  resident_pole_pack  folded tensor dispersion without an inter-step host sync
 
-Rule 7: a flushed line per case, the artifact rewritten as each case lands.
+Progress reporting: a flushed line per case, the artifact rewritten as each case lands.
 """
 
 from __future__ import annotations

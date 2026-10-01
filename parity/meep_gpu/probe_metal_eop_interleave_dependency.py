@@ -37,7 +37,7 @@ THE NON-VACUITY FLOOR. A perturbation that moved nothing anywhere would report
 "no dependency" for every case, so each leg asserts its OWN component moved before
 it is allowed to say anything about the partners.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
 Usage (from the repository root)::
 

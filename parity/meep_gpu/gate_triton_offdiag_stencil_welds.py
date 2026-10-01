@@ -31,7 +31,7 @@ separately certified kernels the weld replaces, both float32 subnormal policies,
 launch counts by two independent counters, null controls that MUST diverge, and
 mutations armed through the shipped launcher's own ``kernel=`` door.
 
-Rule 7: one flushed line per leg and one fsynced JSON write per leg group, on the
+Progress reporting: one flushed line per leg and one fsynced JSON write per leg group, on the
 machine that owns the run.
 
     CUDA_VISIBLE_DEVICES=<n> TRITON_LIBCUDA_PATH=$HOME/triton_libcuda_stub \\
@@ -44,7 +44,7 @@ machine that owns the run.
     #    seed_triton_welds.py derives each ledger key from
 
     # laptop: the structural legs only
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
       parity/meep_gpu/gate_triton_offdiag_stencil_welds.py --no-device \\
       --out <fresh>/no_device.json
 """

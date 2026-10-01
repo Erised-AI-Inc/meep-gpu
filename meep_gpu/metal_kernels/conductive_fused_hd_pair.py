@@ -242,7 +242,9 @@ WELD_OWED: str = ""
 #: which artifact the release rests on, and it is also this family's record of the
 #: 2026-09-08 forgery -- an entry hand-written to buy a green test, whose tells were a
 #: ``code_sha256`` map holding raw sha256 values and a ``recorded_utc`` rounded to the
-#: minute. VERBATIM, including the ``_2026-09-07`` stamp it names.
+#: minute. VERBATIM, including the ``_2026-09-07`` stamp it names, except that its
+#: citation of the re-run rule now names ``docs/development/certification.md``,
+#: the file in this repository that states that rule.
 _RETIRED_WELD_OWED = (
     "the device gate parity/meep_gpu/gate_metal_conductive_fused_hd_pair.py has RUN and RELEASED on this host "
     "under both float32 subnormal policies, into "
@@ -255,7 +257,7 @@ _RETIRED_WELD_OWED = (
     "code_identity.code_digest_of_path cannot produce, and a recorded_utc rounded to "
     "the minute where the minting tool writes seconds -- so it was not the tool's "
     "output. A drifted verdict is re-earned by re-running the gate, not by editing "
-    "the record (meep_gpu/AGENTS.md). The wiring merge moved this module and "
+    "the record (docs/development/certification.md). The wiring merge moved this module and "
     "metal_kernels/launch.py, so the gate must be RE-RUN against the wired bytes "
     "before any entry is minted. Empty this string in the same change that lands it"
 )

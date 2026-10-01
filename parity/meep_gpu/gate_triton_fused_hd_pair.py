@@ -93,7 +93,7 @@ LEGS
                      predicted-null entries recorded with their reason, never dropped
   disarm             the identical harness, shipped bytes, must not diverge
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands; the
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands; the
 lift leg writes one JSON per corpus row as it lands and a progress log the child
 appends to per step.
 

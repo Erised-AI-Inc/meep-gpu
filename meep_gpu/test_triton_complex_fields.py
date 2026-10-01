@@ -1373,7 +1373,7 @@ def test_the_destination_is_where_the_gate_expects_it():
 # The zero-init composition class — reachability measured, not assumed
 # ---------------------------------------------------------------------------
 #
-# Job 2330 certified the tranche on random-seeded states, and the seeded
+# The tranche was certified on random-seeded states, and the seeded
 # signed-zero planes carry strictly NEGATIVE imag companions — both provably
 # blind to the unary-minus addend lowering (the discriminating class is
 # re = -0.0 with a NON-negative imag word). The composition probe's zero-init
@@ -1480,7 +1480,7 @@ def test_zero_init_reference_census_reaches_negative_zero_words(
 # The subnormal policy — the license is a statement about IEEE-keep bytes
 # ---------------------------------------------------------------------------
 #
-# Measured 2026-08-11 (jobs 2327/2328 + the ftz_lanes diagnosis): CuPy 13.5.1
+# Measured 2026-08-11 (the expansion runs + the ftz_lanes diagnosis): CuPy 13.5.1
 # appends '-ftz=true' to every NVRTC compile; under the strip (IEEE
 # subnormal-keep) the platform is exact FMA_V1 on every orientation, and the
 # gate certifies UNDER THE POLICY IT WAS CUT UNDER and must say so in every
@@ -1750,9 +1750,9 @@ def test_a_probe_artifact_licenses_only_bytes_cut_under_the_stripped_policy(
         gate_module):
     """probe_record_policy_reasons is the fail-closed check a REUSED artifact
     goes through (composition --probe-artifact, the gate's load path): the
-    stamp's policy name AND its counters must hold up. Job 2327's artifact —
-    default policy, no stamp — must refuse here even though its patterns would
-    never license anyway."""
+    stamp's policy name AND its counters must hold up. The flushed expansion
+    run's artifact — default policy, no stamp — must refuse here even though
+    its patterns would never license anyway."""
     good_stamp = {"policy": gate_module.STRIPPED_POLICY,
                   "nvrtc_calls": 5, "ftz_removed": 5,
                   "cache_preexisting": False}
@@ -2787,7 +2787,7 @@ def test_both_artifacts_state_the_policy_they_certified_under():
 # The engine phase-table mutation — asserted where the defect is byte-visible
 # ---------------------------------------------------------------------------
 #
-# Job 2329 measured the constraint the gate's own m1 note documents: at the
+# A device run measured the constraint the gate's own m1 note documents: at the
 # exact Brillouin edge the naive (cmath-from-k) phase differs from
 # grid.bloch_phase's -1+0j by 1.2246e-16j — sub-half-ulp of every nonzero
 # float32 word — so a field-level catch on a generically seeded state is

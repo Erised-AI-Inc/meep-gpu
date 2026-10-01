@@ -132,7 +132,7 @@ composition the composer builds WITHOUT it, and the weld is force-installed by t
 gate's own shim. A composition-installed reference awaits wiring and is named as owed
 rather than implied.
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands; the
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands; the
 lift leg writes one JSON per corpus row as it lands and a progress log the child
 appends to per step.
 

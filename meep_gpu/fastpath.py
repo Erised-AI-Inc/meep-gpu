@@ -159,9 +159,11 @@ seam will find it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
+import re
 import sys
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
@@ -682,8 +684,9 @@ def arm_is_fused(label: Any) -> bool:
 #: named as missing: ``gate_dispatch_end_to_end`` run on the shipping bytes with the
 #: harness installing NO policy and the enable left UNSET, released across its nine
 #: cases — every case PASS-DISPATCHED or PASS-FELL-BACK, no checkpoint divergent. That
-#: run is to be transcribed into
-#: ``triton_kernels/fingerprints.json['driver_dispatch']['dispatch_by_default_licence']``
+#: run is to be transcribed into ``triton_kernels/fingerprints.json['driver_dispatch']
+#: ['runs'][<compute capability>]['dispatch_by_default_licence']`` -- one licence per
+#: architecture, on that architecture's primary table (:func:`primary_table`) --
 #: with the digest of this file it executed; that block is not in this release, and
 #: ``test_dispatch_contract`` binds this constant to it, so ``True`` here fails there
 #: (a certification test, expected to fail until the run is made). That is the same
@@ -2021,7 +2024,11 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
 #: both change this file's bytes, and the record's recut refuses a route run whose
 #: legs executed other bytes than the tree ships. ``_2026-09-23_sparse`` is NOT
 #: deleted: it stays the record of the route on the opt-in tree.
-DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_2026-09-27_flip"
+#:
+#: REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
+#: round re-runs every table's route on the released files; ``_2026-09-27_flip`` stays
+#: the record of the 0.9.0 route.
+DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_2026-09-30_091"
 
 #: THE FUSED ARMS THAT HAVE BEEN DRIVEN THROUGH THE DRIVER SEAM, and the gate
 #: cases each one was driven on. This is the per-arm allow-list clause (8) reads,
@@ -4320,7 +4327,8 @@ def _table_for_label(arm: Any, table: str) -> str:
     return _table_of(arm) or table
 
 
-def _certification_for(arm: str, table: str = "triton") -> Dict[str, Any]:
+def _certification_for(arm: str, table: str = "triton", *,
+                       capability: Optional[str] = None) -> Dict[str, Any]:
     """What certified this arm: family, gate, the gate's recorded facts, AND its caveats.
 
     Three things beyond the gate's own ``recorded_utc``/``host``/``purpose``, each
@@ -4344,7 +4352,7 @@ def _certification_for(arm: str, table: str = "triton") -> Dict[str, Any]:
         # :mod:`meep_gpu.fastpath_cuda` for what that costs and what it saves.
         from . import fastpath_cuda  # noqa: PLC0415
 
-        return fastpath_cuda.certification_for(arm)
+        return fastpath_cuda.certification_for(arm, capability=capability)
     family, gate = _arm_certification_map(table).get(arm, ("unmapped", "unmapped"))
     ledger = TABLE_LEDGERS.get(table, "triton_kernels")
     entry: Dict[str, Any] = {
@@ -4378,14 +4386,37 @@ def _certification_for(arm: str, table: str = "triton") -> Dict[str, Any]:
             "PENDING_DEVICE_GATE_ARMS is the expected case, and that map carries "
             "the gate artifact its release was cut from")
     if isinstance(record, Mapping):
+        # THE RUN THIS DEVICE'S ARCHITECTURE WAS CERTIFIED BY, not whichever run the
+        # entry happens to hold: the ledger keeps one run per compute capability, and
+        # quoting another architecture's host and artifact beside this plan would be
+        # the label/evidence mismatch the container exists to close. A capability with
+        # no live run here quotes no run fields and says so; ``capabilities_live`` is
+        # always reported, so a reader can see what the entry does have.
+        live = live_capabilities(record)
+        entry["capabilities_live"] = list(live)
+        run: Mapping[str, Any] = {}
+        if capability is None:
+            entry["run_record"] = (
+                "this host's compute capability could not be read, so no run of this "
+                "gate is quoted; the capabilities it has live runs for are above")
+        elif capability in live:
+            run = record[RUNS][capability]
+            entry["capability"] = capability
+        else:
+            entry["run_record"] = (
+                f"this gate has no live run on compute capability {capability}: its "
+                f"live capabilities are {list(live)}. A plan that dispatched here was "
+                f"admitted by the opt-in, not by a record")
         for key in ("recorded_utc", "host", "purpose", "records", "step_budget",
                     "status", "subnormal_policy"):
-            if key in record:
+            if key in run:
+                entry[key] = run[key]
+            elif key in record:
                 entry[key] = record[key]
         for key in ("probe_sha256", "adapter_sha256"):
             if key in record:
                 entry.setdefault("recorded_digests", {})[key] = record[key]
-        detail = record.get("families")
+        detail = run.get("families") if "families" in run else record.get("families")
         if isinstance(detail, Mapping) and isinstance(detail.get(family), Mapping):
             family_record = detail[family]
             for key in ("run_id", "rc", "verdict", "step_budget",
@@ -4850,13 +4881,261 @@ def _drive_one_policy(record: Dict[str, Any], xp: Any, policy_module: Any,
     return None
 
 
-def validated_compute_capabilities() -> Tuple[str, ...]:
-    """The GPU architectures the recorded gates ran on. Empty when unreadable."""
-    values = _fingerprints().get("validated_compute_capabilities") or ()
-    try:
-        return tuple(_normalized_capability(value) for value in values)
-    except Exception:  # noqa: BLE001
+# ---------------------------------------------------------------------------
+# Per-capability certification records
+# ---------------------------------------------------------------------------
+
+#: The key, inside a ledger entry, holding one record per environment the entry's
+#: gate ran on. For the NVIDIA tables the environment is a compute capability,
+#: spelled by :func:`_normalized_capability`.
+RUNS = "runs"
+
+#: The entry fields that name the BYTES a run certified. A run record carries the
+#: digest of these (:func:`bound_digest`) and is live only while they are unchanged.
+BOUND_FIELDS: Tuple[str, ...] = ("source_sha256", "source_sha256_at_recert", "probe",
+                                 "probe_sha256", "adapter", "adapter_sha256")
+
+#: The fields that describe ONE RUN of a weld's gate. They live in that run's record
+#: under :data:`RUNS`, never beside the digests.
+RUN_FIELDS: Tuple[str, ...] = (
+    "artifact_sha256", "log_sha256", "host", "records", "recorded_utc",
+    "verdict_read_from", "subnormal_policy", "campaign", "gate_started_utc", "elapsed",
+    "_this_recut", "device_policy", "cupy_version", "triton_version", "families",
+    "step_budget", "_digests_taken_from_the_checkout")
+
+#: The route-campaign fields of a table's ``driver_dispatch`` record, kept per
+#: capability for the same reason.
+DISPATCH_RUN_FIELDS: Tuple[str, ...] = (
+    "status", "records", "legs", "recorded_utc", "verdict_read_from",
+    "subnormal_policy", "arbitration", "cuda_alone_leg", "released_fused_arms",
+    "dispatch_by_default_licence")
+
+
+class CapabilityRecordError(ValueError):
+    """A ledger entry whose per-capability records cannot be read or written as asked."""
+
+
+class CapabilityStale(CapabilityRecordError):
+    """A write that would leave other capabilities' records bound to bytes that moved."""
+
+    def __init__(self, names: Sequence[str]) -> None:
+        self.names = tuple(sorted(names))
+        super().__init__(
+            f"this write changes the bytes the entry binds, which would leave the "
+            f"records for {list(self.names)} certifying bytes that no longer ship; "
+            f"re-run those capabilities on these bytes, or supersede them by name")
+
+
+#: What a capability key may be: ``8.6``, ``9.0``, ``12.0``. Checked rather than
+#: inferred from :func:`_normalized_capability`, which leaves anything it does not
+#: recognise alone — so ``sm_86`` normalises to itself and would otherwise key a record.
+_CAPABILITY_KEY = re.compile(r"^[1-9][0-9]*\.[0-9]$")
+
+
+def _require_capability(value: Any) -> str:
+    """``value`` as a capability key, or a named refusal."""
+    normalised = _normalized_capability(value)
+    if not _CAPABILITY_KEY.match(normalised or ""):
+        raise CapabilityRecordError(
+            f"{value!r} is not a normalised compute capability (major.minor, as "
+            f"{_CAPABILITY_KEY.pattern} spells it)")
+    return normalised
+
+
+def bound_digest(entry: Mapping[str, Any]) -> str:
+    """sha256 over the entry's :data:`BOUND_FIELDS`, canonically serialised."""
+    bound = {field: entry[field] for field in BOUND_FIELDS if field in entry}
+    if not bound:
+        raise CapabilityRecordError(
+            f"the entry binds no bytes: none of {list(BOUND_FIELDS)} is present")
+    text = json.dumps(bound, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def live_capabilities(entry: Any) -> Tuple[str, ...]:
+    """The capabilities whose run record still binds this entry's bytes."""
+    if not isinstance(entry, Mapping) or not isinstance(entry.get(RUNS), Mapping):
         return ()
+    try:
+        current = bound_digest(entry)
+    except CapabilityRecordError:
+        return ()
+    return tuple(sorted(
+        capability for capability, run in entry[RUNS].items()
+        if isinstance(run, Mapping) and run.get("bound_sha256") == current))
+
+
+def retired_shape_reasons(entry: Any, run_fields: Sequence[str] = RUN_FIELDS) -> List[str]:
+    """Why this entry is not in the per-capability shape. Empty means it is.
+
+    THE SHAPE IS REFUSED BY NAME rather than read both ways. A reader that accepted a
+    run field beside the digests would make "which bytes did this run certify" a
+    question with two answers, which is the whole defect the container closes.
+    """
+    reasons: List[str] = []
+    if not isinstance(entry, Mapping):
+        return [f"not a mapping: {type(entry).__name__}"]
+    stranded = sorted(field for field in run_fields if field in entry)
+    if stranded:
+        reasons.append(f"run fields beside the digests: {stranded}")
+    runs = entry.get(RUNS)
+    if runs is None:
+        reasons.append(f"no {RUNS!r} record")
+    elif not isinstance(runs, Mapping):
+        reasons.append(f"{RUNS!r} is {type(runs).__name__}, not a mapping")
+    else:
+        for capability in sorted(runs):
+            if not _CAPABILITY_KEY.match(str(capability)):
+                reasons.append(f"{RUNS}[{capability!r}] is not a normalised capability")
+            elif not isinstance(runs[capability], Mapping):
+                reasons.append(f"{RUNS}[{capability!r}] is not a mapping")
+            elif "bound_sha256" not in runs[capability]:
+                reasons.append(f"{RUNS}[{capability!r}] records no bound_sha256")
+    if not any(field in entry for field in BOUND_FIELDS):
+        reasons.append(f"binds no bytes: none of {list(BOUND_FIELDS)}")
+    return reasons
+
+
+def capability_report(ledger: Mapping[str, Any],
+                      keys: Sequence[str]) -> Dict[str, Any]:
+    """Which capabilities every one of ``keys`` has live evidence for, and what blocks.
+
+    THE INTERSECTION IS THE ANSWER, not the union: a table dispatches an arm from any
+    of its certified families, so a capability one family never ran on is a capability
+    the table cannot claim. A partial round therefore admits nothing, and the keys that
+    hold it back are named rather than left to be worked out from the ledger.
+    """
+    by_key: Dict[str, Dict[str, Any]] = {}
+    admitted: Optional[set] = None
+    if not isinstance(ledger, Mapping) or "_unreadable" in ledger:
+        return {"admitted": None, "by_key": by_key,
+                "unreadable": (ledger or {}).get("_unreadable")
+                if isinstance(ledger, Mapping) else repr(ledger)}
+    for key in sorted(set(keys)):
+        entry = ledger.get(key)
+        live = live_capabilities(entry)
+        problem = None
+        if not isinstance(entry, Mapping):
+            problem = f"no entry under {key!r}"
+        else:
+            reasons = retired_shape_reasons(entry)
+            if reasons:
+                problem = "; ".join(reasons)
+            elif not live:
+                problem = ("every recorded run binds bytes that have since moved; "
+                           "re-run this gate")
+        runs = entry.get(RUNS) if isinstance(entry, Mapping) else None
+        by_key[key] = {
+            "live": list(live),
+            "stale": sorted(set(runs) - set(live)) if isinstance(runs, Mapping) else [],
+            "problem": problem,
+        }
+        admitted = set(live) if admitted is None else (admitted & set(live))
+    return {"admitted": tuple(sorted(admitted or ())), "by_key": by_key}
+
+
+def capability_admission(table: str = "triton") -> Dict[str, Any]:
+    """:func:`capability_report` for the keys that table's arms cite."""
+    keys = {gate for _family, gate in _arm_certification_map(table).values()}
+    return capability_report(_fingerprints(table), sorted(keys))
+
+
+def table_capabilities(ledger: Mapping[str, Any],
+                       keys: Sequence[str]) -> Optional[Tuple[str, ...]]:
+    """The admitted tuple alone. ``None`` is unreadable; ``()`` refuses every device."""
+    return capability_report(ledger, keys)["admitted"]
+
+
+def route_campaign(stamp: str, capability: str) -> str:
+    """The route campaign directory for one capability: ``<stamp>_cc86``.
+
+    One stamp per release, one campaign per capability under it, so a reader can see
+    which architecture a route record describes from the directory name alone.
+    """
+    normalised = _require_capability(capability)
+    if normalised != capability:
+        raise CapabilityRecordError(
+            f"{capability!r} is not spelled as this ledger keys a capability "
+            f"({normalised!r} is)")
+    return f"{stamp}_cc{normalised.replace('.', '')}"
+
+
+def primary_table(capability: str) -> Optional[str]:
+    """Which NVIDIA table carries the dispatch-by-default licence for a capability.
+
+    The first table in :data:`NVIDIA_TABLE_PRECEDENCE` that admits it, because that is
+    the table whose plan composes first and therefore the one the licence describes.
+    """
+    for table in NVIDIA_TABLE_PRECEDENCE:
+        admitted = capability_admission(table)["admitted"]
+        if admitted and capability in admitted:
+            return table
+    return None
+
+
+def bind_capability(entry: Dict[str, Any], *, bound_before: Optional[str],
+                    capability: str, run: Mapping[str, Any],
+                    run_fields: Sequence[str] = RUN_FIELDS,
+                    supersede: Sequence[str] = ()) -> Tuple[str, ...]:
+    """Write one capability's run record, and refuse to strand the others.
+
+    THE WRITE IS THE PLACE THE STALENESS RULE IS ENFORCED, because it is the only
+    moment both the old and the new bound are in hand. A rebind on UNCHANGED bytes
+    adds a capability beside the ones already there, which is what makes a second
+    architecture additive. A rebind on bytes that MOVED invalidates every other
+    capability's evidence, and that is a decision a person has to make: those
+    capabilities are named in the refusal and have to be re-run, or superseded by name.
+
+    Returns the capabilities this write superseded.
+    """
+    normalised = _require_capability(capability)
+    if normalised != capability:
+        raise CapabilityRecordError(
+            f"{capability!r} is not spelled as this ledger keys a capability "
+            f"({normalised!r} is)")
+    foreign = sorted(set(run) - set(run_fields))
+    if foreign:
+        raise CapabilityRecordError(
+            f"{foreign} are not run fields; a field that describes the BYTES belongs "
+            f"beside the digests, not inside {RUNS}[{capability!r}]")
+    current = bound_digest(entry)
+    runs = entry.setdefault(RUNS, {})
+    if not isinstance(runs, Mapping):
+        raise CapabilityRecordError(f"{RUNS!r} is {type(runs).__name__}, not a mapping")
+    staled: Tuple[str, ...] = ()
+    if bound_before is not None and current != bound_before:
+        staled = tuple(sorted(
+            name for name, record in runs.items()
+            if name != capability and isinstance(record, Mapping)
+            and record.get("bound_sha256") == bound_before))
+        unnamed = sorted(set(staled) - set(supersede))
+        if unnamed:
+            raise CapabilityStale(unnamed)
+    runs[capability] = {key: run[key] for key in sorted(run)}
+    runs[capability]["bound_sha256"] = current
+    entry[RUNS] = {name: runs[name] for name in sorted(runs)}
+    return staled
+
+
+def validated_compute_capabilities() -> Tuple[str, ...]:
+    """The GPU architectures this table's cited gates ALL ran on. DERIVED, never typed.
+
+    It used to be one hand-typed key in the ledger, which is the defect this replaces:
+    no tool wrote it, so a certification round on another architecture changed every
+    weld's evidence and left the declaration saying what it had always said. Now it is
+    the intersection of the capabilities each cited weld has a live run for
+    (:func:`capability_report`), so it can only say what some run actually measured, and
+    a round that certifies one more architecture widens it by writing records.
+
+    THIS FUNCTION RETURNS A TUPLE AND COLLAPSES THE TWO EMPTIES, because it answers
+    "what does the record say" for the dispatch report, where both read as nothing. The
+    DECISION does not go through it: rung 4b asks :func:`capability_admission`, whose
+    ``admitted`` is ``None`` for a ledger that could not be read (unknown, not refused)
+    and ``()`` for a readable one whose cited welds share no live capability, which
+    refuses every device until a round repairs it.
+    """
+    admitted = capability_admission("triton")["admitted"]
+    return () if admitted is None else admitted
 
 
 def _normalized_capability(value: Any) -> str:
@@ -5012,6 +5291,29 @@ def _probe_licence_block(probe: Any) -> Dict[str, Any]:
     return out
 
 
+def _probe_capability_reasons(probe: Any, live: Any) -> List[str]:
+    """Why this expansion probe does not describe THIS architecture. Empty means it may.
+
+    Three-valued like every other identity rung: a probe that records no capability,
+    or a host whose device will not say, yields no reason — the mismatch is reported in
+    the record by :func:`_probe_environment_mismatch` instead. Only two READ values
+    that differ drop the artifact.
+    """
+    claimed = probe.get("environment") if isinstance(probe, dict) else None
+    if not isinstance(claimed, dict) or live is None:
+        return []
+    stated = claimed.get("compute_capability") or claimed.get("cc")
+    if not stated:
+        return []
+    stated = _normalized_capability(stated)
+    here = _normalized_capability(live)
+    if stated == here:
+        return []
+    return [f"the expansion probe was measured on compute capability {stated} and this "
+            f"host is {here}; which arm a platform's compiler takes is a per-"
+            f"architecture measurement, so this artifact licenses nothing here"]
+
+
 def _probe_environment_mismatch(probe: Any, block: Mapping[str, Any]) -> List[str]:
     """Where the artifact's CLAIMED environment disagrees with this live host.
 
@@ -5086,7 +5388,8 @@ def _environment_block(grid: Any, probe: Any, probe_error: Optional[str],
     block["backend_version"] = str(getattr(xp, "__version__", "")) or None
     device = _device_identity(xp)
     block["device"] = device
-    block["device_certified"] = _device_is_validated(device)
+    block["device_certified"] = _device_is_validated(
+        device, capability_admission("triton")["admitted"])
     block["validated_compute_capabilities"] = list(validated_compute_capabilities())
     # THE DEVICE QUESTION IS PER TABLE, because the two NVIDIA tables were certified
     # by different campaigns and neither list is derived from the other: Triton's is
@@ -5096,14 +5399,17 @@ def _environment_block(grid: Any, probe: Any, probe_error: Optional[str],
     # is what rung 4b consults.
     from . import fastpath_cuda  # noqa: PLC0415
 
-    cuda_validated = fastpath_cuda.validated_compute_capabilities()
+    # THE THREE-VALUED ANSWER COMES FROM THE REPORT, not from the public tuple: that
+    # tuple cannot tell an unreadable ledger (unknown) from a readable one whose welds
+    # share no live capability (refuse), and rung 4b needs them apart.
+    cuda_admitted = capability_admission(CUDA_TABLE)["admitted"]
     block["validated_compute_capabilities_by_table"] = {
         "triton": list(validated_compute_capabilities()),
-        CUDA_TABLE: list(cuda_validated),
+        CUDA_TABLE: list(fastpath_cuda.validated_compute_capabilities()),
     }
     block["device_certified_by_table"] = {
         "triton": block["device_certified"],
-        CUDA_TABLE: _device_is_validated(device, cuda_validated),
+        CUDA_TABLE: _device_is_validated(device, cuda_admitted),
     }
     mismatch = _probe_environment_mismatch(probe, block)
     if mismatch:
@@ -5112,7 +5418,7 @@ def _environment_block(grid: Any, probe: Any, probe_error: Optional[str],
 
 
 def _device_is_validated(device: Mapping[str, Any],
-                         validated: Optional[Sequence[str]] = None) -> Optional[bool]:
+                         validated: Optional[Sequence[str]]) -> Optional[bool]:
     """Is this device's architecture one a recorded gate ran on? None when unreadable.
 
     THREE-VALUED on purpose, and the third value is the honest one: a host whose
@@ -5120,17 +5426,20 @@ def _device_is_validated(device: Mapping[str, Any],
     CuPy whose runtime API moves) is neither certified nor refused, it is UNKNOWN,
     and the artifact says so rather than picking whichever answer is convenient.
 
-    THE LIST IS AN ARGUMENT SINCE THE SECOND NVIDIA TABLE LANDED, defaulting to the
-    Triton ledger's so every existing caller is unchanged. The hand-CUDA table's list
-    is DERIVED from the certification blocks its own welds cite
-    (``fastpath_cuda.validated_compute_capabilities``), and an EMPTY list stays
-    UNKNOWN rather than refusing — which is what lets the first CUDA campaign run on
-    a tree whose CUDA ``driver_dispatch`` record does not exist yet.
+    THE LIST IS A REQUIRED ARGUMENT, with no default: it used to default to the Triton
+    table's, which made ``None`` mean two things at once -- "ask the Triton ledger" and
+    "the ledger could not be read" -- and those now have opposite consequences. Both
+    tables' lists are DERIVED from their cited welds' live
+    per-capability runs (:func:`capability_report`), and the two empties mean different
+    things, so they are spelled differently:
+
+    * ``None`` — the ledger could not be read at all. UNKNOWN, as above.
+    * ``()`` — the ledger reads, and its cited welds share no live capability. That
+      REFUSES every device, because there is no architecture the table can claim. It
+      used to read as unknown, which meant one stale weld admitted every device.
     """
     capability = device.get("compute_capability")
-    if validated is None:
-        validated = validated_compute_capabilities()
-    if capability is None or not validated:
+    if capability is None or validated is None:
         return None
     return _normalized_capability(capability) in validated
 
@@ -6096,6 +6405,17 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     probe_refusal_reasons: List[str] = []
     if probe is not None:
         probe_refusal_reasons = _complex_probe_policy_reasons(probe)
+        # (4c) THE SAME DROP FOR THE ARCHITECTURE, for the same reason the policy is
+        # checked: the expansion licence is a measurement of how one device's compiler
+        # orders a multiply-add, and ``environment_default`` keys its table on the
+        # artifact's CLAIMED backend/machine/CuPy — none of which distinguishes one
+        # NVIDIA architecture from another. So a probe cut on 8.6 and carried onto a
+        # 9.0 host would license FMA_V1 there with nothing measured on 9.0. Dropped
+        # only when BOTH capabilities were read and differ: a probe that records none,
+        # or a host whose device will not identify itself, is reported rather than
+        # refused, because refusing on an unread fact asserts one.
+        probe_refusal_reasons += _probe_capability_reasons(
+            probe, (record["environment"].get("device") or {}).get("compute_capability"))
         if probe_refusal_reasons:
             record["environment"]["complex_expansion_probe_dropped"] = probe_refusal_reasons
             record["environment"]["complex_expansion_probe_resolved"] = False
@@ -6124,12 +6444,22 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
                 _admit_uncertified(record, name, "GPU compute capability",
                                    capability, recorded)
                 continue
+            # NAME WHAT WOULD HAVE TO BE RE-RUN. The table's list is the intersection
+            # of its cited welds' live capabilities, so "not certified here" is always
+            # some set of welds with no live run on this architecture; a reader who is
+            # certifying a new card needs those names, not just the verdict.
+            blocking = [key for key, state in sorted(
+                capability_admission(name)["by_key"].items())
+                if capability is None
+                or _normalized_capability(capability) not in state["live"]]
             tables_block[name] = {
                 "candidate": False,
                 "refused_because": (
                     f"GPU compute capability {capability} is not in the recorded "
                     f"validated_compute_capabilities {list(recorded)} for the "
-                    f"{name} table" + UNCERTIFIED_HINT)}
+                    f"{name} table" + UNCERTIFIED_HINT),
+                "welds_without_a_live_run_here": blocking[:5],
+                "welds_without_a_live_run_here_count": len(blocking)}
             candidates.remove(name)
     if not candidates:
         _refuse(record, "no kernel table is a candidate on this host: "
@@ -6749,6 +7079,10 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
     # the answer to be wrong. A single-table plan declares none, and every reader
     # falls back to ``table`` — which is what every gate, probe and test builds.
     backends = dict(getattr(step_plan, "backends", {}) or {})
+    # THE DEVICE'S OWN ARCHITECTURE, so each family quotes the run that certified it
+    # HERE rather than whichever run its ledger entry holds.
+    _device_capability = ((record.get("environment") or {}).get("device")
+                          or {}).get("compute_capability")
     _record_slots(record, step_plan, slots, dropped_null, unwarmed)
     record["decision"] = "dispatched"
     record["step_path"] = "fused"
@@ -6770,7 +7104,10 @@ def _finish(*, record: Dict[str, Any], step_plan: Any, dispatchable: Set[str],
         owning = {backends.get(slot, table) for slot in dispatched} or {table}
         arm_table = _table_for_label(
             arm, sorted(owning)[0] if len(owning) == 1 else table)
-        entry = _certification_for(arm, arm_table)
+        entry = _certification_for(
+            arm, arm_table,
+            capability=_normalized_capability(_device_capability)
+            if _device_capability else None)
         entry["dispatched_slots"] = dispatched
         entry["table"] = arm_table
         record["families"][arm] = entry

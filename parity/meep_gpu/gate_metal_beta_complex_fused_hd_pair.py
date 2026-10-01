@@ -45,7 +45,7 @@ RECORDED, never asserted. What is asserted is refused BY NAME, the refusal namin
 ``INSTALLABLE`` False, the composer's selection unchanged, and the released neighbours
 keeping their slots.
 
-Rule 7: one flushed timestamped line per unit of work; every leg appended and fsynced
+Progress reporting: one flushed timestamped line per unit of work; every leg appended and fsynced
 as it lands; the lift writes one JSON per corpus row as it lands.
 """
 

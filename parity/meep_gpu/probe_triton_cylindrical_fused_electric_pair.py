@@ -65,7 +65,7 @@ THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot
 and this product spans five driver call sites. Nothing in ``launch.py`` names it,
 ``fastpath.plan_fast_path`` is unchanged, and no default run can reach it.
 
-Rule 7: one flushed line per step, every row appended to the artifact as it lands.
+Progress reporting: one flushed line per step, every row appended to the artifact as it lands.
 """
 
 from __future__ import annotations

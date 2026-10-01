@@ -14,8 +14,8 @@ The gate is adversarial, not a smoke test.  It must catch:
 * STALE_SOURCE — the plan bound a copy rather than the live stored source.
 
 Every case is flushed and fsync'd to JSONL as it lands, and the summary is
-atomically replaced.  Run this only through the repository's the GPU host Slurm
-wrapper on one confirmed-idle GPU with the installed ``keep`` policy.
+atomically replaced.  Run this only on one confirmed-idle GPU with the installed
+``keep`` policy.
 """
 
 from __future__ import annotations

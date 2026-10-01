@@ -24,10 +24,10 @@ mask(curl - adv)``); the shifted-plus-center sum ORDER (IEEE addition is
 commutative); and the ``curl - adv`` fold spelled as IEEE subtraction rather
 than addition of a negation. Claiming any of the three "held here" would be
 the artifact-overclaim inversion of the expectation-at-a-byte-invisible-layer
-defect job 2329 measured.
+defect the complex gate measured.
 
-CLONED from the certified tranches' harnesses (complex job 2330, special_kz
-job 2335, nonlinear run 2339, offdiag run 2344) and deliberately IMPORTING the
+CLONED from the certified tranches' harnesses (complex, special_kz, nonlinear,
+offdiag) and deliberately IMPORTING the
 shared machinery rather than restating: the subnormal policy
 (``install_ftz_strip`` / ``ftz_strip_license_reasons`` / ``policy_stamp``),
 the shared real-PML reference transcriptions
@@ -91,7 +91,7 @@ Legs, in order:
   and the certified kernel must move bytes off its seeds.
 * ``mutations``  — armed, launch-counted, DISARMED/NEEDLE-MISSED are
   failures, mutant-distinctness verified (renamed entry points + cache-key
-  inequality — the stale-binary hazard job 2334 measured): m1 k-pair
+  inequality — the measured stale-binary hazard): m1 k-pair
   interchange (host; needle = the full-k configs, all components distinct);
   m2 D-side negation dropped (host; step_D combos); m3 tail scaled by dtdx
   (source — the natural transcriber error, stepping.py:863-864); m4 sum
@@ -1069,7 +1069,7 @@ class CountingKernel(gate.CountingKernel):
 
 def _mutant_distinctness(name: str, mutant_kernel) -> Dict[str, Any]:
     """Platform fact: Triton's cache can serve a STALE binary to a
-    renamed-but-source-similar entry point (job 2334) — so every mutant gets
+    renamed-but-source-similar entry point (measured) — so every mutant gets
     its OWN entry-point name, and the cache keys must differ from the true
     kernel's. Recorded per mutation; equality is a leg failure."""
     true_key = bfast_curl.bfast_pml_curl_step.cache_key
@@ -1132,7 +1132,7 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
                                   "launched — the leg measured nothing")
         if not distinctness["cache_keys_differ"]:
             entry_row["error"] = ("STALE-BINARY HAZARD: the mutant shares the "
-                                  "true kernel's cache key (job 2334's "
+                                  "true kernel's cache key (the measured "
                                   "aliasing class)")
         log(f"[mut] {name}: sites={hits} launches={counter.launches} "
             f"identical={summary['identical']}/{summary['ran']} "

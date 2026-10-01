@@ -26,7 +26,6 @@ from meep_gpu.triton_kernels import symmetry
 PACKAGE_DIR = pathlib.Path(symmetry.__file__).parent
 PARITY_DIR = pathlib.Path(__file__).parents[1] / "parity" / "meep_gpu"
 PROBE = PARITY_DIR / "probe_triton_symmetry_composition.py"
-SLURM = PARITY_DIR / "run_triton_symmetry_composition.slurm"
 
 
 ADMITTED = coverage_module.Coverage(True, ())
@@ -226,9 +225,6 @@ def test_the_symmetry_composition_record_is_welded_to_the_complete_step_seam():
     record = json.loads(
         (PACKAGE_DIR / "fingerprints.json").read_text(encoding="utf-8"))
     gate = record["symmetry_composition_gate"]
-
-    assert gate["slurm_job_id"] == 2312
-    assert gate["slurm_state"] == "COMPLETED 0:0"
     assert gate["product"]["cases_exact"] == "6/6"
     assert gate["product"]["complete_steps_exact"] == "52/52"
     assert gate["product"]["source_cases_nonvacuous"] == "2/2: on-plane electric Ez and magnetic Hy"
@@ -254,5 +250,3 @@ def test_the_symmetry_composition_record_is_welded_to_the_complete_step_seam():
     for name in live:
         assert len(gate["source_sha256"][name]) == 64, name
     assert gate["probe_sha256"] == hashlib.sha256(PROBE.read_bytes()).hexdigest()
-    assert gate["slurm_launcher_sha256"] == hashlib.sha256(
-        SLURM.read_bytes()).hexdigest()

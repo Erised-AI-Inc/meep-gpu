@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 """Cut a kernel table's dispatch-preference timing record from timing rows on disk.
 
-The record (``meep_gpu/<backend>_kernels/timing.json``) is what
+The record (``meep_gpu/<backend>_kernels/timing_cc<capability>.json``, as
+``dispatch_preference.record_path`` spells it) is what
 ``meep_gpu/dispatch_preference.py`` consults; its format and the veto rule live there,
 and this file imports both so the two cannot spell an axis two ways. Plan of record:
 ``the design notes (meep-gpu-dispatch-preference-plan)``. The record is CUT, never
 written by hand, the way ``fingerprints.json`` is cut by a device gate::
 
     python cut_timing_record.py --table triton --rows results/<tree> [--rows ...] \\
-        --select-route <id> --out ../../meep_gpu/triton_kernels/timing.json
-    python cut_timing_record.py --check ../../meep_gpu/triton_kernels/timing.json
+        --select-route <id> --out ../../meep_gpu/triton_kernels/timing_cc86.json
+    python cut_timing_record.py --check ../../meep_gpu/triton_kernels/timing_cc86.json
 
 =============================================================================
 WHAT A ROW MUST BE TO FEED A KEY
@@ -61,6 +62,20 @@ digest -- a row that did not pin an emitter is not evidence that it ran its neig
 until ``--allow-unpinned-subject`` names it, and the record then carries the straddle
 and the consult does not compare that source at all. The bench, ``fastpath`` and
 ``driver`` digests are instruments and are recorded, not compared.
+
+ONE RECORD, ONE ARCHITECTURE, for the same reason one deeper: the ratio a key carries
+was measured on one card's instruction set and occupancy, so rows from two devices
+REFUSE (``mixed_device``) and the capability the surviving rows stamp -- read off the
+rows, never typed -- names the file. ``--out`` must be the name
+``dispatch_preference.record_path`` gives that capability, or the cut refuses
+(``out_names_another_capability``): a record written anywhere else is either a
+measurement no consult can find or one found for the WRONG architecture. And since
+the name carries the capability alone,
+a SECOND CARD of the same architecture would land on the first card's file (H100 PCIe
+and SXM both read 9.0), which ``mixed_device`` cannot see because it only looks inside
+one cut: replacing a record cut on another device is a decision, so it is named
+(``--supersede``) rather than taken (``existing_record_names_another_device``, and
+``existing_record_unreadable`` when what is there cannot be read to say whose it is).
 
 =============================================================================
 WHICH PRODUCT A ROW PRICES
@@ -1013,9 +1028,12 @@ def preview(record: Mapping[str, Any], board_path: str,
         out["not_joined_because"] = how
         return out
     out["joined_from"] = how
-    # THE RECORD'S OWN ROUTE, because the preview asks what it would read IF it were
-    # in force on the route its rows ran; the live route travels beside the answer.
+    # THE RECORD'S OWN ROUTE AND ARCHITECTURE, because the preview asks what it would
+    # read IF it were in force on the runs its rows timed; the live route travels
+    # beside the answer. The reader pins a record to exactly one capability
+    # (dispatch_preference.validate), and cut() validates what it sealed.
     route = record["route"]
+    capability, = dp.record_capabilities(record)
     displaced_by_product: Dict[str, List[List[str]]] = {}
     for entry in record["keys"].values():
         held = displaced_by_product.setdefault(entry["product"], [])
@@ -1056,7 +1074,8 @@ def preview(record: Mapping[str, Any], board_path: str,
             known = displaced_by_product.get(instance["label"]) or []
             displaces = known[0] if len(known) == 1 else []
         verdict = dp.consult(
-            record, table=record["table"], candidate=instance["label"],
+            record, table=record["table"], capability=capability,
+            candidate=instance["label"],
             displaces=displaces, run_shape=_census_shape(row),
             bracketed=instance["bracketed"], mode="measured",
             repair_route=route, subject_sha256=dp.compared_emitters(record),
@@ -1205,6 +1224,77 @@ def render_report(record: Mapping[str, Any], preview: Optional[Mapping[str, Any]
 # Command line
 # ---------------------------------------------------------------------------
 
+def out_capability(table: str, out: str, record: Mapping[str, Any]) -> str:
+    """The capability the admitted rows stamp, once ``--out`` is the name it owns.
+
+    THE NAME IS PART OF THE RECORD. One record prices one architecture -- rows from
+    two devices already refuse (``mixed_device``) and the reader refuses a record
+    whose rows name any number of capabilities but one -- and the consult looks the
+    file up by :func:`dispatch_preference.record_path`. A record written under another
+    name is a measurement nothing will find, or one that will be found for the wrong
+    architecture; the capability is therefore READ OFF THE ROWS and ``--out`` has to
+    agree with it. The directory is the caller's (a staging tree, a release copy); the
+    basename is the record's.
+    """
+    # cut() seals and then validates, and the reader refuses a record whose rows do
+    # not name exactly ONE compute capability, so there is one to name the file for.
+    capability, = dp.record_capabilities(record)
+    wanted = os.path.basename(dp.record_path(table, capability))
+    if os.path.basename(out) != wanted:
+        raise CutRefused(
+            "out_names_another_capability",
+            f"the admitted rows were timed on compute capability {capability}, whose "
+            f"record is named {wanted}; --out names {os.path.basename(out)!r}. The "
+            f"capability is in the name so that a consult on another architecture "
+            f"cannot find this record at all")
+    return capability
+
+
+def _devices_named(path: str) -> Optional[List[str]]:
+    """The devices the record at ``path`` says it timed, or ``None`` if it cannot say.
+
+    A LENIENT READ on purpose: the only question is whose evidence is about to be
+    overwritten, and a record that fails the reader's other rules still answers it.
+    One that cannot be parsed at all answers nothing, which is its own refusal.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            held = json.load(handle)
+        return sorted({str(host.get("device")) for host in held["host"]})
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
+def refuse_to_replace_another_device(out: str, record: Mapping[str, Any],
+                                    supersede: bool) -> None:
+    """Refuse to write over a record cut on a DIFFERENT card, unless told to.
+
+    ``mixed_device`` only looks inside one cut, and the file name carries the
+    architecture alone, so a second card of the same architecture writes over the
+    first card's rows with nothing said. A record is evidence; replacing it is a
+    decision, and the decision is named on the command line.
+    """
+    if not os.path.exists(out):
+        return
+    held = _devices_named(out)
+    mine = sorted({str((host or {}).get("device")) for host in record["host"]})
+    if held is None:
+        if supersede:
+            return
+        raise CutRefused(
+            "existing_record_unreadable",
+            f"{out} is already there and does not read as a record, so it cannot say "
+            f"which device it was cut on; this cut timed {mine}. Pass --supersede to "
+            f"replace it anyway")
+    if held != mine and not supersede:
+        raise CutRefused(
+            "existing_record_names_another_device",
+            f"{out} was cut on {held} and these rows were timed on {mine}: the file "
+            f"name carries the compute capability, not the card, so this write would "
+            f"replace one card's evidence with another's. Pass --supersede to retire "
+            f"the record that is there")
+
+
 def check(path: str, base: str) -> int:
     """Recompute a record from the artifacts it names; refuse on any difference."""
     try:
@@ -1244,7 +1334,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--table", choices=dp.TABLES)
     parser.add_argument("--rows", action="append", default=[],
                         help="a rows.jsonl, or a directory searched for them; repeatable")
-    parser.add_argument("--out", help="the record to write; the report lands beside it")
+    parser.add_argument("--out", help="the record to write; the report lands beside it. "
+                                      "Its basename is the one dispatch_preference."
+                                      "record_path gives the capability the rows stamp")
+    parser.add_argument("--supersede", action="store_true",
+                        help="write over the record already at --out although it was "
+                             "cut on another device (or cannot be read to say which). "
+                             "Without it the cut refuses by name rather than replacing "
+                             "one card's evidence with another's")
     parser.add_argument("--min-rows", type=int, default=MIN_ROWS_PER_KEY)
     parser.add_argument("--select-route",
                         help="the one repair route to cut, as a refusal names it")
@@ -1271,6 +1368,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                      select_route=args.select_route,
                      require_box_after=args.require_box_after,
                      allow_unpinned_subject=args.allow_unpinned_subject)
+        # BEFORE ANYTHING IS WRITTEN: the name has to be the one the capability owns,
+        # and whatever is already under it has to be this cut's own device.
+        capability = out_capability(args.table, args.out, record)
+        refuse_to_replace_another_device(args.out, record, bool(args.supersede))
     # dp.RecordRefused is the READER refusing what this tool built (cut seals and then
     # validates). It leaves by the same door as every other refusal, named.
     except (CutRefused, dp.RecordRefused) as refusal:
@@ -1292,7 +1393,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     with open(stem + ".report.txt", "w") as handle:
         handle.write(report)
     say(report)
-    say(f"wrote {args.out} and {stem}.report.txt")
+    say(f"wrote {args.out} and {stem}.report.txt -- the record of compute capability "
+        f"{capability}, which is the architecture its rows ran on and the only one it "
+        f"prices")
     return EXIT_OK
 
 

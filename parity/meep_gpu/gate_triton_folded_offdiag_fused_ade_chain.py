@@ -79,13 +79,13 @@ is the shape ``build_triton_fusion_matrix``'s GATE_BOUND branch reads, and the
 entry from an artifact that names neither the device nor the architecture its PTX
 was generated for.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands, and
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands, and
 the artifact re-written (provenance-stamped) after every leg.
 
 Usage::
 
     # laptop, no CUDA and no Triton — the legs that need no device
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/gate_triton_folded_offdiag_fused_ade_chain.py --no-device \\
         --out <scratch>/no_device.json
 

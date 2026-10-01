@@ -20,7 +20,6 @@ from meep_gpu.triton_kernels import fused_ade_state as module
 
 PACKAGE_DIR = pathlib.Path(module.__file__).parent
 PROBE = PACKAGE_DIR.parents[1] / "parity" / "meep_gpu" / "probe_triton_fused_ade_state.py"
-SLURM = PACKAGE_DIR.parents[1] / "parity" / "meep_gpu" / "run_triton_fused_ade_state.slurm"
 
 
 def _live_probe_is_welded(record, weld_name, repo_key, path):
@@ -221,8 +220,6 @@ def test_fused_ADE_state_record_is_welded_to_every_live_dependency():
 
     gate = record["fused_ade_state_gate"]
     assert record["current_host_gate"] in record
-    assert gate["slurm_job_id"] == 2320
-    assert gate["slurm_state"] == "COMPLETED 0:0"
     assert gate["product"]["complete_steps_exact"] == "36/36 against both oracles"
     assert "separate" in gate["product"]["oracles_per_step"]
     assert gate["dispatch"].startswith("DISABLED")
@@ -255,7 +252,5 @@ def test_fused_ADE_state_record_is_welded_to_every_live_dependency():
     _live_probe_is_welded(record, "triton_fused_ade_state_device_gate",
                           "parity/meep_gpu/probe_triton_fused_ade_state.py",
                           PROBE)
-    assert gate["slurm_launcher_sha256"] == hashlib.sha256(
-        SLURM.read_bytes()).hexdigest()
     for name in ("fused_ade_state_coverage", "plan_fused_ade_state"):
         assert name in public.__all__ and callable(getattr(public, name))

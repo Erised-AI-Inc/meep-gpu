@@ -68,7 +68,7 @@ records it, so "the auditor is doing its job" is measured rather than assumed. N
 shipped kernel contains a plain float ``/`` (the spelling is ``tl.math.div_rn``);
 this leg exists so the day one appears, it fails here first.
 
-Rule 7: one flushed progress line per cell, and the JSON artifact is rewritten
+Progress reporting: one flushed progress line per cell, and the JSON artifact is rewritten
 atomically (tmp + fsync + os.replace) after every cell, so an interrupted run
 keeps everything up to the failure.
 
@@ -701,7 +701,7 @@ def exec_triton(cp, case: Dict[str, Any], kernel_name: Optional[str] = None
 
 
 def save(record: Dict[str, Any], path: str) -> None:
-    """Atomic rewrite after every cell: tmp + fsync + os.replace (rule 7)."""
+    """Atomic rewrite after every cell: tmp + fsync + os.replace (progress reporting)."""
     directory = os.path.dirname(os.path.abspath(path)) or "."
     os.makedirs(directory, exist_ok=True)
     handle, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")

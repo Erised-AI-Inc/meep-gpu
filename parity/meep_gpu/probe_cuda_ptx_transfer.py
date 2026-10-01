@@ -31,7 +31,8 @@ failure:
 
 NOTHING HERE MUTATES THE TREE. It imports ``meep_gpu`` read-only.
 
-Usage (compile-only sections need no free device; sections 1, 3-run and 4 do)::
+Usage (compile-only sections need a VISIBLE device to read the architecture off but
+no FREE one; sections 1, 3-run and 4 need it free)::
 
     CUDA_VISIBLE_DEVICES=<one verified-free gpu> python -u probe_cuda_ptx_transfer.py \
         --out results/<dir>/cuda_ptx_transfer.json --ptx-dir results/<dir>/ptx
@@ -56,7 +57,6 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 SEED = 20260814
-ARCH_PTX = "compute_86"
 
 #: The fourteen entries in ``step_curl_kernels._get_kernel``'s code map, as
 #: (cache key name, is_complex, module attribute holding the source, entry point).
@@ -144,11 +144,39 @@ def census(ptx: str) -> Dict[str, Any]:
 # NVRTC, straight
 # ---------------------------------------------------------------------------
 
-def compile_to_ptx(code: str, options: Sequence[str], arch: str = ARCH_PTX) -> str:
+def ptx_arch() -> str:
+    """``compute_NN`` for the device THIS PROCESS has open, read when asked.
+
+    WHY NOT A CONSTANT (changed 2026-09-30). This was ``ARCH_PTX = "compute_86"``,
+    bound as ``compile_to_ptx``'s default argument — so it was fixed when the module
+    was IMPORTED, and every census and every dumped ``.ptx`` file recorded a typed
+    architecture rather than a measured one. On any other card this probe would
+    compare sm_86 PTX against a Triton kernel compiled for the live device and
+    report the difference as a property of the two tracks. PTX is per architecture;
+    that is the whole reason this probe counts opcodes.
+
+    ``Device().compute_capability`` is CuPy's own undotted string (``"86"``,
+    ``"90"``, ``"100"`` for cc 10.0), already the spelling
+    ``--gpu-architecture=compute_NN`` wants, so it is concatenated rather than
+    re-derived — the same read ``gate_cuda_complex.py`` makes for its NVRTC guard.
+    RAISES on a host with no readable device, which ``main`` records as that
+    section's error.
+    """
+    import cupy as cp  # noqa: PLC0415 - a device read, never at import time
+
+    return "compute_" + str(cp.cuda.Device().compute_capability)
+
+
+def compile_to_ptx(code: str, options: Sequence[str], arch: str) -> str:
     """Real PTX text for one kernel, from NVRTC's own ``getPTX``.
 
     ``compile_using_nvrtc`` returns a CUBIN on CuPy 13.5.1, so counting opcodes in
-    its result measures nothing. Needs no CUDA context — only the NVRTC library.
+    its result measures nothing. Needs no CUDA context — only the NVRTC library and
+    a visible device for :func:`ptx_arch` to read.
+
+    ``arch`` IS REQUIRED and has no default: a default would be evaluated once at
+    import and no caller could tell a measured architecture from a stale one. Each
+    section reads it once and records the value it compiled under.
     """
     from cupy.cuda import nvrtc  # noqa: PLC0415
 
@@ -262,7 +290,12 @@ def section_cuda_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
         if shipped is None:
             shipped = tuples[0]
 
-    out: Dict[str, Any] = {"arch": ARCH_PTX, "shipped_tuple": shipped, "census": {}}
+    # READ FROM THE DEVICE, ONCE, AND RECORDED AS WHAT WAS COMPILED. An unreadable
+    # device raises out of this section and ``main`` records it under
+    # ``section_errors``: a census of an architecture this run never opened is a
+    # false result, not a partial one.
+    arch = ptx_arch()
+    out: Dict[str, Any] = {"arch": arch, "shipped_tuple": shipped, "census": {}}
     if ptx_dir:
         os.makedirs(ptx_dir, exist_ok=True)
     for label, options in option_sets(shipped):
@@ -270,7 +303,7 @@ def section_cuda_ptx(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
             key = f"{label}:{entry}"
             code = getattr(sck, attr)
             try:
-                text = compile_to_ptx(code, options)
+                text = compile_to_ptx(code, options, arch)
                 out["census"][key] = census(text)
                 if ptx_dir and entry in PTX_DUMP:
                     with open(os.path.join(ptx_dir, f"cuda_{entry}__{label}.ptx"), "w") as fh:
@@ -340,11 +373,15 @@ def section_micro_ops(results: Dict[str, Any], ptx_dir: Optional[str]) -> None:
     import cupy as cp  # noqa: PLC0415
 
     shipped = results.get("cuda_ptx", {}).get("shipped_tuple")
-    out: Dict[str, Any] = {"ptx": {}, "device": {}}
+    # THIS SECTION'S OWN READ, not ``cuda_ptx``'s. It runs independently
+    # (``--sections micro_ops``), and a section that recorded the architecture of a
+    # section that did not run would be recording a guess.
+    arch = ptx_arch()
+    out: Dict[str, Any] = {"arch": arch, "ptx": {}, "device": {}}
 
     for label, options in option_sets(shipped):
         try:
-            text = compile_to_ptx(_MICRO_SOURCE, options)
+            text = compile_to_ptx(_MICRO_SOURCE, options, arch)
         except Exception as exc:  # noqa: BLE001
             out["ptx"][label] = {"error": f"{type(exc).__name__}: {exc}"[:300]}
             continue

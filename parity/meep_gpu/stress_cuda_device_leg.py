@@ -78,7 +78,7 @@ policy token ``ftz_stripped`` or ``"keep"`` refuses at install)::
         parity/meep_gpu/stress_cuda_device_leg.py --backend cuda \\
         --steps 2000 --checkpoint-every 100 --out $OUT/run
 
-Rule 7: one flushed line per row from the parent, one flushed line per checkpoint
+Progress reporting: one flushed line per row from the parent, one flushed line per checkpoint
 from the child (``stress.say``), the per-row artifact rewritten atomically after
 every checkpoint, and the launch census appended to it when the row ends.
 """

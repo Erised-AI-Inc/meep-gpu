@@ -936,6 +936,43 @@ def test_the_record_block_was_cut_against_the_emitter_that_ships_today():
             "a post-gate edit that touched device code invalidates the verdict")
 
 
+def test_the_record_block_was_cut_against_the_launch_texts_that_ship_today():
+    """The compiled bytes, not only the certified ones.
+
+    The single launches :func:`offdiag_emitter.offdiag_launch_source`, the certified
+    text through the own-cell hoist. ``emitter_corpus_digest`` cannot see an edit to the
+    hoist, so the block also records the digest of all 63 launch texts, taken when the
+    gate ran on them.
+    """
+    import json  # noqa: PLC0415
+
+    block = json.loads(RECORD.read_text(encoding="utf-8"))["offdiag_2026-08-16"]
+    assert "launch_corpus_digest" in block, (
+        "the block records no launch-text digest; the 59 masks the gate does not sweep "
+        "rest on nothing that sees the compiled bytes")
+    assert block["launch_corpus_digest"] == offdiag_emitter.launch_corpus_digest(), (
+        "a launch text has changed since the gate ran; the certification does not "
+        "describe the bytes that compile")
+
+
+def test_the_launch_digest_covers_every_mask_and_is_not_the_certified_one(monkeypatch):
+    """The two digests answer different questions, so they must differ; and the launch
+    digest is recomputed from an empty memo each time, so equality is determinism."""
+    import hashlib  # noqa: PLC0415
+
+    assert len(offdiag_emitter.LIVE_ROW_MASKS) == 63
+    monkeypatch.setattr(offdiag_emitter, "_LAUNCH_TEXTS", {})
+    first = offdiag_emitter.launch_corpus_digest()
+    monkeypatch.setattr(offdiag_emitter, "_LAUNCH_TEXTS", {})
+    assert offdiag_emitter.launch_corpus_digest() == first
+    assert first != offdiag_emitter.corpus_digest()
+    digest = hashlib.sha256()
+    for mask in offdiag_emitter.LIVE_ROW_MASKS:
+        digest.update(repr(mask).encode("ascii"))
+        digest.update(offdiag_emitter.offdiag_launch_source(mask).encode("utf-8"))
+    assert digest.hexdigest() == first
+
+
 def test_there_are_sixty_three_live_row_masks_and_the_all_dead_one_is_refused():
     """63 = 2**6 - 1. The all-dead mask is the certified plain kernel's, and
     emitting this family's source for it would overlap the two families."""

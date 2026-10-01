@@ -620,8 +620,6 @@ def test_the_conductivity_composition_fingerprint_names_the_exact_gated_bytes():
         pathlib.Path(conductivity_module.__file__).read_bytes()).hexdigest()
 
     gate = record["conductivity_composition_gate"]
-    assert gate["slurm_job_id"] == 2317
-    assert gate["slurm_state"] == "COMPLETED 0:0"
     assert gate["standalone_product_gate"]["single_launch_guarded"].startswith(
         "240/240")
     assert gate["standalone_product_gate"]["mutations"] == "11/11 caught"

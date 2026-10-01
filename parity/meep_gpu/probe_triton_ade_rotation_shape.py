@@ -66,7 +66,7 @@ that matches nothing disables the check it feeds, silently); leg 2 asserts the
 orbit has more than one position AND that the shared-scratch shape DOES conflict,
 because a contrast between two clean results is not a contrast.
 
-Rule 7: one flushed line per case, rows appended and fsynced as they land.
+Progress reporting: one flushed line per case, rows appended and fsynced as they land.
 
 Usage (from the repository root)::
 

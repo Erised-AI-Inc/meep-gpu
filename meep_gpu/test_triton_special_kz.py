@@ -1008,7 +1008,7 @@ def test_the_complex_term_uses_the_module_local_helper_on_center_words(sk):
     assert "(c_re * z_re) - (c_im * z_im)" in helper
     # Triton lowers unary minus as ``0.0 - x`` (semantic.py:386-391, 3.1.0),
     # which turns ``-(+0.0)`` into ``+0.0``; the addend must be negated
-    # sign-exactly (``* -1.0`` folds to fneg). Job 2332 measured the unary
+    # sign-exactly (``* -1.0`` folds to fneg). A device run measured the unary
     # spelling byte-identical to the m9 FOLD on the engineered state.
     assert "-(c_im * z_im)" not in helper
 

@@ -90,6 +90,23 @@ each is one half of a failure that has already happened here:
     python rebind_cuda_welds.py --seed --write   # create the ledger / apply
     python rebind_cuda_welds.py --campaign results/cuda_regate_2026-08-30 --write
 
+ONE RECORD PER COMPUTE CAPABILITY, since 2026-09-30. A weld is a claim about
+generated code for an ARCHITECTURE, so the run facts -- the artifact digest, the
+host, the campaign, the policies, where the verdict was read -- live under
+``runs[<capability>]`` and only the bytes and the curated claims about them stay
+beside the digests (:data:`ENTRY_FIELDS` against :data:`SLOT_FIELDS`). What that
+buys: a second architecture cut on the SAME bytes is additive, and the table's
+admitted set is the intersection of what every cited weld has a live run for
+rather than a number someone typed into the ledger.
+
+The capability is READ FROM THE RUN (:func:`leg_capability`) and cross-checked
+against the record that names the run (:func:`block_capability`); either absent,
+or the two disagreeing, skips the entry by name. A rebind whose bytes MOVED is
+refused and names the architectures it would strand, because their evidence then
+describes bytes that no longer ship -- re-run them on these bytes (bind last and
+nothing goes stale) or drop them out loud with ``--supersede``. An entry still in
+the pre-migration shape is refused by name, never read both ways.
+
 EXIT CODE. Non-zero whenever anything was skipped, the same as the Metal tool.
 Blocks are skipped every run and will be until each is re-cut, so a non-zero exit
 here is the standing statement that device runs are owed, not a transient failure
@@ -118,7 +135,15 @@ def _find_api_root(start: Path) -> Path:
 _API = _find_api_root(_HERE)
 if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
+# The flat sibling, on the path the way ``record_cuda_regate`` puts THIS file on it.
+# One home for the key the gates stamp the device into: a writer and a reader with
+# two spellings of it would read every leg as stamping no device at all, which is
+# the defect this import exists to make impossible.
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
+import gate_provenance  # noqa: E402
+from meep_gpu import fastpath  # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
 
 KERNELS = _API / "meep_gpu" / "cuda_kernels"
@@ -393,6 +418,94 @@ def _stamp(payloads: list[dict], *keys: str) -> list:
     return seen
 
 
+#: Where a CUDA leg records the device it ran on. THREE homes, because the fleet has
+#: three writers and no one of them covers every family: ``probe.device_info()``
+#: under ``environment`` (most families), ``gate_cuda_no_pml_null_constitutive``'s own
+#: ``provenance.device`` -- the key ``recut_driver_dispatch_record.stamped_capabilities``
+#: reads -- and ``gate_provenance.stamp``'s single stamping point, which is the only
+#: home the three gates that write neither of those have (measured:
+#: ``gate_cuda_fused_complex_pairs.py``, which 14 cited welds are bound to,
+#: ``gate_cuda_complex_offdiag_update_e.py`` and
+#: ``gate_cuda_folded_offdiag_rowmask.py``).
+#:
+#: READING A TOP-LEVEL ``compute_capability`` WAS THE DEFECT. No CUDA gate writes one,
+#: so a cross-check spelled that way returns nothing for every leg and silently
+#: degrades to "unmeasured" -- the shape of failure this ledger exists to end.
+#:
+#: EVERY value found must AGREE: a cross-check, not a fallback chain. A leg whose two
+#: homes disagree cannot say which device ran it, and a weld is a claim about
+#: generated code for one architecture.
+CAPABILITY_PATHS = (
+    ("environment", "compute_capability"),
+    ("provenance", "device", "compute_capability"),
+    (gate_provenance.DEVICE_KEY, "compute_capability"),
+)
+
+#: What the ENTRY keeps: the bytes this weld binds, and the curated claims about them.
+#: Every one is a property of the TREE, so it is the same fact on every architecture
+#: the gate is cut on.
+ENTRY_FIELDS = ("code_sha256", "kernel_module", "kernels", "legs", "purpose",
+                "source_drift", "source_sha256", "status")
+
+#: What ONE RUN's record holds, under ``runs[<capability>]``. A subset of
+#: :data:`meep_gpu.fastpath.RUN_FIELDS`, which refuses anything outside it: these are
+#: the fields that would otherwise describe the last architecture rebound and read as
+#: though they described all of them.
+SLOT_FIELDS = ("artifact_sha256", "campaign", "gate_started_utc", "host",
+               "recorded_utc", "records", "subnormal_policy", "verdict_read_from")
+
+
+def leg_capability(payloads: list[dict]) -> tuple[str | None, str]:
+    """The compute capability THE LEGS stamped, or why it cannot be read.
+
+    Read from the run, never from the record: a per-capability certification record
+    keyed off a hand-typed number is the same record the typed
+    ``validated_compute_capabilities`` key was, and that key is what this container
+    replaces. The record's own declaration is the cross-check
+    (:func:`block_capability`), not the source.
+    """
+    found = set()
+    for path in CAPABILITY_PATHS:
+        for value in _stamp(payloads, *path):
+            found.add(fastpath._normalized_capability(value))  # noqa: SLF001
+    homes = [".".join(path) for path in CAPABILITY_PATHS]
+    if not found:
+        return None, (f"no leg stamps a compute capability at any of {homes}; a weld "
+                      f"cannot be keyed by an architecture no run recorded -- re-gate "
+                      f"it with a gate_provenance.stamp() that reads the device")
+    if len(found) > 1:
+        return None, (f"the legs stamp {sorted(found)} compute capabilities at {homes}, "
+                      f"not one; this verdict was not cut on a single architecture")
+    return found.pop(), ""
+
+
+def block_capability(name: str, block: dict) -> tuple[str | None, str]:
+    """The capability the RECORD declares for the run this weld is bound to.
+
+    The certification block whose directory the legs came out of -- the campaign block
+    under ``--campaign``, the family's own block otherwise -- in both of the places a
+    block spells it. ``record_cuda_regate.build_block`` writes the two together off
+    one environment and refuses a campaign whose legs disagree about the device, so a
+    block carrying only one of them, or two that differ, was not written by that tool.
+    """
+    environment = block.get("environment")
+    found = {fastpath._normalized_capability(value)  # noqa: SLF001
+             for value in (block.get("compute_capability"),
+                           environment.get("compute_capability")
+                           if isinstance(environment, dict) else None)
+             if value}
+    if not found:
+        return None, (f"certification.json:{name} declares no compute_capability, so "
+                      f"the record cannot cross-check the device the legs stamped; "
+                      f"re-record the run with record_cuda_regate.py rather than "
+                      f"typing one here")
+    if len(found) > 1:
+        return None, (f"certification.json:{name} declares {sorted(found)} compute "
+                      f"capabilities between its own key and its environment block; "
+                      f"one block describes one device run")
+    return found.pop(), ""
+
+
 def seed_key_set(record: dict, name: str, block: dict, imports: dict) -> list[str]:
     """The curated set for an entry this tool is creating.
 
@@ -458,9 +571,26 @@ def main(argv=None) -> int:
                              "block from its dated directory -- several of which "
                              "would seed DRIFTED, which is a decision and not a side "
                              "effect.")
+    parser.add_argument("--supersede", default="",
+                        help="comma-separated compute capabilities whose run records "
+                             "this bind may strand. A rebind on bytes that MOVED "
+                             "leaves every OTHER architecture's record certifying "
+                             "bytes that no longer ship, so the write refuses and "
+                             "names them: either re-run those architectures on these "
+                             "bytes (bind this one LAST, and nothing goes stale), or "
+                             "say out loud here that their evidence is dropped.")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
     args = parser.parse_args(argv)
     only = {name.strip() for name in args.only.split(",") if name.strip()}
+    supersede = tuple(sorted({name.strip() for name in args.supersede.split(",")
+                              if name.strip()}))
+    mis_spelled = [name for name in supersede
+                   if not fastpath._CAPABILITY_KEY.match(  # noqa: SLF001
+                       fastpath._normalized_capability(name) or "")]  # noqa: SLF001
+    if mis_spelled:
+        raise SystemExit(f"--supersede takes normalised compute capabilities spelled "
+                         f"as the records key them ('8.6', '9.0'); {mis_spelled} are "
+                         f"not, and would silently supersede nothing")
 
     record = _record()
     ledger = json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.is_file() else {}
@@ -511,8 +641,8 @@ def main(argv=None) -> int:
                 f"bound to an unrecorded run points at evidence the narrative record "
                 f"has no entry for. Record the run first: "
                 f"record_cuda_regate.py --campaign results/{campaign.name} --write")
-        campaign_name, block = found
-        declared = block.get("artifact_sha256")
+        campaign_name, campaign_declaration = found
+        declared = campaign_declaration.get("artifact_sha256")
         live = manifest_digest(campaign)
         if declared != live:
             raise SystemExit(
@@ -520,9 +650,9 @@ def main(argv=None) -> int:
                 f"{declared} and {campaign.name}/ digests to {live}. The block and "
                 f"its directory disagree; re-run record_cuda_regate.py rather than "
                 f"binding against either.")
-        re_gated = {row["block"]: row for row in block[RE_GATE_KEY]}
+        re_gated = {row["block"]: row for row in campaign_declaration[RE_GATE_KEY]}
 
-    created, rebound, skipped, drifted = [], [], [], []
+    created, rebound, skipped, drifted, superseded = [], [], [], [], []
 
     for name in sorted(blocks):
         block = blocks[name]
@@ -530,6 +660,22 @@ def main(argv=None) -> int:
         if only and name not in only:
             skipped.append((name, "not selected by --only"))
             continue
+        if entry is not None:
+            # THE PRE-MIGRATION SHAPE IS REFUSED BY NAME, never read both ways. An
+            # entry with ``host``/``records``/``recorded_utc`` beside its digests
+            # describes ONE run as though it described every architecture, and a
+            # writer that accepted it would answer "which bytes did this run
+            # certify?" two ways. migrate_capability_records.py converts it.
+            # Checked against the FULL run-field set, not just :data:`SLOT_FIELDS`:
+            # measured over all 55 entries, none carries any of them at entry level,
+            # so the broader check costs nothing and catches a field this tool does
+            # not write but a hand edit might.
+            retired = fastpath.retired_shape_reasons(entry)
+            if retired:
+                skipped.append((name, f"not in the per-capability shape "
+                                      f"({'; '.join(retired)}); convert the ledger "
+                                      f"with migrate_capability_records.py --write"))
+                continue
         if RE_GATE_KEY in block:
             # A RE-GATE CAMPAIGN IS NOT A FAMILY. Its verdict is the family
             # verdicts it re-cut, each of which owns its own ledger entry, so it
@@ -588,6 +734,29 @@ def main(argv=None) -> int:
             skipped.append((name, "the legs record no agreed imported_source_sha256"))
             continue
 
+        # WHICH ARCHITECTURE THIS VERDICT IS ABOUT, read from the run and
+        # cross-checked against the record that names the run. Two independent
+        # sources, both required: the legs alone could be a tree someone copied
+        # under a block that describes another device, and the record alone is a
+        # number a person typed -- which is precisely what the retired
+        # ``validated_compute_capabilities`` key was.
+        declared_from = campaign_name if campaign is not None else name
+        declared_block = campaign_declaration if campaign is not None else block
+        declared_cc, why = block_capability(declared_from, declared_block)
+        if declared_cc is None:
+            skipped.append((name, why))
+            continue
+        capability, why = leg_capability(payloads)
+        if capability is None:
+            skipped.append((name, why))
+            continue
+        if capability != declared_cc:
+            skipped.append((name, f"the legs ran on compute capability {capability} and "
+                                  f"certification.json:{declared_from} records "
+                                  f"{declared_cc}; one of the two describes a different "
+                                  f"run and this tool cannot say which"))
+            continue
+
         curated = list(entry["source_sha256"]) if entry else \
             seed_key_set(record, name, block, imports)
         unknown = [key for key in curated if key not in imports]
@@ -623,12 +792,25 @@ def main(argv=None) -> int:
         # another. ``campaign`` names the certification block that records the
         # run, which is the join back to what it was.
         relative = directory.relative_to(_API / "parity" / "meep_gpu" / "results")
+
+        # THE BOUND, READ BEFORE THE DIGESTS ARE REFRESHED. It is the only moment
+        # both the old and the new answer to "which bytes does this weld bind?" are
+        # in hand, and that difference is what decides whether the OTHER
+        # architectures' records still describe shipping bytes --
+        # :func:`fastpath.bind_capability` refuses below and names them.
+        bound_before = None
+        if entry is not None:
+            try:
+                bound_before = fastpath.bound_digest(entry)
+            except fastpath.CapabilityRecordError as refused:
+                skipped.append((name, str(refused)))
+                continue
+
+        # THE ENTRY: the bytes and the curated claims about them, the same on every
+        # architecture this gate is cut on.
         entry = dict(entry or {})
-        entry.update({
-            "artifact_sha256": manifest_digest(directory),
+        refreshed = {
             "code_sha256": code,
-            "gate_started_utc": min(_stamp(payloads, "started_utc") or ["unknown"]),
-            "host": host,
             "kernels": entry.get("kernels") or seed_kernels(record, block),
             "kernel_module": entry.get("kernel_module") or [
                 key for key in curated if key.startswith("meep_gpu/cuda_kernels/")
@@ -636,24 +818,61 @@ def main(argv=None) -> int:
             "legs": legs,
             "purpose": entry.get("purpose") or (
                 f"Device byte gate welded to certification.json:{name}."),
-            "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "records": (f"apps/api/parity/meep_gpu/results/{relative.as_posix()}/ - "
-                        f"{len(legs)} canonical policy legs, all released"),
             "source_drift": sorted(moved),
             "source_sha256": {key: imports[key] for key in curated},
             "status": "PASS" if not moved else "DRIFTED",
+        }
+        # THE SPLIT IS DRIVEN BY THE CONSTANT, not merely described by it: the write
+        # is keyed off :data:`ENTRY_FIELDS`, so a field added on one side and not the
+        # other fails loudly here instead of landing on whichever side of the split
+        # the dict literal happened to put it -- which is how a run fact ends up
+        # beside the digests again.
+        disagree = sorted(set(refreshed).symmetric_difference(ENTRY_FIELDS))
+        if disagree:
+            raise SystemExit(f"the entry-level write and ENTRY_FIELDS disagree about "
+                             f"{disagree}; one of the two was edited alone")
+        entry.update({field: refreshed[field] for field in ENTRY_FIELDS})
+
+        # THE RUN: everything that describes THIS execution on THIS device, keyed by
+        # the capability the legs stamped. Beside the digests these fields read as
+        # though they described every architecture the weld has ever been cut on,
+        # which is the defect the container closes -- and the reason a second
+        # architecture is additive rather than a rewrite.
+        run = {
+            "artifact_sha256": manifest_digest(directory),
+            "gate_started_utc": min(_stamp(payloads, "started_utc") or ["unknown"]),
+            "host": host,
+            "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "records": (f"apps/api/parity/meep_gpu/results/{relative.as_posix()}/ - "
+                        f"{len(legs)} canonical policy legs, all released"),
             "subnormal_policy": "; ".join(policies) if policies else
                                 "not stamped by any leg",
             "verdict_read_from": (f"{relative.as_posix()}/{{{','.join(legs)}}}"
                                   ":canonical_verdict.released"),
-        })
+        }
+        # A run cut from the block's OWN dated directory records no campaign at all,
+        # and nothing is cleared for it: ``campaign`` is a run field now, so one left
+        # by an earlier ``--campaign`` bind describes THAT capability's run and is
+        # not this one's to touch.
         if campaign is not None:
-            entry["campaign"] = (
+            run["campaign"] = (
                 f"certification.json:{campaign_name} — the re-gate that cut this "
                 f"verdict. The block's own dated artifacts and digest are unchanged; "
                 f"this weld is bound to the re-gate tree, which that block records.")
-        else:
-            entry.pop("campaign", None)
+
+        try:
+            # ``run_fields=SLOT_FIELDS`` narrows the refusal to THIS table's run set:
+            # a field outside it belongs beside the digests or to another track, and
+            # fastpath names it rather than writing it into the record.
+            staled = fastpath.bind_capability(entry, bound_before=bound_before,
+                                              capability=capability, run=run,
+                                              run_fields=SLOT_FIELDS,
+                                              supersede=supersede)
+        except fastpath.CapabilityRecordError as refused:
+            skipped.append((name, str(refused)))
+            continue
+        if staled:
+            superseded.append((name, staled))
         if name not in ledger:
             # Written once, at creation, and never again. Everything a human
             # later adds under _notes is invisible to this tool.
@@ -661,24 +880,36 @@ def main(argv=None) -> int:
                 "_narrative_lives_in":
                     f"meep_gpu/cuda_kernels/certification.json:{name}",
             }
-            created.append(name)
+            created.append((name, capability, fastpath.live_capabilities(entry)))
         else:
-            rebound.append(name)
+            rebound.append((name, capability, fastpath.live_capabilities(entry)))
         if moved:
             drifted.append((name, moved))
         ledger[name] = entry
 
-    for key in created:
-        print(f"  created  {key}", flush=True)
-    for key in rebound:
-        print(f"  rebound  {key}", flush=True)
+    # EVERY LINE NAMES THE ARCHITECTURE, and the live set beside it, because that is
+    # the question a round asks: which capabilities does this weld still certify?
+    # A bind that silently replaced one and stranded another would otherwise look
+    # exactly like a bind that added one.
+    for key, capability, live in created:
+        print(f"  created  {key}: runs[{capability}] (live: {', '.join(live)})",
+              flush=True)
+    for key, capability, live in rebound:
+        print(f"  rebound  {key}: runs[{capability}] (live: {', '.join(live)})",
+              flush=True)
     for key, why in skipped:
         print(f"  SKIPPED  {key}: {why}", flush=True)
     for key, moved in drifted:
         print(f"  DRIFTED  {key}: the tree has moved under "
               f"{len(moved)} pinned file(s): {moved}", flush=True)
+    for key, staled in superseded:
+        print(f"  SUPERSEDED  {key}: these bytes moved, so the records for "
+              f"{list(staled)} no longer certify what ships. They stay in the entry "
+              f"as history -- stale, not live -- rather than being re-run, which is "
+              f"what --supersede asked for", flush=True)
     print(f"\n  {len(created)} created, {len(rebound)} rebound, {len(skipped)} skipped, "
-          f"{len(drifted)} carrying source drift", flush=True)
+          f"{len(drifted)} carrying source drift, {len(superseded)} superseding another "
+          f"capability's record", flush=True)
 
     if args.write and (created or rebound):
         LEDGER.write_text(json.dumps(ledger, indent=2, sort_keys=True) + "\n",

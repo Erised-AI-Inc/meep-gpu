@@ -63,7 +63,16 @@ API_ROOT = HERE.parents[1]
 #: them. They are set aside on the host this driver ran on; "idle right now" is not
 #: permission, and a residency check that passes on one of them is answering the
 #: wrong question.
-FORBIDDEN_GPUS = frozenset({4, 5})
+#:
+#: A DEFAULT, NOT A FACT ABOUT EVERY HOST, since 2026-09-30. Certifying a second
+#: compute capability means running this fleet on a card this driver has never seen,
+#: on a box where 4 and 5 may be the only free devices — a set hardcoded here ties
+#: the round to one machine. It stays the DEFAULT rather than becoming empty because
+#: every standing invocation on the current GPU host omits the flag, and a flag whose
+#: absence newly permits a set-aside device would be a silent change of who this
+#: driver may disturb. A different host passes its own set, or ``--forbidden-gpus ''``
+#: to declare that nothing is set aside.
+DEFAULT_FORBIDDEN_GPUS = frozenset({4, 5})
 
 #: A device carrying more than this with no listed compute process is still
 #: treated as occupied. Matches the direct runners' guard: an unattributable
@@ -697,11 +706,17 @@ def _nvidia_smi(args: Sequence[str]) -> str:
     return completed.stdout.strip()
 
 
-def device_is_empty(index: int) -> Tuple[bool, str]:
-    """Is this PHYSICAL device free right now, and what says so."""
-    if index in FORBIDDEN_GPUS:
-        return False, (f"GPU {index} is set aside on this host (FORBIDDEN_GPUS) and "
-                       f"is never available to this campaign")
+def device_is_empty(index: int, forbidden: frozenset) -> Tuple[bool, str]:
+    """Is this PHYSICAL device free right now, and what says so.
+
+    ``forbidden`` is threaded rather than read from a module constant so that one
+    campaign's set-aside devices are the ones it was told about; see
+    :data:`DEFAULT_FORBIDDEN_GPUS`.
+    """
+    if index in forbidden:
+        return False, (f"GPU {index} is set aside on this host "
+                       f"(--forbidden-gpus {sorted(forbidden)}) and is never "
+                       f"available to this campaign")
     resident = _nvidia_smi(["--id", str(index), "--query-compute-apps=pid,"
                             "process_name,used_memory", "--format=csv,noheader"])
     if resident:
@@ -718,16 +733,16 @@ def device_is_empty(index: int) -> Tuple[bool, str]:
     return True, f"GPU {index} empty: {used_mib} MiB, no compute process"
 
 
-def wait_for_device(index: int, patience_s: int, poll_s: int = 60
-                    ) -> Tuple[bool, str]:
+def wait_for_device(index: int, patience_s: int, *, forbidden: frozenset,
+                    poll_s: int = 60) -> Tuple[bool, str]:
     """Block until the device is empty, or give up and REFUSE — never share."""
     deadline = time.time() + patience_s
-    empty, why = device_is_empty(index)
-    while not empty and time.time() < deadline and index not in FORBIDDEN_GPUS:
+    empty, why = device_is_empty(index, forbidden)
+    while not empty and time.time() < deadline and index not in forbidden:
         log(f"[wait] {why}; re-checking in {poll_s}s "
             f"({int(deadline - time.time())}s of patience left)")
         time.sleep(poll_s)
-        empty, why = device_is_empty(index)
+        empty, why = device_is_empty(index, forbidden)
     return empty, why
 
 
@@ -765,6 +780,22 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
     * single-threaded BLAS — the host halves of these gates are NumPy oracles on
       a many-core shared host; nothing here is timed, and grabbing every
       thread to compute an oracle is rude, not fast.
+
+    TWO ENTRIES ARE HERE AHEAD OF THE FAILURE RATHER THAN BEHIND IT (2026-09-30),
+    and that is the whole reason a family gate needs no certification switch:
+
+    * ``MEEP_GPU_DISPATCH=0`` — PINNED OFF, never inherited. The gates and probes
+      in this fleet reach ``plan_step`` directly and monkeypatch sub-steps, and the
+      reference drivers several of them build are lifted with ``prefer_gpu=True``;
+      with dispatch on by default, an ADMITTED capability turns the reference half
+      of a comparison into a kernel run and the gate compares a kernel against
+      itself. Every test oracle in the package is pinned the same way for the same
+      reason.
+    * ``MEEP_GPU_ALLOW_UNCERTIFIED`` — REMOVED from the child's environment. The
+      opt-in exists so a developer can dispatch on a card the record does not
+      certify; a round whose point is to EARN that certification must not inherit
+      it from the shell that launched it, or the evidence it cuts would rest on the
+      admission it is supposed to produce.
     """
     home = Path.home()
     stub = os.environ.get("TRITON_LIBCUDA_PATH", str(home / "triton_libcuda_stub"))
@@ -777,9 +808,11 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
     cupy_cache.mkdir(parents=True, exist_ok=True)
     triton_cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
+    env.pop("MEEP_GPU_ALLOW_UNCERTIFIED", None)
     env.update({
         "CUDA_VISIBLE_DEVICES": str(gpu),
         "MEEP_GPU_SUBNORMAL_POLICY": policy,
+        "MEEP_GPU_DISPATCH": "0",
         "TRITON_LIBCUDA_PATH": stub,
         "LD_LIBRARY_PATH": stub + ":" + env.get("LD_LIBRARY_PATH", ""),
         "KMP_DUPLICATE_LIB_OK": "TRUE",
@@ -865,6 +898,54 @@ def read_artifact(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         return None, f"artifact unreadable at {path}: {exc!r}"
 
 
+def record_device(python: str, out_root: Path, env: Dict[str, str]
+                  ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """``<out_root>/device.json`` — WHICH card this campaign's gates ran on.
+
+    Returns ``(payload, None)`` or ``(None, reason)``; the caller refuses the whole
+    campaign on a reason, because a fleet whose device is unknown cannot be bound
+    to anything.
+
+    WHY A CAMPAIGN CANNOT SKIP IT (2026-09-30). A certification record is keyed by
+    compute capability, and every writer has to READ that key off the run. The
+    family gates do not supply it: by the multi-capability design's census of the
+    2026-09-25 fleet, the family artifacts' ``environment`` blocks are empty and
+    twelve of the thirty-seven cited welds name no device at all (that census is the
+    design's, not a count taken here) — so a round that ran only this fleet would leave
+    the rebind nothing to key a slot by, and the round would end with gates that
+    released and no capability to certify. One recorder process, before the first
+    gate, in the environment the gates themselves get, closes that.
+
+    IN THE GATE ENVIRONMENT, NOT THIS PROCESS'S. ``CUDA_VISIBLE_DEVICES`` is what
+    decides which card a child sees; recording the identity anywhere else would
+    describe whatever device index 0 is on the box rather than the one every gate in
+    this campaign is pinned to. It is a separate process from the gates for the
+    reason every gate is: this driver never imports a device stack, so it cannot
+    read a device itself.
+    """
+    tool = HERE / "triton_device_identity.py"
+    argv = [python, "-u", str(tool), "--write", str(out_root)]
+    log_path = out_root / "device.log"
+    spelled = " ".join(shlex.quote(part) for part in argv)
+    with log_path.open("w", encoding="utf-8") as handle:
+        completed = subprocess.run(argv, cwd=str(API_ROOT), env=env, stdout=handle,
+                                   stderr=subprocess.STDOUT, check=False)
+    if completed.returncode != 0:
+        return None, (f"{spelled} exited {completed.returncode}: "
+                      f"{_last_line(log_path)} (full output in {log_path})")
+    # EXIT 0 IS NOT A RECORD. The recorder writes nothing on its own refusals, and
+    # a campaign that trusted the status code alone would run the fleet and only
+    # discover at rebind time that there is no capability to key the slots by.
+    payload, problem = read_artifact(out_root / "device.json")
+    if payload is None:
+        return None, (f"{spelled} exited 0 and left no readable record: {problem}; "
+                      f"output in {log_path}")
+    if not payload.get("compute_capability"):
+        return None, (f"{out_root / 'device.json'} names no compute capability "
+                      f"(keys: {sorted(payload)}); a slot cannot be keyed by it")
+    return payload, None
+
+
 def native_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
     """The gate's OWN spelling of its outcome, beside the canonical reading.
 
@@ -898,7 +979,7 @@ def native_verdict(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
             gpu: int, probe: Optional[str], heartbeat: int, patience: int,
-            policy: str) -> Dict[str, Any]:
+            policy: str, forbidden: frozenset) -> Dict[str, Any]:
     """Run one gate to completion and return the row the campaign records."""
     out_dir = out_root / gate.name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -914,7 +995,7 @@ def run_one(gate: Gate, *, python: str, out_root: Path, cache_root: Path,
         "note": gate.note,
     }
 
-    empty, why = wait_for_device(gpu, patience)
+    empty, why = wait_for_device(gpu, patience, forbidden=forbidden)
     row["placement"] = why
     if not empty:
         row.update({"exit_code": None, "released": None, "elapsed_s": 0.0,
@@ -1008,7 +1089,16 @@ def append_jsonl(path: Path, row: Dict[str, Any]) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--gpu", type=int, default=7,
-                        help="PHYSICAL device index; 4 and 5 are refused")
+                        help="PHYSICAL device index; anything in --forbidden-gpus "
+                             "is refused")
+    parser.add_argument("--forbidden-gpus",
+                        default=",".join(str(index) for index
+                                         in sorted(DEFAULT_FORBIDDEN_GPUS)),
+                        help="comma-separated PHYSICAL device indices this "
+                             "campaign may never take, whatever nvidia-smi says "
+                             "about them; the default is the set aside on the "
+                             "current GPU host, and '' declares that this host "
+                             "sets none aside")
     parser.add_argument("--out-root", required=True,
                         help="campaign directory; one subdirectory per gate")
     parser.add_argument("--python", default=sys.executable)
@@ -1027,8 +1117,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="seconds to wait for a busy device before refusing")
     args = parser.parse_args(argv)
 
-    if args.gpu in FORBIDDEN_GPUS:
-        log(f"ABORT: GPU {args.gpu} is set aside on this host (FORBIDDEN_GPUS)")
+    try:
+        forbidden = frozenset(int(part) for part
+                              in args.forbidden_gpus.split(",") if part.strip())
+    except ValueError:
+        log(f"ABORT: --forbidden-gpus {args.forbidden_gpus!r} is not a "
+            f"comma-separated list of device indices")
+        return 2
+
+    if args.gpu in forbidden:
+        log(f"ABORT: GPU {args.gpu} is set aside on this host "
+            f"(--forbidden-gpus {sorted(forbidden)})")
         return EXIT_CANNOT_CERTIFY
 
     out_root = Path(args.out_root).resolve()
@@ -1062,10 +1161,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     log(f"api root: {API_ROOT}")
     log(f"out root: {out_root}")
     log(f"gpu: {args.gpu}  gates: {len(names)}  jsonl: {jsonl}")
+    log(f"devices set aside on this host: {sorted(forbidden) or 'none'}")
     log(f"subnormal policy requested for every gate: {args.policy!r}")
     log(f"expansion probe handed to gates that consume one: {probe_note(args.probe)}")
     log(_nvidia_smi(["--query-gpu=index,name,memory.used,utilization.gpu",
                      "--format=csv,noheader"]))
+
+    # THE DEVICE, BEFORE THE FIRST GATE AND IN THE GATES' OWN ENVIRONMENT. The
+    # record a rebind keys a slot by is the compute capability this campaign ran
+    # on, and the family gates stamp none; a campaign that discovered that after
+    # the fleet had run would have spent the GPU hours and still have nothing to
+    # certify. The cache directories this environment names are the recorder's own,
+    # for the same reason every gate's are private: nothing it compiles may serve a
+    # later gate a binary from another policy.
+    device, why = record_device(
+        args.python, out_root,
+        gate_environment(args.gpu, cache_root, "device_identity", args.policy))
+    if device is None:
+        log(f"ABORT: the campaign's device cannot be recorded, so nothing it cuts "
+            f"could be bound to a capability — {why}")
+        return EXIT_CANNOT_CERTIFY
+    log(f"device: {device.get('device')} cc {device.get('compute_capability')} "
+        f"on {device.get('hostname')} (CUDA_VISIBLE_DEVICES="
+        f"{device.get('cuda_visible_devices')!r}, CuPy {device.get('cupy')}, "
+        f"Triton {device.get('triton')}) -> {out_root / 'device.json'}")
 
     probe = args.probe
     rows: List[Dict[str, Any]] = []
@@ -1075,7 +1194,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         row = run_one(gate, python=args.python, out_root=out_root,
                       cache_root=cache_root, gpu=args.gpu, probe=probe,
                       heartbeat=args.heartbeat, patience=args.patience,
-                      policy=args.policy)
+                      policy=args.policy, forbidden=forbidden)
         row["order"] = index
         rows.append(row)
         append_jsonl(jsonl, row)
@@ -1098,6 +1217,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "finished_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "host": socket.gethostname(),
         "gpu": args.gpu,
+        "forbidden_gpus": sorted(forbidden),
+        # THE DEVICE, IN THE CAMPAIGN RECORD AND NOT ONLY IN A SIBLING FILE. A
+        # reader asking "which card certified this?" reads one artifact, and a
+        # rebind reading the campaign row does not have to find device.json beside
+        # it. Same bytes, both places, written once by the recorder.
+        "device": device,
         "released": sorted(r["gate"] for r in rows if r.get("released") is True),
         "refused": sorted(r["gate"] for r in rows if r.get("released") is False),
         "unreadable": sorted(r["gate"] for r in rows

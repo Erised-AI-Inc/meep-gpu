@@ -28,7 +28,7 @@ WHAT THIS IS NOT. It is not a byte claim: no kernel launches here and no field m
 It is not a coverage number either — that is the corpus battery, on lifted rows. It
 is the composition's own safety property and nothing more.
 
-Rule 7: one flushed line per row, the artifact rewritten as each row lands.
+Progress reporting: one flushed line per row, the artifact rewritten as each row lands.
 """
 
 from __future__ import annotations

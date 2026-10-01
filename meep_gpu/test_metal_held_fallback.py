@@ -26,7 +26,7 @@ asserts the plan it froze actually HELD (mode ``held``, held count > 0, nothing
 refused). The held leg always freezes FIRST: rung 8bM installs the flush policy
 process-wide, and the array reference must step under it to be comparable.
 
-Rule 7: each parametrised case prints one flushed line with what it measured.
+Progress reporting: each parametrised case prints one flushed line with what it measured.
 """
 
 from __future__ import annotations

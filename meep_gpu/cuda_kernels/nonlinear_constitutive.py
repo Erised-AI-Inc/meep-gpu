@@ -138,7 +138,7 @@ is written. This family adds three of its own.
    ``__fdiv_rn`` is written rather than ``/`` for the same reason the sibling
    Triton kernel writes ``tl.math.div_rn``: on THAT platform the plain operator
    was measured to be ``div.full.f32`` (~2 ulp) and every nonlinear sweep case
-   diverged (jobs 2336/2338). CUDA's default is ``-prec-div=true`` and the two
+   diverged. CUDA's default is ``-prec-div=true`` and the two
    spellings are expected to agree HERE -- which is a claim about this platform,
    so the gate probes it (``plain_division``, reported as a spelling probe with a
    reading, exactly as the contraction guard's control is reported).

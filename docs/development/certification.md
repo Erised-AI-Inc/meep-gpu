@@ -145,10 +145,42 @@ Seven JSON ledgers ship inside the package and are read at run time:
 | <code>meep_gpu/cuda_kernels/certification.json</code> | The hand-written CUDA table's campaign records, including the device source strings |
 | <code>meep_gpu/cuda_kernels/own_cell_hoist_reference.json</code> | The reference record of one hand-written CUDA kernel rewrite |
 | <code>meep_gpu/metal_kernels/fingerprints.json</code> | The Metal table's certification entries and its dispatch record |
-| <code>meep_gpu/triton_kernels/timing.json</code>, <code>meep_gpu/cuda_kernels/timing.json</code> | Timing records cut from timing rows |
+| <code>meep_gpu/triton_kernels/timing_cc86.json</code>, <code>meep_gpu/cuda_kernels/timing_cc86.json</code> | Timing records cut from timing rows, one per compute capability |
 
 Each certification entry binds a gate's verdict to the sha256 digests of the
-source files that produced it. Two rules follow:
+source files that produced it, and keeps **one record per GPU architecture** it has
+been run on, under its <code>runs</code> key:
+
+```json
+"triton_complex_no_pml_curl_device_gate": {
+  "source_sha256": {"...": "the bytes this gate certified"},
+  "status": "PASS",
+  "runs": {
+    "8.6": {
+      "host": "... NVIDIA RTX A6000, cc 8.6; CuPy 13.5.1; Triton 3.1.0 ...",
+      "records": "apps/api/parity/meep_gpu/results/triton_fleet_.../complex_no_pml_curl/",
+      "recorded_utc": "2026-09-25T16:09:24Z",
+      "bound_sha256": "the digest of the digests above, at the time of that run"
+    }
+  }
+}
+```
+
+The <code>records</code> paths in the shipped ledgers begin <code>apps/api/</code>: that
+is the layout of the tree the records were cut in, and it is quoted as it was
+recorded rather than rewritten, since every run record carries it. In this repository
+the same directory is <code>parity/meep_gpu/results/</code>, which is not committed, so
+a clone holds the path but not the run behind it.
+
+<code>bound_sha256</code> is what makes an architecture's record expire on its own: a
+record is LIVE only while it equals the digest of the entry's own pinned bytes, so an
+edit to a certified file retires every architecture's evidence for that entry at once,
+and no reader has to be told to re-check. A table's
+<code>validated_compute_capabilities</code> is DERIVED from these records -- the
+intersection, over the entries that table's arms cite, of each entry's live
+architectures -- and is not written anywhere by hand.
+
+Two rules follow:
 
 1. **A verdict that has drifted is re-earned by re-running the gate, not by
    editing the ledger.** Editing a certified file puts every entry that pins it
@@ -168,6 +200,175 @@ GPU.
 A green ledger does not by itself mean a coverage board can be cut. A ledger
 checks the files each entry names; a board checks every file the gate process
 imported, which is the larger set.
+
+## Certifying another compute capability
+
+Everything the package admits is read from the records above, so a second GPU
+architecture is certified by writing records, not by editing code. Three properties make
+that safe, and each is a test on a host with no GPU
+(<code>meep_gpu/test_capability_records.py</code>):
+
+* a run on an architecture **joins** the ones already recorded, as long as the bytes it
+  certified have not moved;
+* a run on bytes that **have** moved refuses by name rather than silently leaving the
+  other architectures' records pointing at code that no longer ships. Re-run those
+  architectures, or supersede them explicitly with <code>--supersede</code>;
+* a table claims an architecture only when **every** entry its arms cite has a live
+  record for it. A partial round admits nothing, and the refusal names the entries that
+  are short.
+
+The steps below are in order because the route and licence legs dispatch, and so need
+the architecture already admitted by the records steps 1–2 write. The family gates in
+step 1 do not: see "Which architecture binds first" for what is actually ordered and
+what only looks ordered.
+
+| # | Step | Where | Writes |
+|---|---|---|---|
+| 0 | Commit the tree and record the commit. Every architecture in the round runs on these bytes. Then ask whether the tree still supports the records, with the weld contracts: <code>python -m pytest meep_gpu parity/meep_gpu -m certification</code>. Any weld they report as drifted has to be re-run for the architecture already certified FIRST, and bound first, before a second architecture can join it — see "Which architecture binds first" below | laptop | nothing |
+| 1 | The family gates and composition probes, with dispatch pinned off. A Triton campaign root carries a <code>device.json</code> naming the card; a CUDA artifact names its own (see "What names the card") | GPU host | run artifacts |
+| 2 | The rebinds: <code>rebind_triton_welds.py</code>, its bit-identity mode, <code>recut_composition_records.py</code> (including <code>--family-recert</code>) and <code>rebind_cuda_welds.py</code>. Each reads the architecture off the run and adds that record | laptop | the two <code>fingerprints.json</code> |
+| 3 | Check admission before spending another GPU hour: <code>python -c "from meep_gpu import fastpath; print(fastpath.capability_admission('triton'))"</code>. Both tables must list the new architecture, and any entry still short is named | laptop | nothing |
+| 4 | The route campaigns, from the default, one per table, in the directory <code>&lt;stamp&gt;_cc&lt;capability&gt;</code>; then <code>recut_driver_dispatch_record.py</code> | GPU host, then laptop | the dispatch records |
+| 5 | The end-to-end go/no-go, from the default; its licence is transcribed onto the table that composes first | GPU host, then laptop | the licence |
+| 6 | Optional: the timing record, <code>timing_cc&lt;capability&gt;.json</code> | quiet GPU host | the timing record |
+
+### Which architecture binds first
+
+**Only the REBIND order is constrained. The gate runs are not.** Step 1 does not go
+through dispatch admission, so its gates run on any card, in any order, on any night,
+and nothing has to be bound before they do. What a gate produces is an artifact whose
+digests are the bytes it ran; step 2 is a separate, laptop-side act that reads those
+artifacts and writes records.
+
+So two architectures can be gated in either order, or at the same time on two hosts,
+provided both run the SAME COMMIT. They can be bound in either order too: on one commit
+the two orders leave the same ledger, byte for byte
+(<code>parity/meep_gpu/test_rebind_binding_order.py</code>). The orders differ only in
+what the first bind has to say:
+
+* **The architecture already recorded, first.** Its rebind moves the digests onto the
+  commit, and the new architecture's rebind then joins it. No flag.
+* **The new architecture, first.** Its rebind moves the digests, which would strand the
+  recorded architecture's record, so it refuses and names it. Pass
+  <code>--supersede &lt;that capability&gt;</code>: the working ledger then admits only the
+  new architecture until the recorded one is re-bound on the same commit, which restores
+  it. Do not commit or push the ledger between the two binds.
+
+Either way, a rebind carries a per-run fact the fresh artifact does not state (a step
+budget, a curated narrative) from that architecture's previous record only while that
+record is live on the bytes being bound, so neither order can copy a measurement of
+other code into a new record.
+
+A gate artifact does not expire. It stays bindable for as long as the commit it ran is
+the one being bound, which is the whole reason the two steps are separable: GPU hours
+are the scarce thing, and they do not have to be spent in the binding order. What does
+invalidate it is the tree moving — a later commit that touches a pinned file retires
+every architecture's record for that weld at once, and the gates have to run again on
+the new bytes.
+
+**The first round on a tree has no shortcut.** When the weld contracts in step 0 report
+drift across the cited surface, the architecture already named in the ledger is not
+actually certified for the bytes being shipped, and the round is a full re-run for THAT
+architecture before it is an expansion to any other. <code>--supersede</code> refreshes
+nothing on its own: it drops the named architecture's certification, and only that
+architecture's own re-bind on the same commit brings it back. Use it for the binding
+order above, never as a way to certify one card without re-running the other.
+
+### What names the card
+
+The Triton rebinds read the architecture from a <code>device.json</code> in the
+campaign's output root, which <code>drive_triton_weld_gates.py</code> writes when it
+drives the fleet. A gate run by hand, outside that driver, has no such file, so write
+one into the same directory before leaving the GPU host:
+
+    python parity/meep_gpu/triton_device_identity.py --write <campaign-root>
+
+It takes that one flag and nothing else, and refuses anything else by name. Run it in
+the environment the gates ran in, with the same <code>CUDA_VISIBLE_DEVICES</code>, since
+it records the card the LIVE host reports rather than the card the gate used.
+
+<code>device.json</code> is a Triton-side file only. The CUDA rebind never reads one:
+each CUDA artifact records the device it ran on itself, in one of three places
+<code>rebind_cuda_welds.CAPABILITY_PATHS</code> reads —
+<code>environment.compute_capability</code>,
+<code>provenance.device.compute_capability</code>, or the block
+<code>gate_provenance.stamp()</code> writes — and every place a leg fills has to agree.
+A leg that fills none is refused by name, and the remedy is to re-run that gate, not to
+write a file beside it.
+
+### The toolchain is pinned, and only some tools check it
+
+Install the pinned versions on the GPU host — the ones
+<code>environments/nvidia-linux.yml</code> carries — not the current ones:
+
+| | Pinned to |
+|---|---|
+| Triton | <code>3.1.0</code> (<code>fastpath.validated_triton_versions()</code>) |
+| CuPy | <code>13.5.1</code> (derived from the live records; nothing declares it) |
+
+What each step-2 tool does with a run on another version:
+
+| Tool | Triton | CuPy |
+|---|---|---|
+| <code>rebind_triton_welds.py</code> | refused | refused |
+| <code>recut_composition_records.py</code> | refused | not checked |
+| <code>rebind_cuda_welds.py</code> | not checked | not checked |
+
+A refusal happens on the laptop, after the GPU hours are spent. Where nothing checks,
+a run on another version binds without complaint, so the pin is the operator's to
+keep: confirm both versions on the GPU host before the first gate, as the round's
+first step. No flag widens either set today; adopting another Triton or CuPy is a
+change to the code, made deliberately, never a rebind option.
+
+The coverage census and the dispatch boards carry no device dimension, so a new
+architecture needs neither re-cut.
+
+### What a round needs beside the checkout
+
+**A clone of this repository is not enough to run a round.** Many gates read measured
+inputs that are not committed: the predicate-coverage censuses
+(<code>predicate_coverage_*/</code>, whose <code>examples.jsonl</code> and
+<code>tests*.jsonl</code> the corpus-admission legs count), the fusion boards
+(<code>fusion_matrix_triton_*/fusion_matrix.json</code>), the expansion and
+subnormal-policy records (<code>expansion_probe_*</code>,
+<code>complex_expansion_*</code>, <code>device_subnormal_policy_*</code>), and earlier
+gate artifacts that some probes compare against. They live in the evidence archive under
+<code>parity/meep_gpu/results/</code>, which is not part of this repository, and the
+gates open them at those paths.
+
+A gate whose input is absent **refuses** rather than passing on an empty input ("the
+census is absent: …"), so a round on a bare clone releases nothing for those gates.
+Before step 1, on every GPU host in the round:
+
+1. stage the evidence inputs into <code>parity/meep_gpu/results/</code> of the clone,
+   from the same copy on every host — two architectures that read different censuses
+   or boards are not measured against the same question;
+2. provide a MEEP source tree for the corpus legs, at the MEEP release the censuses were
+   cut from: <code>~/meep</code> by default, or set <code>MGPU_SITE_MEEP_SOURCE</code>
+   to a MEEP checkout or <code>MEEP_GPU_CORPUS_ROOT</code> to a directory holding
+   <code>examples/</code> and <code>tests/</code>.
+
+<code>parity/meep_gpu/cases.py</code>, the benchmark case builders that three
+composition gates import, is committed: earlier rounds staged it from the archive as a
+file the tree did not track, and the records still name it as such.
+
+**Expansion records belong to the architecture that measured them.** A complex gate
+licenses its kernels from an expansion record, and the record describes how one
+architecture's compiler expanded complex multiplies, so a record measured on one card
+licenses nothing on another. The Triton fleet measures its own on the card it runs on
+(<code>unified_expansion</code> and <code>complex</code> run first for that reason), and
+the CUDA gates that take <code>--expansion-probe</code> are handed that record.
+<code>gate_cuda_complex_offdiag_stencil_welds.py</code> is the exception: it reads its
+records from fixed archive paths and checks only their subnormal policy, not the
+architecture that measured them. On any architecture other than the one those records
+came from, do not run it until it checks the architecture as well; until then the CUDA
+table cannot admit that architecture, and the CUDA artifacts the round does produce
+stay bindable for when it can.
+
+What a round does NOT need: any edit to the admission code, any new ledger key, or a
+switch to let an uncertified card run its own certification. The family gates do not go
+through dispatch admission, so they run on an unadmitted card as they are; only the
+route and licence legs need step 3 to have passed first.
 
 ## Running a gate
 
@@ -214,8 +415,23 @@ each subnormal policy its own <code>TRITON_CACHE_DIR</code> as well.
 
 ### On a shared host
 
+Export <code>TRITON_LIBCUDA_PATH</code> and <code>LD_LIBRARY_PATH</code> in the shell
+that drives the round, as INSTALL.md step 3 sets them up. Triton links against
+<code>-lcuda</code> and most driver installations provide only
+<code>libcuda.so.1</code>, so without that directory **every device leg fails at link
+time and the gate reports a clean SKIP rather than an error** — a round that looks like
+it ran and certifies nothing. The fleet driver falls back to a different directory name
+than INSTALL.md creates (<code>$HOME/triton_libcuda_stub</code> against
+<code>$HOME/triton_libcuda</code>), so set the variable rather than relying on either
+default, and check the first gate's artifact names a device leg before letting the rest
+of the fleet run.
+
 Pin one idle device with <code>CUDA_VISIBLE_DEVICES</code> and check immediately
-before the run that no other process holds it. The per-family launchers the
+before the run that no other process holds it. The fleet driver ships
+<code>DEFAULT_FORBIDDEN_GPUS = {4, 5}</code>, which are set aside on the host it was
+written for; on any other host pass your own set, or
+<code>--forbidden-gpus ''</code> to declare that nothing is set aside, otherwise the
+driver refuses the two cards by index on a machine where they are free. The per-family launchers the
 NVIDIA campaigns were run with (batch-scheduler jobs and single-host shell
 drivers) are not part of this repository; the certification records still name
 them as provenance. <code>parity/meep_gpu/README.md</code> gives the recipe they

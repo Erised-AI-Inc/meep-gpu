@@ -308,6 +308,16 @@ NOT_A_WELD = {
         "-- recut_driver_dispatch_record refuses unless every bound file carries a "
         "digest a LEG recorded -- but it names no certification campaign because "
         "none describes it.",
+    # ARRIVED 0.9.1 WITH THE PER-CAPABILITY MIGRATION, and named here on the same
+    # terms the sibling contracts name it (``test_cuda_weld_contract`` and
+    # ``test_triton_weld_contract`` NOT_A_WELD_LEDGER_ENTRY).
+    "_capability_runs_migration":
+        "the migration's own stamp -- which tool moved the run fields under "
+        "`runs[<cc>]`, when, where each entry's capability was read from and how "
+        "many entries it touched. It ran no gate, so it names no run and has no "
+        "`records` line to join; what it does record is asserted by "
+        "test_capability_records.py::"
+        "test_the_migration_is_recorded_in_both_ledgers_and_states_no_digest.",
 }
 
 
@@ -328,7 +338,18 @@ def test_every_cuda_weld_names_a_run_the_certification_record_records(rebind):
     name the SAME subdirectory. A weld pointing into a recorded campaign at a
     family the campaign says it did not re-gate would satisfy the first and fail
     the second.
+
+    ONE JOIN PER RUN SINCE 0.9.1, because ``records`` is a RUN fact and a weld now
+    keeps one record per compute capability under ``fastpath.RUNS``. EVERY one of
+    them has to join: an architecture certified in a campaign the record does not
+    describe is exactly the dangling pointer this test exists to refuse, and reading
+    only one of them would let the others arrive unchecked. The DENOMINATOR is still
+    counted in WELDS — a weld joins when all of its runs do — so the floor below
+    keeps the meaning it was measured with and cannot be inflated by a second
+    architecture being recorded.
     """
+    from meep_gpu import fastpath  # noqa: PLC0415 - for the RUNS key, not re-spelled
+
     record = json.loads(CUDA_RECORD.read_text(encoding="utf-8"))
     ledger = json.loads(CUDA_LEDGER.read_text(encoding="utf-8"))
     campaigns = {name: {row["block"]: row["directory"]
@@ -339,39 +360,49 @@ def test_every_cuda_weld_names_a_run_the_certification_record_records(rebind):
            for name, block in record.items()
            if isinstance(block, dict) and rebind.artifact_directory(block) is not None}
 
+    def why_this_run_does_not_join(name, line):
+        """``None`` when this ``records`` line names a run the record records."""
+        found = RESULTS_POINTER.search(line)
+        if found is None:
+            return f"records names no results path: {line!r}"
+        parts = pathlib.PurePosixPath(found.group(1)).parts[3:]   # after results/
+        if not parts:
+            return f"records names the results root: {line!r}"
+        head = parts[0]
+        if head == own.get(name):
+            return None
+        table = campaigns.get(head)
+        if table is None:
+            return (f"records names {head}/, which is neither this block's "
+                    f"own artifact directory nor a campaign certification."
+                    f"json records")
+        expected = table.get(name)
+        if expected is None:
+            return (f"records points into campaign {head}/, whose "
+                    f"{rebind.RE_GATE_KEY} table does not mention this entry")
+        if len(parts) < 2 or parts[1] != expected:
+            return (f"records points at {head}/{parts[1:2]}, and the campaign "
+                    f"says this entry was re-gated in {expected}/")
+        return None
+
     bound, wrong = 0, {}
     for name, entry in sorted(ledger.items()):
         if not isinstance(entry, dict) or name in NOT_A_WELD:
             continue
-        line = str(entry.get("records", ""))
-        found = RESULTS_POINTER.search(line)
-        if found is None:
-            wrong[name] = f"records names no results path: {line!r}"
+        runs = entry.get(fastpath.RUNS)
+        if not isinstance(runs, dict) or not runs:
+            wrong[name] = (f"carries no {fastpath.RUNS!r} record, so it names no run "
+                           f"for the certification record to be joined against")
             continue
-        parts = pathlib.PurePosixPath(found.group(1)).parts[3:]   # after results/
-        if not parts:
-            wrong[name] = f"records names the results root: {line!r}"
-            continue
-        head = parts[0]
-        if head == own.get(name):
+        joins = True
+        for capability, run in sorted(runs.items()):
+            problem = why_this_run_does_not_join(
+                name, str((run or {}).get("records", "")))
+            if problem is not None:
+                wrong[f"{name}.{fastpath.RUNS}[{capability}]"] = problem
+                joins = False
+        if joins:
             bound += 1
-            continue
-        table = campaigns.get(head)
-        if table is None:
-            wrong[name] = (f"records names {head}/, which is neither this block's "
-                           f"own artifact directory nor a campaign certification."
-                           f"json records")
-            continue
-        expected = table.get(name)
-        if expected is None:
-            wrong[name] = (f"records points into campaign {head}/, whose "
-                           f"{rebind.RE_GATE_KEY} table does not mention this entry")
-            continue
-        if len(parts) < 2 or parts[1] != expected:
-            wrong[name] = (f"records points at {head}/{parts[1:2]}, and the campaign "
-                           f"says this entry was re-gated in {expected}/")
-            continue
-        bound += 1
     assert not wrong, wrong
     assert bound >= CUDA_WELDS_BOUND_TO_A_RECORDED_RUN, (
         f"only {bound} CUDA welds resolve to a run the record records, was "
@@ -509,22 +540,35 @@ def test_the_live_regate_campaign_surveys_clean_or_is_not_on_this_machine(transc
 
 
 def _comparable(recut):
-    """``{entry: [payloads]}`` for every Triton entry whose run is on this machine."""
+    """``{entry: [payloads]}`` for every Triton entry whose run is on this machine.
+
+    THE ``records`` LINES ARE THE RUNS' since 0.9.1, one per compute capability under
+    ``fastpath.RUNS``, and EVERY one of them is collected: a curated counter sits on
+    the ENTRY, so it is a claim about every run the entry records, and comparing it
+    against one architecture's payload while another's went unread is how a stale
+    number would survive a second certification round.
+    """
+    from meep_gpu import fastpath  # noqa: PLC0415 - for the RUNS key, not re-spelled
+
     ledger = json.loads(TRITON_LEDGER.read_text(encoding="utf-8"))
     out = {}
     for name, entry in sorted(ledger.items()):
-        if not isinstance(entry, dict) or not isinstance(entry.get("records"), str):
+        if not isinstance(entry, dict):
             continue
+        runs = entry.get(fastpath.RUNS)
+        lines = [run["records"] for _capability, run in sorted((runs or {}).items())
+                 if isinstance(run, dict) and isinstance(run.get("records"), str)]
         payloads = []
-        for pointer in RESULTS_POINTER.findall(entry["records"]):
-            path = REPO / pointer.rstrip("/.,")
-            if path.is_file() and path.suffix == ".json":
-                payloads.append(path)
-            elif path.is_dir():
-                for candidate in ("gate.json", "gate_keep.json"):
-                    if (path / candidate).is_file():
-                        payloads.append(path / candidate)
-                        break
+        for line in lines:
+            for pointer in RESULTS_POINTER.findall(line):
+                path = REPO / pointer.rstrip("/.,")
+                if path.is_file() and path.suffix == ".json":
+                    payloads.append(path)
+                elif path.is_dir():
+                    for candidate in ("gate.json", "gate_keep.json"):
+                        if (path / candidate).is_file():
+                            payloads.append(path / candidate)
+                            break
         if payloads:
             out[name] = (entry, payloads)
     return ledger, out
@@ -748,20 +792,30 @@ def test_the_frozen_key_rule_does_not_leak_past_the_declaration(recut):
 
     The write step widens its immovable set by the blocks THIS RUN re-cut, and
     only those. Driven here as arithmetic on the same expression the tool uses,
-    because the alternative is trusting that ``MUTABLE | {...}`` was spelled with
-    the right operand — and a licence that leaked would let any key ride out on a
-    re-cut.
+    because the alternative is trusting that ``ENTRY_MUTABLE | {...}`` was spelled
+    with the right operand — and a licence that leaked would let any key ride out on
+    a re-cut.
+
+    THE CONSTANT IS THE ENTRY-LEVEL ONE. ``MUTABLE`` became ``ENTRY_MUTABLE`` when
+    the run facts moved into ``runs[<cc>]``: ``artifact_sha256`` and ``log_sha256``
+    left it because they are no longer entry keys at all, and what remains is the two
+    digests that say which bytes the weld binds. The rule under test is unchanged —
+    a curated block moves only where ``CLAIM_RECUTS`` named it.
     """
     key = "dispersive_fused_pair_gate"
     fresh = {"source_sha256": {}, "product": {}}
-    may_move = recut.MUTABLE | {block for block in fresh
-                                if (key, block) in recut.CLAIM_RECUTS}
+    may_move = recut.ENTRY_MUTABLE | {block for block in fresh
+                                      if (key, block) in recut.CLAIM_RECUTS}
     assert "product" in may_move
     assert "composition" not in may_move and "purpose" not in may_move
     # A block nobody declared does not become movable by appearing in the update.
-    undeclared = recut.MUTABLE | {block for block in {"real_engine_route": {}}
-                                  if (key, block) in recut.CLAIM_RECUTS}
+    undeclared = recut.ENTRY_MUTABLE | {block for block in {"real_engine_route": {}}
+                                        if (key, block) in recut.CLAIM_RECUTS}
     assert "real_engine_route" not in undeclared
+    # AND THE RUN CONTAINER IS NOT IN IT: the frozen comparison excludes `runs` and
+    # proves it separately (every other capability's record must come out
+    # byte-identical), so a licence here would be the wrong instrument for it.
+    assert "runs" not in recut.ENTRY_MUTABLE
 
 
 def test_the_manifest_rule_is_one_rule_across_both_cuda_writers(rebind, transcribe):
@@ -826,29 +880,39 @@ def test_a_weld_and_its_run_agree_on_which_bytes_were_imported(rebind):
     a rebind that took a digest from the checkout instead of from the artifact
     would pass that test and fail this one, and the two together are what make
     "these bytes ran" mean something rather than "these bytes are here now".
+
+    THE RUN IS NAMED PER ARCHITECTURE since 0.9.1 — ``records`` lives in
+    ``runs[<cc>]`` — while the pins it is compared against stay on the ENTRY,
+    because they describe the TREE and are the same fact on every card. So each
+    architecture's run is asked separately whether it imported those bytes, which is
+    exactly the claim ``bind_capability``'s staleness rule enforces at write time.
     """
+    from meep_gpu import fastpath  # noqa: PLC0415 - for the RUNS key, not re-spelled
+
     ledger = json.loads(CUDA_LEDGER.read_text(encoding="utf-8"))
     compared, wrong = 0, {}
     for name, entry in sorted(ledger.items()):
-        if (not isinstance(entry, dict) or name in NOT_A_WELD
-                or not isinstance(entry.get("records"), str)):
+        if not isinstance(entry, dict) or name in NOT_A_WELD:
             continue
-        found = RESULTS_POINTER.search(entry["records"])
-        if found is None:
-            continue
-        directory = REPO / found.group(1).rstrip("/")
-        if not directory.is_dir():
-            continue
-        legs = entry.get("legs") or []
-        if not all((directory / leg).is_file() for leg in legs):
-            continue
-        agreed = rebind.agreed_imports(rebind.leg_payloads(directory, list(legs)))
-        for path, digest in sorted((entry.get("source_sha256") or {}).items()):
-            compared += 1
-            if agreed.get(path) != digest:
-                wrong[f"{name}:{path}"] = (
-                    f"the weld pins {digest[:12]} and the run it names imported "
-                    f"{str(agreed.get(path))[:12]}")
+        for capability, run in sorted((entry.get(fastpath.RUNS) or {}).items()):
+            if not isinstance(run, dict) or not isinstance(run.get("records"), str):
+                continue
+            found = RESULTS_POINTER.search(run["records"])
+            if found is None:
+                continue
+            directory = REPO / found.group(1).rstrip("/")
+            if not directory.is_dir():
+                continue
+            legs = entry.get("legs") or []
+            if not all((directory / leg).is_file() for leg in legs):
+                continue
+            agreed = rebind.agreed_imports(rebind.leg_payloads(directory, list(legs)))
+            for path, digest in sorted((entry.get("source_sha256") or {}).items()):
+                compared += 1
+                if agreed.get(path) != digest:
+                    wrong[f"{name}.{fastpath.RUNS}[{capability}]:{path}"] = (
+                        f"the weld pins {digest[:12]} and the run it names imported "
+                        f"{str(agreed.get(path))[:12]}")
     assert not wrong, wrong
     if not compared:
         pytest.skip("no CUDA gate artifact directory is on this host")
@@ -881,6 +945,12 @@ def test_the_hashing_helpers_agree_with_the_stdlib(rebind, tmp_path):
 # ---------------------------------------------------------------------------
 
 
+#: The architecture the planted legs and blocks below are stamped with. Any valid
+#: spelling would do -- nothing here reads a device -- but a weld is keyed by one, so
+#: the plant has to carry one for the seed to reach ``bind_capability`` at all.
+PLANTED_CAPABILITY = "8.6"
+
+
 def _plant_device_block(rebind, results_root, name, imports, *, released=True):
     """One certification-style device block with both policy legs on disk.
 
@@ -889,8 +959,17 @@ def _plant_device_block(rebind, results_root, name, imports, *, released=True):
     an ``artifact_sha256`` computed by the writer's OWN rule so the agreement guard
     that runs before the main loop has nothing to refuse. ``released=False`` turns
     ONE policy leg's verdict false, which is the shape the rules must refuse.
+
+    AND IT NAMES AN ARCHITECTURE, in both places a real run names one: the LEGS stamp
+    it (``leg_capability``, which is where the writer takes the value from — never
+    from the record) and the BLOCK declares it twice over (``block_capability``, the
+    cross-check ``record_cuda_regate.py`` satisfies by building both off one
+    environment). A block that declares none is skipped by name, so without this the
+    clauses below would be measuring that refusal instead of ``--only``'s.
     """
-    legs = {f"{policy}/gate.json": _released_leg(imported_source_sha256=dict(imports))
+    legs = {f"{policy}/gate.json": _released_leg(
+                imported_source_sha256=dict(imports),
+                environment={"compute_capability": PLANTED_CAPABILITY})
             for policy in ("keep", "flush")}
     if not released:
         legs["flush/gate.json"]["canonical_verdict"] = {
@@ -899,6 +978,8 @@ def _plant_device_block(rebind, results_root, name, imports, *, released=True):
     return {
         "artifacts": f"parity/meep_gpu/results/{name}",
         "device": "planted device",
+        "compute_capability": PLANTED_CAPABILITY,
+        "environment": {"compute_capability": PLANTED_CAPABILITY},
         "kernel_module": list(imports),
         "certified_kernels": ["planted_kernel"],
         "artifact_sha256": rebind.manifest_digest(results_root / name),
@@ -965,6 +1046,10 @@ def test_only_narrows_the_cuda_rebind_and_never_widens_it(rebind, tmp_path,
         f"--only alpha wrote {sorted(ledger)}; a block outside --only was bound")
     assert ledger["alpha"]["status"] == "PASS"
     assert ledger["alpha"]["source_sha256"] == imports
+    # ...and the run it recorded is keyed by the architecture the legs stamped, not
+    # written beside the digests, which is the level that would read as describing
+    # every card.
+    assert PLANTED_CAPABILITY in ledger["alpha"]["runs"], ledger["alpha"]
 
     # 3. selection is not admission: the rules still refuse an unreleased block
     rebind.main(["--seed", "--only", "gamma", "--write"])

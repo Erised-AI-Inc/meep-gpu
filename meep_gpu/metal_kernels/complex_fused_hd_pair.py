@@ -168,7 +168,7 @@ neighbours install on **17 of 17**, so the four-slot path costs 2 launches today
 3 with this product. A LOSS on 17, a TIE on 0, a GAIN on 0.
 
 What this product IS worth is stated plainly: the priced predicate gap closed under
-the owner rule *close all fusion gaps regardless*, and a certified half of the only
+the project's rule *close all fusion gaps regardless*, and a certified half of the only
 span that could ever pay -- the four-slot ``step_B -> update_H -> step_D -> update_E``
 weld, which is NOT built here. **No timing exists for this shape and none is licensed
 by anything in this module.**

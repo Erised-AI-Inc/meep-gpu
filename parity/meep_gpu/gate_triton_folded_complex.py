@@ -2042,8 +2042,8 @@ def mutate_unary_minus_addend(source: str) -> Tuple[str, int]:
     """m11: a negated addend respelled through unary minus, in BOTH arms.
 
     Platform fact: Triton 3.1.0 lowers ``-x`` as ``0.0 - x``, canonicalizing ±0
-    addends to +0 before the add — MEASURED REACHABLE at the driver level in jobs
-    2343/2345, which is why the shipped helpers spell it ``(a*b) * -1.0``.
+    addends to +0 before the add — MEASURED REACHABLE at the driver level,
+    which is why the shipped helpers spell it ``(a*b) * -1.0``.
 
     The FMA_V1 arm carries the ``* -1.0`` spelling and is respelled ``-(a*b)``.
     The NAIVE arm has no ``* -1.0`` at all — it spells the same term as a plain
@@ -2144,7 +2144,7 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str, str, st
     "unary_minus_addend": (
         mutate_unary_minus_addend, "fill", "folded_mirror_ghost_fill_complex",
         "platform fact: Triton lowers -x as 0.0-x and canonicalizes signed "
-        "zeros; MEASURED REACHABLE at the driver level in jobs 2343/2345"),
+        "zeros; MEASURED REACHABLE at the driver level"),
     "beta_after_mask": (
         mutate_beta_after_mask, "beta_complex",
         "folded_beta_bloch_pml_curl_step",

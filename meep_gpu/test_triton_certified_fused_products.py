@@ -76,9 +76,10 @@ from meep_gpu import fastpath  # noqa: E402
 from meep_gpu.triton_kernels import launch as launch_module  # noqa: E402
 from meep_gpu.triton_kernels.coverage import Coverage  # noqa: E402
 from meep_gpu.test_dispatch_contract import (  # noqa: E402
-    certified_envelope_fields, certified_envelope_grid, certified_envelope_pml,
-    complex_conductive_envelope_fields, complex_no_pml_3d_envelope_grid,
-    inactive_envelope_pml, plan_on_a_cupy_host, step_plan)
+    CERTIFIED_CAPABILITY, certified_envelope_fields, certified_envelope_grid,
+    certified_envelope_pml, complex_conductive_envelope_fields,
+    complex_no_pml_3d_envelope_grid, inactive_envelope_pml, plan_on_a_cupy_host,
+    step_plan)
 from meep_gpu.test_triton_planner_composition import (  # noqa: E402
     folded_fields, install_stubs, make_fields)
 
@@ -441,9 +442,14 @@ def test_every_label_is_unique_recognised_as_fused_and_accounted_for():
     # INSTALLABLE = False.
     assert len(pending) == 3, len(pending)
     # ...and each certified row really resolves, which is what the other map's
-    # rows are held out of for.
+    # rows are held out of for. RESOLVING IS PER ARCHITECTURE since the welds keep
+    # one run record per compute capability: the question is whether the gate has a
+    # live run on the card the label would dispatch on, so the lookup names it. Asked
+    # without a capability, every row would come back with its run fields withheld
+    # by design and this loop would read as a ledger-wide failure.
     for label in certified:
-        assert "recorded_utc" in fastpath._certification_for(label), label
+        assert "recorded_utc" in fastpath._certification_for(
+            label, capability=CERTIFIED_CAPABILITY), label
     # ...while each pending reason names the artifact the release was cut from, so
     # the run that must be repeated to lift it is identified, not searched for.
     #

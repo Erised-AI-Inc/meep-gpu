@@ -416,8 +416,10 @@ def test_the_artifact_carries_the_subject_digests_and_the_emitter_corpus_digest(
                "--out", str(out)])
     payload = json.loads(out.read_text())
     assert payload["emitter_corpus_digest"] == offdiag_emitter.corpus_digest()
+    assert payload["launch_corpus_digest"] == offdiag_emitter.launch_corpus_digest()
+    assert payload["launch_corpus_digest"] != payload["emitter_corpus_digest"]
     for name in ("offdiag_emitter.py", "offdiag_constitutive_kernels.py",
-                 "coverage.py", "step_curl_kernels.py"):
+                 "own_cell_hoist.py", "coverage.py", "step_curl_kernels.py"):
         assert len(payload["subjects"][name]) == 64
 
 
@@ -571,6 +573,7 @@ def test_every_emitted_source_the_gate_and_probe_drive_is_pure_ascii():
         tuple(m) for m in policy_probe.MASKS)
     for mask in masks:
         offdiag_emitter.offdiag_source(mask).encode("ascii")
+        offdiag_emitter.offdiag_launch_source(mask).encode("ascii")
 
 
 def test_no_unary_minus_appears_on_any_float_path_of_a_mutated_source():
@@ -582,3 +585,65 @@ def test_no_unary_minus_appears_on_any_float_path_of_a_mutated_source():
             offdiag_emitter.offdiag_source((1, 1, 1, 1, 1, 1)))
         code = "\n".join(line.split("//")[0] for line in mutated.split("\n"))
         assert "* -1.0" not in code and "-1.0f *" not in code, name
+
+
+# ---------------------------------------------------------------------------
+# The device backend mutates the text NVRTC compiles
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", sorted(gate.SOURCE_MUTATIONS))
+def test_every_needle_lands_the_same_on_the_launch_text(name):
+    """The kernel backend plants each defect in the LAUNCH text (the register view the
+    port rule issues), the evaluator backend in the certified text. A needle that lands
+    a different number of times on the two is a different defect on the two backends,
+    so the site counts are required equal on every row mask the emitter can issue."""
+    transform = gate.SOURCE_MUTATIONS[name]
+    for mask in offdiag_emitter.LIVE_ROW_MASKS:
+        _mutated, on_certified = transform(offdiag_emitter.offdiag_source(mask))
+        _mutated, on_launch = transform(offdiag_emitter.offdiag_launch_source(mask))
+        assert on_launch == on_certified, (name, mask, on_certified, on_launch)
+
+
+def test_the_kernel_backend_mutates_and_digests_the_launch_text(monkeypatch):
+    """What ``_get_kernel`` compiles is what the backend patches, mutates and hashes."""
+    monkeypatch.setattr(offdiag_emitter, "offdiag_launch_source",
+                        offdiag_emitter.offdiag_launch_source)
+    monkeypatch.setattr(offdiag_emitter, "offdiag_source", offdiag_emitter.offdiag_source)
+
+    class Kernels:
+        cleared = 0
+
+        def _clear_kernel_cache(self):
+            Kernels.cleared += 1
+            return 0
+
+    backend = gate.KernelBackend(Kernels())
+    mask = (1, 1, 1, 1, 1, 1)
+    launch = offdiag_emitter.offdiag_launch_source(mask)
+    assert backend.pristine_source(mask) == launch
+    transform = gate.SOURCE_MUTATIONS["drop_fw_store"]
+    backend.set_source_mutation(transform)
+    assert Kernels.cleared == 1
+    mutated, sites = transform(launch)
+    assert sites == 1
+    # the patched name is the one the kernel module compiles, and it serves the mutant
+    assert offdiag_emitter.offdiag_launch_source(mask) == mutated
+    assert backend.source_for(mask) == (mutated, 1)
+    # the certified text is untouched: the evaluator and the lifters still read it
+    assert "    fw[idx] = src;\n" in offdiag_emitter.offdiag_source(mask)
+    assert backend.pristine_source(mask) == launch
+    backend.set_source_mutation(None)
+    assert offdiag_emitter.offdiag_launch_source(mask) == launch
+
+
+def test_the_kernel_module_compiles_the_launch_text():
+    """Read off the syntax tree: the kernel module imports CuPy at scope."""
+    import ast  # noqa: PLC0415
+
+    tree = ast.parse(KERNEL_MODULE.read_text(encoding="utf-8"))
+    body = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name == "_get_kernel")
+    calls = {ast.unparse(node.func) for node in ast.walk(body)
+             if isinstance(node, ast.Call)}
+    assert "offdiag_emitter.offdiag_launch_source" in calls
+    assert "offdiag_emitter.offdiag_source" not in calls

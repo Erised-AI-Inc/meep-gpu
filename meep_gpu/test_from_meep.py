@@ -3544,12 +3544,17 @@ def run_gate(case):
         #
         # * A POINT Near2FarRegion on a 1-D-emulated (sx, 0, 0) cell —
         #   binary_grating_n2f.py. MEEP resolves its normal through the nosize pad
-        #   (dft.cpp:806-824) and loops the one-pixel periodic y axis over its TWO
+        #   (dft.cpp:806-824) and loops the one-pixel periodic y axis over its
         #   lattice images: one dft chunk per image, identical is/ie, single-site
-        #   y weights w0 and w1 = 1 - w0 (measured 0.0 and 1.0). This engine holds
-        #   ONE plane at the summed weight 1, so each chunk must be emitted scaled
-        #   by its own s0 — the `image_ignored` control emits both at full weight,
-        #   which doubles the surface (measured: far field exactly 1.0 relative).
+        #   y weights w0 and w1 = 1 - w0. This engine holds ONE plane at the summed
+        #   weight 1, so each chunk must be emitted scaled by its own s0 — the
+        #   `image_ignored` control emits every image at full weight, which doubles
+        #   the surface where there are two (measured: far field exactly 1.0
+        #   relative). HOW MANY images there are depends on the platform when the
+        #   region sits exactly on a site: at y = 0 arm64 MEEP makes two (weights
+        #   0.0 and 1.0; its build fuses the multiply-add in the grid rounding) and
+        #   x86-64 MEEP one (weight 1.0). Off the site, at y = 0.01, both make two
+        #   (0.25 and 0.75), so the control runs there (`point_offsite`).
         # * A FOUR-FACE box with ±1 region weights — antenna-radiation.py without
         #   its symmetries. Its corner site lies in TWO regions carrying the same
         #   component at OPPOSITE stored weights, and matching by containment alone
@@ -3558,7 +3563,7 @@ def run_gate(case):
         #   The `corner_filter_dropped` control is that defect re-applied.
         from meep.simulation import NearToFarData
 
-        def build_point():
+        def build_point(y=0.0):
             resolution = 25
             sx = 8.5
             fmin, fmax = 1 / 0.6, 1 / 0.4
@@ -3571,7 +3576,7 @@ def run_gate(case):
                                    center=mp.Vector3(-0.5 * sx + 1.0 + 1.5))],
             )
             monitor = sim.add_near2far(
-                fcen, df, 5, mp.Near2FarRegion(center=mp.Vector3(0.5 * sx - 1.0 - 1.5)))
+                fcen, df, 5, mp.Near2FarRegion(center=mp.Vector3(0.5 * sx - 1.0 - 1.5, y)))
             return sim, monitor
 
         def build_box():
@@ -3599,6 +3604,9 @@ def run_gate(case):
             # source (point: last_source_time ~ 12 at t = 24; box: ~ 50 at t = 55).
             "point": (build_point, 1200,
                       [mp.Vector3(1e6, 0.2e6), mp.Vector3(1e6, -0.1e6), mp.Vector3(1e6, 0)]),
+            "point_offsite": (lambda: build_point(0.01), 1200,
+                              [mp.Vector3(1e6, 0.2e6), mp.Vector3(1e6, -0.1e6),
+                               mp.Vector3(1e6, 0)]),
             "box": (build_box, 2200,
                     [mp.Vector3(1000 * np.cos(t), 1000 * np.sin(t))
                      for t in np.linspace(0.0, 2 * np.pi, 8)]),
@@ -6774,12 +6782,14 @@ def test_point_near2far_and_flux_box_corners_match_meep(tmp_path):
     **The point region** (binary_grating_n2f.py): ``Near2FarRegion(center=pt)`` with
     size (0, 0, 0) on a 1-D-emulated ``(sx, 0, 0)`` cell. MEEP accepts it — the
     normal resolves through the nosize pad (dft.cpp:806-824) to mp.X (measured 0) —
-    and loops the one-pixel periodic y axis over its two lattice images, one dft
-    chunk per image with single-site weights w0 and w1 = 1 - w0 (measured 0.0 and
-    1.0). This engine stores ONE y plane at the summed weight 1, and emits each MEEP
-    chunk scaled by that chunk's own s0. The ``image_ignored`` control emits both
-    images in full, which doubles the surface: a smooth, plausible far field at
-    exactly 2x — measured 1.00e+00 relative while parity sits at 5.05e-07.
+    and loops the one-pixel periodic y axis over its lattice images, one dft chunk
+    per image with single-site weights w0 and w1 = 1 - w0. This engine stores ONE y
+    plane at the summed weight 1, and emits each MEEP chunk scaled by that chunk's
+    own s0. The ``image_ignored`` control emits every image in full, which doubles
+    the surface: a smooth, plausible far field at exactly 2x — measured 1.00e+00
+    relative while parity sits at 5.05e-07. The control is read on
+    ``point_offsite`` (y = 0.01), where MEEP makes two images on every platform; at
+    y = 0 an x86-64 MEEP makes only one, so there is nothing for it to double.
 
     **The flux-box corners** (antenna-radiation.py's four faces, ±1 weights): the
     corner site lies in TWO regions carrying the same component at OPPOSITE stored
@@ -6828,7 +6838,7 @@ def test_point_near2far_and_flux_box_corners_match_meep(tmp_path):
         )
     # The controls, where each defect is visible: the doubled surface on the
     # one-pixel axis (point case), the flipped corner sign (box case).
-    point, box = data["runs"]["point"], data["runs"]["box"]
+    point, box = data["runs"]["point_offsite"], data["runs"]["box"]
     assert point["image_ignored_far_error"] > 1e-1, (
         f"point: emitting both lattice-image chunks in full scored "
         f"{point['image_ignored_far_error']:.3e} — the comparison can no longer see "

@@ -91,7 +91,7 @@ did not is a process whose bytes mean nothing.
 Usage::
 
     # laptop: every leg that needs neither CUDA nor Triton
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/probe_triton_nonlinear_fused_magnetic_pair.py --no-device
 
     # device, one process per policy

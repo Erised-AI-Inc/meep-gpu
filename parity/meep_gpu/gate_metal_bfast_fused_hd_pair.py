@@ -120,7 +120,7 @@ engine's own dispatch seam, the two launch counters, the rotation settling, the
 orphaned-mirror guard and the two censuses are the SAME mechanism this product needs,
 and they carry defects already measured and repaired.
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

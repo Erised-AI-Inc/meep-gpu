@@ -64,7 +64,7 @@ TWO KERNELS, one per storage family:
   the constexpr-gated beta term: one f32 multiply-and-subtract per affected
   target, reusing the loaded center operand;
 * :func:`beta_bloch_pml_curl_step` — ``complex_fields.bloch_pml_curl_step``'s
-  body (certified, job 2330) plus the ±i coefficient product on word pairs,
+  body (certified) plus the ±i coefficient product on word pairs,
   through the module-local :func:`_mul_imag_coefficient_left` helper.
 
 GROUPING CHOICES the gate must hold (stepping.py forces none of these):
@@ -168,7 +168,7 @@ except ImportError as _exc:  # pragma: no cover - exercised by the absence test
     triton = _MissingTriton()  # type: ignore[assignment]
     tl = _MissingLanguage()  # type: ignore[assignment]
 
-from .complex_fields import (  # noqa: E402 - this session's own module, restate-don't-edit base
+from .complex_fields import (  # noqa: E402 - this package's own module, restate-don't-edit base
     PROBE_PATTERNS,
     ComplexConstitutivePlan,
     _complex_layout_reasons,
@@ -307,7 +307,7 @@ def _mul_imag_coefficient_left(c_re, c_im, z_re, z_im, EXPANSION: tl.constexpr):
     round-to-nearest ``0.0 - (+0.0)`` is ``+0.0`` — the addend's zero SIGN is
     lost — while the licensed FMA_V1 transcription negates the cross product
     sign-exactly (S:784 is a NumPy/CuPy negation, a sign flip). ``* -1.0`` is
-    the IEEE-exact negation (LLVM folds it to fneg). Measured: job 2332's m9
+    the IEEE-exact negation (LLVM folds it to fneg). Measured: the gate's m9
     leg found the unary-minus spelling of this addend byte-identical to the
     FOLDED mutant on the engineered signed-zero state — the platform
     lowering, not the fold, was deciding the bytes.
@@ -317,7 +317,7 @@ def _mul_imag_coefficient_left(c_re, c_im, z_re, z_im, EXPANSION: tl.constexpr):
     stores this helper's output words directly). Until 2026-08-12 the inlined
     complex_fields helpers' addends were spelled with unary ``-`` and
     canonicalized every ±0 to ``+0`` under the same lowering before any store
-    (measured, job 2332's predicted-4-got-0), which made the fold byte-blind
+    (measured, the m9 leg's predicted-4-got-0), which made the fold byte-blind
     at the STORED layer. The complex tranche now carries the ``* -1.0``
     spelling too (fixed after the zero-init composition reachability analysis,
     probe_triton_complex_composition.py), so the fold's flip once again
@@ -484,7 +484,7 @@ def beta_bloch_pml_curl_step(
     BLOCK: tl.constexpr,
 ):
     """One COMPLEX curl sub-step with the special_kz beta term —
-    ``complex_fields.bloch_pml_curl_step``'s certified body (job 2330) plus the
+    ``complex_fields.bloch_pml_curl_step``'s certified body plus the
     ±i coefficient product on word pairs, inserted between the curl and the
     ownership mask exactly as the array path inserts it.
 
@@ -1591,7 +1591,7 @@ def plan_beta_run_complex_constitutive(fields: Any, pml: Any, side: str,
                                        ) -> Optional[ComplexConstitutivePlan]:
     """A CERTIFIED complex constitutive plan for a beta run, or None.
 
-    The kernel and plan class are ``complex_fields``' (job 2330), untouched;
+    The kernel and plan class are ``complex_fields``' (certified), untouched;
     the EXPANSION binds through the BASE pattern set because that is the
     certified kernel's own contract (module docstring, grouping choice 5).
     """

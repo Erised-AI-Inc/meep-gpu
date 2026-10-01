@@ -50,10 +50,11 @@ probe installs ``flush`` on ``("host", "mps")`` before it lifts anything — the
 through ``subnormal_policy``'s fenv lever, the device natively — which is exactly
 what the dispatch ladder's rung 8bM does for itself.
 
-Rule 7: one flushed line per case per rung, and ``cases.jsonl`` is appended as each
+Progress reporting: one flushed line per case per rung, and ``cases.jsonl`` is appended as each
 case lands, so an interrupted run keeps everything up to the failure.
 
-Run (this Mac; MEEP and torch coexist in one process, KMP_DUPLICATE_LIB_OK=TRUE)::
+Run (an Apple silicon Mac set up as INSTALL.md describes, where MEEP and torch share one
+OpenMP runtime in one process)::
 
     PYTHONPATH=. python -u \\
         parity/meep_gpu/probe_metal_dispatch_dryrun.py \\
@@ -627,7 +628,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                    "traceback": traceback.format_exc()[-4000:]}
         row["case_wall_s"] = round(time.time() - started, 2)
         rows.append(row)
-        with open(rows_path, "a", encoding="utf-8") as handle:  # rule 7, incremental
+        with open(rows_path, "a", encoding="utf-8") as handle:  # progress reporting, incremental
             handle.write(json.dumps(row, default=str) + "\n")
             handle.flush()
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "

@@ -43,7 +43,7 @@ comparison passed on, each of which MUST be caught:
 A planted defect that the comparison does NOT catch is reported as an
 INSTRUMENT FAILURE, and the clean result above it is then worth nothing.
 
-Rule 7: one flushed line per row per leg, and one JSONL row appended per row as
+Progress reporting: one flushed line per row per leg, and one JSONL row appended per row as
 it lands.
 
 Run (the GPU host, one pinned GPU)::

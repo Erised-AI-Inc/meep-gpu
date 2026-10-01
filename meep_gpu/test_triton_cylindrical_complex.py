@@ -471,7 +471,7 @@ def test_the_fusion_guard_has_exactly_one_launch_site_spelled_the_house_way():
 def test_no_negation_is_spelled_with_a_unary_minus_in_the_kernel():
     """Triton lowers ``-x`` as ``0.0 - x``, which canonicalizes signed zeros.
 
-    Measured REACHABLE at driver level on jobs 2343 and 2345 — not a theoretical
+    Measured REACHABLE at driver level — not a theoretical
     hazard. Every negated addend in a kernel body must therefore be spelled
     ``* -1.0``. Checked on the kernel function's AST so a minus sign in host code
     (where Python's semantics are the array path's own) does not trip it.
@@ -1486,7 +1486,7 @@ def test_the_constitutive_plan_delegates_to_the_certified_complex_plan():
     CuPy, which is enough because ``ComplexConstitutivePlan`` never touches ``xp``
     — it wraps pointers and defers the address to launch. What that shows is the
     thing the finding rests on: this family's E and H sub-steps ARE
-    ``complex_fields.bloch_constitutive_step``, certified as job 2330/2343, with
+    ``complex_fields.bloch_constitutive_step``, certified, with
     no cylindrical arithmetic added anywhere.
     """
     fields, pml = build(m=-1)

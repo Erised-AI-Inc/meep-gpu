@@ -43,10 +43,11 @@ the world rather than about the record, and nothing evaluated any of them.
         are now CHECKED HERE at the raw tier and the citation is deleted rather
         than watched; measured after promotion, 10 of 10 match, so this buys no
         green — it removes the path by which a later edit would have bought one.
-    ``staging_only_file``      16 digests, excluded because the record says
-        ``parity/meep_gpu/cases.py`` was staged on the device host and never
-        committed. True today, and it stops being true the day anyone commits
-        that file. ``walk.premise_violations`` now decides it.
+    ``staging_only_file``      16 digests the record names as staged on the device
+        host and never committed: ``parity/meep_gpu/cases.py``. It was committed in
+        0.9.1 with exactly those bytes, so the exclusion has expired as its premise
+        said it would, and the premise test now compares each digest with the
+        committed file instead of excusing it.
     ``out_of_tree_sibling_path``  16 digests naming launchers under
         ``<staging-root>/``. Same treatment.
 
@@ -139,7 +140,40 @@ sharpest case on this track — every family in this record re-cuts under a
 different one — so a weld that does not name the policy it ran under is a weld
 whose bytes cannot be reproduced.
 
-Stdlib and pytest only: this is a laptop merge-bar test and touches no device.
+A SIXTH HALF, AND IT IS A LEVEL RATHER THAN A SHAPE — 0.9.1. Every requirement in
+the paragraph above used to be asked of the ENTRY, because an entry held exactly
+one run's facts beside its digests. It now holds ONE RECORD PER COMPUTE
+CAPABILITY under ``runs``: the run fields moved into ``runs[<cc>]``, each record
+carrying ``bound_sha256`` — the digest of the digests that run certified — and the
+digests, ``status``, ``legs`` and the curated claims stayed at entry level. The
+reason is additivity: a second architecture's round must be certified BESIDE the
+first rather than overwrite it, and a record that outlives the bytes it certified
+must expire on its own instead of leaving every architecture admitted. See
+:mod:`meep_gpu.fastpath` (``RUNS``, ``RUN_FIELDS``, ``bound_digest``,
+``live_capabilities``, ``retired_shape_reasons``).
+
+SO THE DENOMINATOR HERE IS NOW ``(weld, capability)``, and the level a field is
+read at is DERIVED from ``fastpath.RUN_FIELDS`` rather than typed twice below — a
+field that moves level in ``fastpath.py`` goes red here instead of being read from
+the level it used to live at, which is the retired-shape defect wearing this
+file's own green. MEASURED 2026-10-01: 55 PASS welds, 55 run records, all keyed
+``8.6``; every one carries all four required fields, names a validated Triton and
+names ITS OWN key. A weld with NO record is reported rather than iterated over
+zero times, which is the way a migration could have emptied this tier silently.
+
+``validated_compute_capabilities`` LEFT THE RECORD in the same change, and that is
+why the capability half of
+:func:`test_every_triton_weld_names_a_validated_triton_and_capability` no longer
+reads a declared list. It was one hand-typed key that no tool wrote, so a round on
+another architecture moved every weld's evidence and left the declaration saying
+what it had always said; it is now DERIVED
+(``fastpath.validated_compute_capabilities``) from the capabilities each cited weld
+has a live record for. Each record is therefore compared against ITS OWN KEY, which
+is strictly stronger than membership of any list.
+
+Stdlib, pytest, and three in-package modules — the record walk, the two identity
+helpers, and :mod:`meep_gpu.fastpath` for where a run record lives and what may be
+in it. Still a laptop merge-bar test: it touches no device.
 """
 
 from __future__ import annotations
@@ -153,6 +187,7 @@ import re
 
 import pytest
 
+from . import fastpath
 from . import weld_record_walk as walk
 from .code_identity import code_digest
 from .device_identity import device_digests
@@ -170,8 +205,26 @@ REPO = PACKAGE.parent
 WELD_FLOOR = 8
 
 #: The four the Metal track requires. Same names, same track-independent reason.
+#:
+#: ALL FOUR ARE RUN FIELDS, so since 0.9.1 they are read from ``runs[<cc>]`` and not
+#: from the entry. The level is not typed here — :func:`_weld_runs` reads whatever
+#: ``fastpath.RUN_FIELDS`` calls a run field, and the subset relation is ASSERTED in
+#: the metadata test — because a hand-typed level is a second place to be wrong and
+#: would read a field from where it used to live while the ledger moved it.
 REQUIRED_METADATA = ("recorded_utc", "host", "artifact_sha256",
                      "subnormal_policy")
+
+#: The keys this table's arms cite, which is the denominator of the live-capability
+#: test below: 44 measured 2026-10-01 over ``fastpath.ARM_CERTIFICATION``'s 75 arms
+#: (many arms share a gate). A FLOOR, so an arm map that collapsed to one key fails
+#: here rather than passing a one-element loop.
+CITED_KEY_FLOOR = 44
+
+#: One run record per PASS weld per architecture it ran on. 55 welds x one ``8.6``
+#: record, measured 2026-10-01. The per-weld denominator the metadata tier used to
+#: have was 55 entries; this is what replaced it, and it is asserted for the same
+#: reason the pin floors are: a tier that stops being walked reports nothing.
+WELD_RUN_RECORD_FLOOR = 55
 
 #: DECLARED DEBT: welds whose ``subnormal_policy`` does not NAME a policy.
 #: ONE, measured 2026-08-19. This set may only SHRINK — adding a name is a
@@ -232,6 +285,55 @@ def _welds(record=None):
     return {name: entry for name, entry in record.items()
             if isinstance(entry, dict) and entry.get("status") == "PASS"
             and entry.get("source_sha256")}
+
+
+def _weld_runs(record=None, welded=None):
+    """``[(weld, capability, run)]`` and the welds that carry NO record at all.
+
+    THE METADATA DENOMINATOR SINCE 0.9.1. Each requirement below used to be asked of
+    the entry; it is now asked of every per-capability record the entry holds, so a
+    weld certified on two architectures answers twice and one certified on neither
+    answers never.
+
+    THE RECORDLESS LIST IS RETURNED RATHER THAN SKIPPED, and it is the half that
+    makes the rest mean anything: a loop over ``runs`` is empty for an entry whose
+    records were lost, dropped, or never written, so a migration that emptied this
+    container would have turned every assertion below into a pass. Every caller
+    asserts the list is empty and the row count clears
+    :data:`WELD_RUN_RECORD_FLOOR`, which is the same mechanism as the pin floors:
+    coverage does not fall silently.
+
+    A record that is not a mapping is reported as recordless rather than read, for
+    the reason ``retired_shape_reasons`` gives: a shape read two ways makes "which
+    bytes did this run certify" a question with two answers.
+    """
+    welded = _welds(record) if welded is None else welded
+    rows, recordless = [], []
+    for name, entry in sorted(welded.items()):
+        runs = entry.get(fastpath.RUNS)
+        if not isinstance(runs, dict) or not runs:
+            recordless.append(f"{name}: {fastpath.RUNS} is {runs!r}")
+            continue
+        for capability, run in sorted(runs.items()):
+            if not isinstance(run, dict):
+                recordless.append(f"{name}[{capability}] is {type(run).__name__}, "
+                                  f"not a record")
+                continue
+            rows.append((name, capability, run))
+    return rows, recordless
+
+
+def _assert_the_run_tier_is_walkable(rows, recordless):
+    """The two non-vacuity legs every per-record requirement below shares."""
+    assert not recordless, (
+        f"{len(recordless)} PASS weld(s) carry no per-capability run record: "
+        f"{recordless[:8]} — a weld with no record certifies no architecture, and "
+        f"every requirement in this tier would iterate over nothing. Re-run its "
+        f"gate and bind it with parity/meep_gpu/rebind_triton_welds.py")
+    assert len(rows) >= WELD_RUN_RECORD_FLOOR, (
+        f"only {len(rows)} (weld, capability) run records to check, was "
+        f"{WELD_RUN_RECORD_FLOOR} — the tier SHRANK; a weld does not leave the "
+        f"metadata requirements by losing its record")
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +415,16 @@ NOT_A_GATE_RECORD = {
     "subnormal_policy":
         "prose: which policy the track is certified under and what is impure "
         "about that label; carries no path and no digest",
+    # ARRIVED 0.9.1 with the per-capability migration. A BLOCK, not a string —
+    # which is why it is named here rather than left to the "not a dict" reading
+    # the rest of this list used to be able to assume.
+    "_capability_runs_migration":
+        "the migration's own stamp: which tool moved the run fields under "
+        "`runs[<cc>]`, when, where each entry's capability was read from, and how "
+        "many entries it touched. It records a COUNT and a capability list and "
+        "deliberately no digest, so there is nothing here to compare against the "
+        "tree; that absence is asserted by test_capability_records.py::"
+        "test_the_migration_is_recorded_in_both_ledgers_and_states_no_digest",
     "not_built_this_round":
         "prose: the PTX census of products this round did not build",
     # REWRITTEN 2026-09-07, for the reason the block comment below gives about the
@@ -956,7 +1068,14 @@ EXPECTED_RULES = {
     walk.TIER_DEVICE + ":device_kernel_digest": 68,
     "historical_recut_log": 41,
     "historical_superseded_run": 38,
-    walk.TIER_RAW + ":sibling_script_pin": 22,
+    # Added in 0.9.1: one per weld per architecture it has a run record for
+    # (66 today, all 8.6). It is the digest of the digests that run certified,
+    # which is what makes an architecture's evidence expire with the bytes.
+    "run_bound_digest": 66,
+    # 22 until 0.9.1, which removed the eight launch-script pins
+    # (``slurm_launcher``/``slurm_launcher_sha256``): a record pins what the gate
+    # executed, not how it was launched (test_package_boundary.py).
+    walk.TIER_RAW + ":sibling_script_pin": 14,
     "out_of_tree_sibling_path": 16,
     "staging_only_file": 16,
     walk.TIER_RAW + ":host_side_digest_map": 10,
@@ -1068,7 +1187,10 @@ def test_every_not_in_this_checkout_exclusion_still_has_its_premise(tmp_path):
 
     A violation is NOT a licence to delete the digest. It says the digest has
     become checkable and must move into a tier, which is the only direction
-    coverage is allowed to move.
+    coverage is allowed to move. That day came in 0.9.1: ``cases.py`` is committed,
+    its 16 staging-only premises have expired, and each of those digests is now
+    compared with the committed bytes here and must match. Every other premise
+    must still hold.
 
     THE ARMED CONTROL is the second half: the same census is driven against a
     planted tree in which the staged file DOES exist, and the check must report
@@ -1085,10 +1207,27 @@ def test_every_not_in_this_checkout_exclusion_still_has_its_premise(tmp_path):
         is_file=lambda name: _resolve(name).is_file(),
         inside_repo=_inside_repo,
     )
-    assert not violations, (
-        f"{len(violations)} exclusion(s) rest on a premise the tree no longer "
-        f"supports: {violations[:6]} — the digest has become checkable; move it "
+    # A STAGED FILE THAT IS NOW COMMITTED IS CHECKED, NOT EXCUSED. ``cases.py`` was
+    # committed in 0.9.1 with the bytes these records name as staged, so its 16
+    # exclusions have expired exactly as the premise promised they would. Each digest
+    # is compared here with the committed file, raw -- the comparison the raw tier
+    # makes -- and a mismatch fails. Any OTHER expired premise still fails outright.
+    by_where = {walk.dotted(f.trail): f for f in premised}
+    committed = [(where, subject) for where, subject, why in violations
+                 if why.startswith("declared staging-only, but the file IS in this")]
+    others = [v for v in violations if (v[0], v[1]) not in committed]
+    assert not others, (
+        f"{len(others)} exclusion(s) rest on a premise the tree no longer "
+        f"supports: {others[:6]} — the digest has become checkable; move it "
         f"into a tier, never delete it")
+    assert sorted({subject for _, subject in committed}) == ["parity/meep_gpu/cases.py"] \
+        and len(committed) == 16, committed
+    mismatched = [(where, subject) for where, subject in committed
+                  if _raw_digest(_resolve(subject)) != by_where[where].value]
+    assert not mismatched, (
+        f"{len(mismatched)} digest(s) of a committed staged file do not match the bytes "
+        f"in the tree: {mismatched[:4]} — the record names one file and the commit "
+        f"holds another")
 
     # THE CONTROL. Plant the staged file and require the check to notice.
     staged = sorted({f.subject for f in premised if f.rule == "staging_only_file"})
@@ -1103,6 +1242,11 @@ def test_every_not_in_this_checkout_exclusion_still_has_its_premise(tmp_path):
     )
     assert len(armed) == 16 and all("IS in this checkout" in why
                                     for _, _, why in armed), armed
+    # ...and the digest comparison above is armed too: bytes other than the recorded
+    # ones, planted at the committed path, must be reported as a mismatch, every one.
+    planted_mismatches = [where for where, _, _ in armed
+                          if _raw_digest(planted) != by_where[where].value]
+    assert len(planted_mismatches) == 16, planted_mismatches
 
 
 def test_no_exclusion_on_this_record_defers_to_another_test():
@@ -1597,16 +1741,36 @@ def test_the_code_tier_is_the_clause_code_identity_licenses(tmp_path):
 
 @pytest.mark.parametrize("field", REQUIRED_METADATA)
 def test_every_triton_weld_carries_its_metadata(field):
-    """The Metal requirement, on the Triton record. Measured 0/10 missing today.
+    """The Metal requirement, on the Triton record. Measured 0/55 missing today.
 
     Flat, with no budget, because there is no debt to declare: this is a floor a
     future weld must clear, not a backlog. The gap it forecloses is the one the
     CUDA comparison found in certification.json — 0 of 4 blocks carried
     recorded_utc — reaching a third track.
+
+    ASKED OF EVERY RUN RECORD SINCE 0.9.1, not of the entry. All four of these name
+    a fact about ONE RUN — when it ran, on what, which artifact it wrote, which
+    float32 policy was installed — so after the per-capability migration they live
+    in ``runs[<cc>]`` and an entry-level read would find nothing at all. The level
+    is DERIVED from ``fastpath.RUN_FIELDS`` and the subset relation is asserted
+    here, so a field that is reclassified in ``fastpath.py`` fails this test rather
+    than being quietly read from a level the ledger no longer uses.
+
+    THE KEY IS IN THE FAILURE, as ``weld[cc]``: a weld certified on two
+    architectures and missing a field on one of them must name which one, because
+    the remedy is a run of THAT architecture and nothing else.
     """
-    missing = [name for name, entry in _welds().items() if not entry.get(field)]
+    assert field in fastpath.RUN_FIELDS, (
+        f"{field!r} is no longer a run field in fastpath.RUN_FIELDS, so this test "
+        f"is reading it from the wrong level — decide where it lives and move it "
+        f"here in the same change")
+    rows, recordless = _weld_runs()
+    _assert_the_run_tier_is_walkable(rows, recordless)
+    missing = [f"{name}[{capability}]" for name, capability, run in rows
+               if not run.get(field)]
     assert not missing, (
-        f"{len(missing)} Triton welds lack {field}: {sorted(missing)}")
+        f"{len(missing)} of {len(rows)} Triton run records lack {field}: "
+        f"{sorted(missing)}")
 
 
 def test_every_triton_weld_records_a_timestamp_that_parses():
@@ -1616,15 +1780,21 @@ def test_every_triton_weld_records_a_timestamp_that_parses():
     no one can parse cannot be compared, and the no-absorber test already reads
     these with a ``>=`` on the raw string, which is only sound while the shape is
     fixed.
+
+    PER RUN RECORD since 0.9.1. The stamp was never a property of the weld — it is
+    when one architecture's gate ran — and once two records sit under one entry a
+    single stamp could only describe one of them.
     """
+    rows, recordless = _weld_runs()
+    _assert_the_run_tier_is_walkable(rows, recordless)
     bad = {}
-    for name, entry in _welds().items():
-        stamp = entry["recorded_utc"]
+    for name, capability, run in rows:
+        stamp = run.get("recorded_utc")
         try:
-            datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+            datetime.datetime.strptime(str(stamp), "%Y-%m-%dT%H:%M:%SZ")
         except (TypeError, ValueError):
-            bad[name] = stamp
-    assert not bad, f"welds whose recorded_utc is not ISO-8601 UTC: {bad}"
+            bad[f"{name}[{capability}]"] = stamp
+    assert not bad, f"run records whose recorded_utc is not ISO-8601 UTC: {bad}"
 
 
 def test_every_triton_weld_artifact_digest_is_a_sha256():
@@ -1634,33 +1804,63 @@ def test_every_triton_weld_artifact_digest_is_a_sha256():
     recompute them on a fresh clone — which is precisely why the recorded value
     has to be well formed: it is the only handle a later reader gets. All ten were
     resolved and recomputed by hand on 2026-08-19 and matched.
+
+    ONE ARTIFACT PER RUN, so one digest per run record. This digest is deliberately
+    NOT part of ``fastpath.bound_digest`` — the bound is over the bytes a run
+    certified, and an artifact is what the run produced — so nothing else in the
+    ledger would catch it degrading into a note.
     """
-    bad = {name: entry["artifact_sha256"] for name, entry in _welds().items()
-           if not _SHA256.match(str(entry["artifact_sha256"]))}
-    assert not bad, f"welds whose artifact_sha256 is not a sha256: {bad}"
+    rows, recordless = _weld_runs()
+    _assert_the_run_tier_is_walkable(rows, recordless)
+    bad = {f"{name}[{capability}]": run.get("artifact_sha256")
+           for name, capability, run in rows
+           if not _SHA256.match(str(run.get("artifact_sha256")))}
+    assert not bad, f"run records whose artifact_sha256 is not a sha256: {bad}"
 
 
 def test_every_triton_weld_names_a_validated_triton_and_capability():
     """A Triton weld is a claim about generated PTX, so the toolchain is part of it.
 
-    The record already declares ``validated_triton_versions`` and
-    ``validated_compute_capabilities`` and explains why the second one matters —
-    Triton generates PTX for an ARCHITECTURE. This binds each weld's host string
-    to those declarations, so a weld cut on an unvalidated Triton or an
-    unvalidated cc fails until the declaration is widened deliberately, in the
-    same change.
+    The record declares ``validated_triton_versions``, and each record's host string
+    is bound to it, so a weld cut on an unvalidated Triton fails until the
+    declaration is widened deliberately, in the same change.
+
+    THE CAPABILITY HALF NO LONGER READS A DECLARED LIST, and the reason is the whole
+    point of the 0.9.1 migration. ``validated_compute_capabilities`` used to be one
+    hand-typed key in this record that no tool wrote, so a certification round on
+    another architecture moved every weld's evidence and left the declaration saying
+    what it had always said. The key is DELETED; the answer is derived from the
+    capabilities each cited weld has a live record for
+    (``fastpath.validated_compute_capabilities``).
+
+    SO EACH RECORD IS COMPARED AGAINST ITS OWN KEY — a record filed under ``9.0``
+    whose host says ``cc 8.6`` is reported — which is strictly stronger than
+    membership of any list: the old rule passed every weld in the record as long as
+    one global list mentioned the cc each host happened to name, and it could not
+    see a record filed under the wrong architecture at all. MEASURED 2026-10-01:
+    55 of 55 records name a validated Triton AND their own key.
     """
     record = _record()
     versions = record["validated_triton_versions"]
-    capabilities = record["validated_compute_capabilities"]
-    assert versions and capabilities, "the record's own validation lists are empty"
+    assert versions, "the record's own validated_triton_versions is empty"
+    assert "validated_compute_capabilities" not in record, (
+        "the hand-typed capability declaration is back in the record. It is the "
+        "defect the per-capability records replaced — no tool writes it, so it "
+        "cannot be wrong in a way anything notices. Delete it and let "
+        "fastpath.validated_compute_capabilities derive the answer")
+    rows, recordless = _weld_runs(record)
+    _assert_the_run_tier_is_walkable(rows, recordless)
     silent = {}
-    for name, entry in _welds(record).items():
-        host = entry["host"]
-        if not any(v in host for v in versions):
-            silent[name] = f"names no validated Triton ({versions}): {host!r}"
-        elif not any(c in host for c in capabilities):
-            silent[name] = f"names no validated cc ({capabilities}): {host!r}"
+    for name, capability, run in rows:
+        host = str(run.get("host", ""))
+        if not any(version in host for version in versions):
+            silent[f"{name}[{capability}]"] = (
+                f"names no validated Triton ({versions}): {host!r}")
+        elif capability not in host:
+            silent[f"{name}[{capability}]"] = (
+                f"is filed under {capability!r} and its host line does not say so: "
+                f"{host!r} — one of the two is wrong, and a record filed under an "
+                f"architecture its own run never names is the dangerous direction")
     assert not silent, silent
 
 
@@ -1673,10 +1873,24 @@ def test_every_triton_weld_names_the_policy_it_was_cut_under():
     kernels' bytes differ in the subnormal range from what a flush run produces,
     so a weld that does not name its policy does not identify its own result — and
     pairing it with the wrong probe is a broken comparison, not a platform verdict.
+
+    PER RUN RECORD since 0.9.1, and the policy is the sharpest case for that: it is
+    a property of the environment one run installed, so two architectures' records
+    may legitimately disagree about it and a single entry-level field could only
+    name one of them. Measured 2026-10-01: three welds short, the three mixed-policy
+    gates the budget already names; the debt is unchanged by the migration.
+
+    THE BUDGET IS KEYED BY WELD, not by ``weld[cc]``, deliberately. Each of the
+    three is owed a gate that CALLS ``install_ftz_strip`` — see the block comment at
+    :data:`POLICY_UNNAMED_BUDGET` — and that debt is about the gate, so it would be
+    owed on every architecture it is ever run on. A per-record budget would have to
+    grow a line per capability to say the same thing.
     """
     welded = _welds()
-    unnamed = {name for name, entry in welded.items()
-               if not _POLICY_WORD.search(str(entry.get("subnormal_policy", "")))}
+    rows, recordless = _weld_runs(welded=welded)
+    _assert_the_run_tier_is_walkable(rows, recordless)
+    unnamed = {name for name, _capability, run in rows
+               if not _POLICY_WORD.search(str(run.get("subnormal_policy", "")))}
     assert unnamed <= set(POLICY_UNNAMED_BUDGET), (
         "welds whose subnormal_policy names no policy and are not declared debt: "
         f"{sorted(unnamed - set(POLICY_UNNAMED_BUDGET))}")
@@ -1684,6 +1898,154 @@ def test_every_triton_weld_names_the_policy_it_was_cut_under():
     assert not stale, (
         f"the debt budget names something that is not a weld: {sorted(stale)} — "
         "a budget entry that outlived its weld hides the next real one")
+
+
+def test_every_cited_triton_weld_has_a_live_record_for_some_architecture():
+    """A CITED WELD WITH NO LIVE RECORD ADMITS NOTHING, and must say so here.
+
+    WHAT LIVENESS IS. A run record carries ``bound_sha256``, the digest of the
+    digests that run certified (``fastpath.bound_digest`` over ``BOUND_FIELDS``). A
+    record is LIVE while that equals the entry's current bound, so the comparison is
+    LEDGER AGAINST LEDGER: an edit that rebinds a weld's source map without
+    re-running its gate expires every architecture's evidence at once. Whether the
+    ledger matches the TREE is a different claim and stays the job of
+    ``test_the_triton_welds_are_bound_to_the_live_sources`` above — this test would
+    stay green on a record bound to bytes that have all moved, and that is the right
+    split: one tells you the evidence expired, the other that the files did.
+
+    WHY A TABLE'S ANSWER IS THE INTERSECTION. An arm dispatches from whichever
+    certified family serves it, so a capability ONE cited family never ran on is a
+    capability the table cannot claim. An empty intersection is not "unknown": it
+    is a readable ledger whose cited welds share no live architecture, and it
+    refuses every device.
+
+    WHAT THIS ASSERTS THAT ``test_capability_records.py`` DOES NOT. That file drives
+    the machinery over synthetic ledgers and, in
+    ``test_capability_records.py::test_both_nvidia_tables_derive_the_architecture_
+    they_were_certified_on``, pins both shipped tables at ``('8.6',)`` through the
+    package's own loader. Two things are left over, and they are this file's job
+    because this file owns this record: the DENOMINATOR — how many keys the arms
+    cite, asserted as a floor, since a collapsed arm map would make that file's loop
+    pass over one key — and that the claim holds for the record AS CHECKED IN HERE,
+    read from the file rather than through ``fastpath._fingerprints``. The admitted
+    set is deliberately NOT pinned to a literal: the next architecture's round must
+    widen it by writing records, not by editing this test.
+
+    MEASURED 2026-10-01: 75 arms cite 44 keys, every one live on ``8.6``, admitted
+    non-empty, 0 blocked.
+    """
+    record = _record()
+    cited = sorted({gate for _family, gate
+                    in fastpath._arm_certification_map("triton").values()})
+    assert len(cited) >= CITED_KEY_FLOOR, (
+        f"this table's arms cite only {len(cited)} ledger keys, was "
+        f"{CITED_KEY_FLOOR} — the arm map SHRANK, and a loop over fewer keys is a "
+        f"weaker claim wearing this test's name")
+    absent = [key for key in cited if not isinstance(record.get(key), dict)]
+    assert not absent, (
+        f"{len(absent)} cited key(s) are not entries in this record: {absent} — an "
+        f"arm whose certification names nothing dispatches on evidence that is not "
+        f"here")
+    dead = {key: fastpath.capability_report(record, [key])["by_key"][key]["problem"]
+            for key in cited if not fastpath.live_capabilities(record[key])}
+    assert not dead, (
+        f"{len(dead)} cited weld(s) have no LIVE record for any architecture: "
+        f"{dead} — every architecture's evidence for them expired with the bytes "
+        f"they bind, so the table admits no device at all. RE-RUN each gate and "
+        f"rebind with parity/meep_gpu/rebind_triton_welds.py; do not hand-edit a "
+        f"bound_sha256, which would re-point the evidence at bytes no run saw")
+    report = fastpath.capability_report(record, cited)
+    assert report["admitted"], (
+        "this table's cited welds share no live architecture, so "
+        "validated_compute_capabilities is empty and every device is refused. The "
+        "blockers are named per key in capability_report's by_key")
+
+
+def test_no_triton_entry_is_left_in_the_shape_the_run_records_replaced():
+    """BOTH SHAPES ARE NEVER READ, so neither may be left in the record.
+
+    THE RULE ``fastpath.retired_shape_reasons`` STATES, and the reason it is a
+    refusal rather than a compatible read: an entry that carried a run field BESIDE
+    its digests and a record under ``runs`` would make "which bytes did this run
+    certify" a question with two answers, which is the defect the container closes.
+    So a stranded run field, a record keyed by something that is not a normalised
+    capability (``sm_90`` normalises to itself and would otherwise key one), a
+    record that is not a mapping, a record with no ``bound_sha256``, and an entry
+    that binds no bytes at all are each reported by name.
+
+    THE DENOMINATOR IS WIDER THAN THE CITED SET, which is what this adds over
+    ``test_capability_records.py::test_no_shipped_nvidia_weld_is_left_in_the_shape_
+    this_replaced``: that one walks the 44 keys the arms cite, and this record holds
+    55 PASS welds and 77 entries. An uncited weld left half-migrated is a weld the
+    next round rebinds against, and a prose block that grows a ``host`` is how a run
+    field gets stranded in the first place.
+
+    SO EVERY ENTRY IS EITHER CLEAN OR NAMED, the mechanism this whole file rests on.
+    The exemptions are the two tables already here — :data:`NOT_A_GATE_RECORD` and
+    :data:`PINNED_BUT_NOT_A_WELD` — because an entry that is not a gate record has
+    no run to file. MEASURED 2026-10-01: 55 of 55 welds clean; ten entries report,
+    all ten named (eight prose or narrative blocks, plus the ``host_sha256`` and
+    ``specialized_kernel_sources`` maps, which are indexes rather than runs).
+
+    THE SLOT CONTENTS ARE CHECKED TOO, and nothing else checks them.
+    ``bind_capability`` refuses a foreign key at WRITE time, so a ledger written by
+    hand — or by an older tool — can hold a record carrying a field that describes
+    the BYTES, which belongs beside the digests where the bound covers it. Measured:
+    0 foreign keys over 66 records.
+    """
+    record = _record()
+    welded = _welds(record)
+    assert len(welded) >= WELD_FLOOR, len(welded)
+    stranded = {name: fastpath.retired_shape_reasons(entry)
+                for name, entry in sorted(welded.items())
+                if fastpath.retired_shape_reasons(entry)}
+    assert not stranded, (
+        f"{len(stranded)} PASS weld(s) are still in the shape the per-capability "
+        f"records replaced: {stranded} — migrate them with "
+        f"parity/meep_gpu/migrate_capability_records.py; do not teach a reader to "
+        f"accept both levels")
+
+    declared = set(NOT_A_GATE_RECORD) | set(PINNED_BUT_NOT_A_WELD)
+    undeclared = {}
+    for name, entry in sorted(record.items()):
+        if not isinstance(entry, dict) or name in welded or name in declared:
+            continue
+        reasons = fastpath.retired_shape_reasons(entry)
+        if reasons:
+            undeclared[name] = reasons
+    assert not undeclared, (
+        f"{len(undeclared)} entry(ies) are neither in the per-capability shape nor "
+        f"declared a non-gate record: {undeclared} — either file the run under "
+        f"runs[<cc>], or name it in NOT_A_GATE_RECORD / PINNED_BUT_NOT_A_WELD with "
+        f"the reason it has no run to file")
+
+    foreign = {}
+    for name, capability, run in _weld_runs(record, welded)[0]:
+        extra = sorted(set(run) - {"bound_sha256"} - set(fastpath.RUN_FIELDS))
+        if extra:
+            foreign[f"{name}[{capability}]"] = extra
+    assert not foreign, (
+        f"{len(foreign)} run record(s) hold a field that is not a run field: "
+        f"{foreign} — a field describing the BYTES belongs beside the digests, "
+        f"where fastpath.bound_digest covers it and the record expires with it; "
+        f"inside a record it is a claim no bound protects")
+
+    # ARMED, both legs, because a shape check that has never rejected anything is a
+    # shape check nobody has watched work — the complaint this file makes about the
+    # eleven days host_sha256 spent behind a citation, in another form.
+    clean = {"source_sha256": {"launch.py": "a" * 64},
+             fastpath.RUNS: {"8.6": {"bound_sha256": "b" * 64}}}
+    assert fastpath.retired_shape_reasons(clean) == []
+    pre_migration = {"source_sha256": {"launch.py": "a" * 64}, "host": "the GPU host",
+                     "recorded_utc": "2026-09-25T16:09:24Z"}
+    reasons = fastpath.retired_shape_reasons(pre_migration)
+    assert any("run fields beside the digests" in reason for reason in reasons), reasons
+    assert any(f"no {fastpath.RUNS!r} record" in reason for reason in reasons), reasons
+    # AND A RECORD KEYED BY A SPELLING THAT IS NOT A CAPABILITY, which is the one
+    # the normaliser would pass through unchanged rather than reject.
+    mis_keyed = dict(clean, **{fastpath.RUNS: {"sm_90": {"bound_sha256": "b" * 64}}})
+    assert any("not a normalised capability" in reason
+               for reason in fastpath.retired_shape_reasons(mis_keyed))
 
 
 def test_no_triton_weld_claims_a_gate_that_refused_on_device():

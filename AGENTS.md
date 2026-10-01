@@ -83,7 +83,10 @@ message.
 - Certified identities: NVIDIA compute capability 8.6 (Triton 3.1.0, or the
   hand-written CUDA table); Apple PyTorch 2.10.0 with Metal frontend
   32023.850.10. Any other identity is refused by name to the array path, which
-  is correct and slower.
+  is correct and slower. The NVIDIA list is DERIVED from the ledgers' per-architecture
+  records, never typed: a capability enters it only when every weld the table's arms
+  cite has a live record for it, which a certification round writes
+  (`docs/development/certification.md`). Never widen it by editing a ledger.
 - One simulation, one GPU, one process: no MPI (refused by name), no multi-GPU.
 - Speed: point to [Will it help?](docs/guides/will-it-help.md) and repeat no
   ratio without the conditions stated there. The target is large 3-D problems

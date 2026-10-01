@@ -171,8 +171,6 @@ def test_the_no_pml_composition_fingerprint_names_the_exact_gated_bytes():
             "the change reaches executable code")
 
     gate = record["no_pml_composition_gate"]
-    assert gate["slurm_job_id"] == 2315
-    assert gate["slurm_state"] == "COMPLETED 0:0"
     assert gate["product"]["single_launch_guarded"].startswith("108/108")
     assert gate["product"]["multistep_guarded"].startswith("12/12")
     assert "12/12 complete FdtdDriver.step calls" in gate["real_engine_route"]["covered"]

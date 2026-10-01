@@ -8,8 +8,8 @@ curl and mask, the subtraction-as-negated-add, the imaginary-coefficient-left
 product's EXPANSION arm, the unrotated center partner, the HAS_BETA constexpr's
 identity arm — is HELD HERE, empirically, per platform.
 
-CLONED from the complex tranche's harness (``gate_triton_complex.py``, job
-2330), and deliberately IMPORTING it rather than restating: the subnormal
+CLONED from the complex tranche's certified harness (``gate_triton_complex.py``),
+and deliberately IMPORTING it rather than restating: the subnormal
 policy machinery (``install_ftz_strip`` / ``ftz_strip_license_reasons`` /
 ``policy_stamp`` / ``probe_record_policy_reasons``), the exact-fma32 expansion
 probe, the complex reference transcription (``complex_curl`` / ``complex_mask``
@@ -73,7 +73,7 @@ Legs, in order:
   (both families); m8 per-element f64 coefficient instead of
   host-rounded-once (the UNROUNDED coefficient smuggled through the two fp32
   slots as a hi/lo pair — the f64-annotation route is dead on Triton 3.1.0,
-  whose jit.py honors int/uint/bool annotations only; job 2332 measured it
+  whose jit.py honors int/uint/bool annotations only; an earlier run measured it
   as a 72/72-identical false needle — with the PER-COMBO pair bound so every
   combo's catch isolates the double rounding rather than a wrong-beta
   constant); m9 signed-zero cross terms folded away (complex) — caught at
@@ -82,7 +82,7 @@ Legs, in order:
   emulation) AND, since the 2026-08-12 complex-helper spelling fix, at the
   STORED layer too: the inlined complex_fields helpers' addends were unary
   ``-`` until then, and Triton's ``0.0 - x`` lowering canonicalized every ±0
-  addend before a store (measured, job 2332's predicted-4-got-0 engineered
+  addend before a store (measured, an earlier run's predicted-4-got-0 engineered
   leg — kept as the record of the old spelling); with the ``* -1.0``
   spelling the engineered leg re-asserts the restored IEEE-negation
   prediction (4 words under either arm, device recut to confirm); m10 the
@@ -242,7 +242,7 @@ def _beta_pattern_vectors(rng) -> Tuple[np.ndarray, np.ndarray]:
     at the product layer: at the STORED layer those ±0 differences are
     absorbed — on random seeds by ``x - (±0) == x``, and on ALL states on this
     platform by Triton's ``0.0 - x`` unary-minus lowering in the inlined
-    helpers, measured by job 2332)."""
+    helpers, measured by an earlier device run)."""
     zr = list(rng.uniform(-2.0, 2.0, gate.RANDOM_VECTORS))
     zi = list(rng.uniform(-2.0, 2.0, gate.RANDOM_VECTORS))
     for zero in (0.0, -0.0):
@@ -336,7 +336,7 @@ def measure_beta_expansion_record(xp, backend_name: str) -> Dict[str, Any]:
     for scalar0d in _beta_coefficient_scalars():
         # S:784 binds a NUMPY SCALAR (``dtype.type(coefficient)``) on both
         # array paths, and CuPy ufuncs reject 0-d numpy ndarrays outright
-        # (job 2331's TypeError) — so the 0-d carrier collapses to its numpy
+        # (a measured TypeError) — so the 0-d carrier collapses to its numpy
         # scalar here, byte-preserving (signed-zero real included).
         scalar = scalar0d[()]
         product = probe.to_host(xp.multiply(scalar, xp.asarray(z))
@@ -1197,7 +1197,7 @@ def mutate_m8_f64_coefficient(source: str) -> Tuple[str, int]:
     always fp32 at the ABI. The unrounded coefficient was therefore rounded to
     f32 at the call boundary, and ``round_f32(f64(c32) * f64(b))`` of an
     ALREADY-ROUNDED coefficient is the single rounding of the exact product —
-    byte-identical to the true kernel (job 2332: 72/72 identical launches; a
+    byte-identical to the true kernel (measured: 72/72 identical launches; a
     false needle of the m4-z-shift class). The rework smuggles the UNROUNDED
     coefficient through the two existing fp32 slots as a hi/lo pair — the leg
     binds ``beta_plus = hi = f32(c)``, ``beta_minus = lo = f32(c - hi)``, the
@@ -1226,11 +1226,11 @@ def mutate_m9_zero_cross_folded(source: str) -> Tuple[str, int]:
     constant-fold the compiler must not perform. NOT in the sweep table (the
     fold is byte-neutral on random seeds). :func:`run_m9_product_and_stored`
     catches this mutant at the PRODUCT layer — a wrapper kernel storing the
-    helper's own output words (the byte-visible layer, job 2329's lesson) —
+    helper's own output words (the byte-visible layer, the complex gate's lesson) —
     and ALSO at the engineered stored-layer launch, whose expectation was
     restored 2026-08-12 to the original IEEE-negation prediction after the
-    inlined complex_fields helpers dropped their unary-minus addends (job
-    2332's predicted-4-got-0 stands as the record of the old spelling, whose
+    inlined complex_fields helpers dropped their unary-minus addends (the
+    earlier predicted-4-got-0 stands as the record of the old spelling, whose
     ``0.0 - x`` lowering canonicalized every ±0 addend before a store)."""
     hits = 0
     for needle, replacement in (
@@ -1276,8 +1276,8 @@ class CountingKernel(gate.CountingKernel):
 # ORIGINAL plan — an engineered coincidence state (a ±0 partner word, an
 # exactly ``-0`` curl word, an exactly ``-0`` fu word, composed so the flip
 # reaches ``n = ((fu*km) - curl)*sinv``; NumPy emulation under IEEE negation
-# predicted exactly 4 differing stored words per arm) — was measured by job
-# 2332 at ZERO differing stored words. Mechanism, verified against the
+# predicted exactly 4 differing stored words per arm) — was measured on
+# device at ZERO differing stored words. Mechanism, verified against the
 # installed Triton 3.1.0: unary minus lowers as ``0.0 - x``
 # (language/semantic.py:386-391), and the INLINED complex_fields helpers'
 # addends were spelled unary ``-`` at the time (the spelling carried until
@@ -1286,7 +1286,7 @@ class CountingKernel(gate.CountingKernel):
 # + (0-(0*t_im)) = -0 + +0 = +0`` ), and any surviving ±0 difference was
 # laundered again at the next helper multiply before a store. That measured
 # absorption moved the catch to the layer where the defect IS byte-visible
-# (job 2329's lesson): a wrapper kernel that stores
+# (the complex gate's lesson): a wrapper kernel that stores
 # ``_mul_imag_coefficient_left``'s own output words.
 #
 # The wrapper leg doubles as the helper's FAITHFULNESS pin: the true
@@ -1306,7 +1306,7 @@ class CountingKernel(gate.CountingKernel):
 # original IEEE-negation prediction (4 words per arm). The engineered leg is
 # KEPT and launched with that restored expectation; a count off it means
 # either the platform lowering or the helper spelling changed — fail and
-# re-derive. Job 2332's 0-word measurement remains the record of the OLD
+# re-derive. The earlier 0-word measurement remains the record of the OLD
 # spelling.
 
 M9_SHAPE = (4, 3, 4)  # nz > 1 ON PURPOSE: the -0 curl addend needs b_z != b
@@ -1319,7 +1319,7 @@ M9_WORDS = ((-0.0, 0.7), (-0.0, 0.7))
 #: Stored-layer expectation PER LICENSED ARM — the original IEEE-negation
 #: host prediction (4 words per arm), RESTORED 2026-08-12: the complex
 #: helpers' ``* -1.0`` spelling fix removed both absorption mechanisms that
-#: job 2332 measured under the old unary-minus spelling (predicted-4-got-0,
+#: were measured under the old unary-minus spelling (predicted-4-got-0,
 #: kept above as the record of that spelling). FMA_V1: 4 is the host
 #: prediction pending the device recut — the leg fails loudly if the device
 #: disagrees, which would mean the lowering or the helper spelling moved
@@ -1399,11 +1399,11 @@ def run_m9_product_and_stored(expansion: int) -> Dict[str, Any]:
     mutant wrapper must reproduce the fold's own NumPy emulation, and the two
     must differ in EXACTLY the predicted words, with a nonzero total.
 
-    Stored leg: the job-2332 engineered state, true vs mutant full kernel,
+    Stored leg: the original engineered state, true vs mutant full kernel,
     expected exactly M9_STORED_EXPECTED[licensed arm] differing stored words
     (4 per arm — the original IEEE-negation host prediction, restored
     2026-08-12 when the inlined complex_fields helpers dropped their
-    unary-minus addends; job 2332 measured 0 under the old spelling's
+    unary-minus addends; an earlier run measured 0 under the old spelling's
     canonicalization), re-asserted so a Triton or helper-spelling change
     fails loudly here instead of silently shifting the byte contract."""
     shipped = shipped_source()
@@ -1429,7 +1429,7 @@ def run_m9_product_and_stored(expansion: int) -> Dict[str, Any]:
     # The mutant wrapper gets its OWN function name: an entry point whose
     # source text differs from the true wrapper's in every byte-addressed
     # cache and registry, so no same-name aliasing at any layer can serve the
-    # true binary for the mutant launch (job 2334 measured mutant bytes ==
+    # true binary for the mutant launch (a device run measured mutant bytes ==
     # true bytes while the two PTX provably differ — diagnostics below).
     mut_wrapper_src = (M9_WRAPPER_SRC
                        .replace("beta_product_probe", "beta_product_probe_m9fold"))
@@ -1566,7 +1566,7 @@ def run_m9_product_and_stored(expansion: int) -> Dict[str, Any]:
                              "(2026-08-12): the inlined complex_fields "
                              "helpers now spell their addends * -1.0, so "
                              "the fold's ±0 flip propagates to the stores; "
-                             "job 2332's 0-word absorption stands as the "
+                             "the earlier 0-word absorption stands as the "
                              "record of the old unary-minus spelling",
         "launches": stored_counter.launches,
         "differing_words": verdict["differing_floats"],
@@ -1705,8 +1705,8 @@ def run_mutations(results: Dict[str, Any], out_path: str,
 
     # m9 (source, dedicated leg): byte-neutral on the random-seeded sweeps, so
     # it is caught at the product layer, and — since the 2026-08-12 complex-
-    # helper spelling fix removed the stored-layer absorption job 2332
-    # measured — at the engineered stored leg's restored IEEE prediction.
+    # helper spelling fix removed the stored-layer absorption measured
+    # earlier — at the engineered stored leg's restored IEEE prediction.
     out["m9_zero_cross_terms_folded"] = run_m9_product_and_stored(expansion)
     results["mutations"] = out
     save(results, out_path)

@@ -413,7 +413,10 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     else:
         reason = str(report.longrepr)
 
-    sanctioned = _resource_name_from_marker(item) or _resource_name_from_reason(reason)
+    # The reason first: it names the resource that actually caused this skip, where a
+    # test's marker names the resource it needs to run at all (a test that needs MEEP
+    # can still skip for want of something MEEP's build lacks).
+    sanctioned = _resource_name_from_reason(reason) or _resource_name_from_marker(item)
     if sanctioned is not None:
         _sanctioned_skips[sanctioned] = _sanctioned_skips.get(sanctioned, 0) + 1
         return

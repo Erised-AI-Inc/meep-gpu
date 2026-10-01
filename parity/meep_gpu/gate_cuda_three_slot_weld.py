@@ -678,7 +678,7 @@ def _driven_components(fields) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# THE LAUNCH STRUCTURE -- rule 7's leg, and the reason this product exists
+# THE LAUNCH STRUCTURE -- the progress-reporting leg, and the reason this product exists
 # ---------------------------------------------------------------------------
 
 def leg_launch_structure(arm: str, spec: Dict[str, Any], steps: int) -> Dict[str, Any]:

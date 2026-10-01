@@ -101,7 +101,7 @@ one place, and NOT in the other, and both halves matter:
    That is the exact structural inversion of the certified family's recorded
    NULL. There, the metallic near ghost was unobservable BECAUSE the wall mask
    zeroed its entire support before the row sum (offdiag_update_e.py:108-117,
-   gate job 2340: the wrapped-ghost mutant measured byte-identical on the
+   that family's gate: the wrapped-ghost mutant measured byte-identical on the
    all-metallic sweep with a PTX-verified-different binary). Here the mask
    abstains, so the same plane is live and the ghost VALUE is byte-visible.
    The partner axis is always an axis on which the ROW component's Yee shift is
@@ -121,8 +121,8 @@ one place, and NOT in the other, and both halves matter:
    load-bearing: on a folded PERIODIC axis MEEP's ghost past the stored top is
    the parity-weighted image of ``_far_reflect_rows``' row (stepping.py:1708),
    which is what ``_shift_up`` serves for the CURL. The offdiag coupling does
-   not ask for it. See ARRAY-PATH FINDING below — that gap belongs to the
-   sessions that own ``stepping.py`` and ``driver.py``, and this kernel
+   not ask for it. See ARRAY-PATH FINDING below — that gap belongs to
+   ``stepping.py`` and ``driver.py``, not to this family, and this kernel
    reproduces whatever the array path does, byte for byte, either way.
 
 3. **THE STORED EXTENT** is carried exactly as :mod:`symmetry` carries it: the
@@ -208,8 +208,8 @@ A. **THE MIRROR GHOST WEIGHT IS EXACTLY ``-phase``, ALWAYS.** ``_shift_down``
 B. **THE WEIGHT IS A RUNTIME f32 SCALAR, NEVER A UNARY MINUS.** Platform fact:
    Triton 3.1.0's ``semantic.minus`` lowers ``-x`` as ``0.0 - x``, which
    canonicalizes signed zeros — ``-(+0.0)`` becomes ``+0.0`` where IEEE negation
-   gives ``-0.0``, and this was measured REACHABLE at driver level (jobs
-   2343/2345), not theoretical. A constant ``x * -1.0`` is within reach of the
+   gives ``-0.0``, and this was measured REACHABLE at driver level, not
+   theoretical. A constant ``x * -1.0`` is within reach of the
    same canonicalization. So the weight arrives as a plain runtime argument
    (``gwx``/``gwy``/``gwz``, exactly ``+1.0`` or ``-1.0``) and is applied as a
    multiply on the ghost lane only. ``1.0 * x`` is exact in f32 for every input
@@ -245,14 +245,14 @@ D. **BOTH MIRROR CODES BEHAVE IDENTICALLY IN THIS KERNEL — a PREDICTED NULL
 
 E. **EVERYTHING ELSE IS :mod:`offdiag_update_e`'S, UNCHANGED**, and is
    therefore that family's certified concern rather than re-litigated here: the
-   coefficient multiply sitting BETWEEN the two shifts (job 2344's m1), the two
+   coefficient multiply sitting BETWEEN the two shifts (that family's m1), the two
    shifts going in OPPOSITE directions (m2), the ``0.25`` scaling the sum last
    (a recorded null — an exact power of two commutes with round-to-nearest away
    from underflow), the diagonal-first row sum (a null — f32 addition is
    bitwise commutative), the slot-to-partner binding (m3), ``prev`` read before
    ``f_w`` is written (m9), and the no-surviving-row arm reducing to
    :func:`kernels.constitutive_step`'s body. The gate re-runs the ones the fold
-   could plausibly perturb and cites job 2344 for the rest.
+   could plausibly perturb and cites that family's certification for the rest.
 
 F. **``ENABLE_FP_FUSION = False`` IS THE CERTIFIED CONFIGURATION.** Measured
    per tranche: offdiag 0/28 fusion-on rows identical (and nonlinear 0/108,
@@ -291,7 +291,7 @@ scale): serving the parity-weighted reflect row instead changes the bytes.
 
 Whether the array path or MEEP is right there is not this file's question and
 not this file's to change. This kernel reproduces the array path. The finding
-belongs to the sessions that own ``stepping.py`` and ``driver.py``, alongside
+belongs to ``stepping.py`` and ``driver.py``, alongside
 the STALE DOCSTRING HAZARD :mod:`offdiag_update_e` already records
 (stepping.py:1219-1220, fields.py:1237-1241 and driver.py:1202-1204 all claim
 the installer refuses folded rows; ``_validated_offdiagonal_rows``,
@@ -364,8 +364,8 @@ MIRROR_CODES: Tuple[int, int] = (CODE_MIRROR_METALLIC, CODE_MIRROR_PERIODIC)
 MIRROR_SOURCE_INDEX = _symmetry.MIRROR_SOURCE_INDEX
 
 #: The shared clause builders this file's predicate composes from, named as data
-#: so the laptop test can assert every one still exists in the other sessions'
-#: files.
+#: so the laptop test can assert every one still exists in the shared modules
+#: this file imports and does not edit.
 SHARED_CLAUSES: Tuple[str, ...] = (
     "coverage._susceptibility_reasons", "coverage._layout_reasons",
     "coverage._inverse_epsilon_reasons", "coverage._coefficient_reasons",
@@ -1353,8 +1353,7 @@ def explain_folded_offdiag(fields: Any, pml: Any) -> "_coverage.Coverage":
 # INTEGRATION — what the later wiring round has to do, and nothing more
 # ---------------------------------------------------------------------------
 #
-# Additive edits, once the shared files are free (owned by concurrent sessions
-# and NOT touched from here):
+# Additive edits to the shared files, which are NOT touched from here:
 #
 #   coverage.py  clause 5's fold refusal (coverage.py:171-175) STAYS — it is
 #                the disjointness seam for the unfolded families, not a stale
@@ -1381,8 +1380,7 @@ def explain_folded_offdiag(fields: Any, pml: Any) -> "_coverage.Coverage":
 #                Bx). The probe attributes it: a run with NO folded off-diagonal
 #                kernel in it diverges identically, and every install carrying
 #                this kernel without the combined fill is exact. It belongs to
-#                the sessions that own symmetry.py and the composition install
-#                convention.
+#                symmetry.py and to the composition install convention.
 #   symmetry.py  folded_constitutive_coverage's offdiag clause (symmetry.py:
 #                814-817) STAYS: it is the disjointness seam against THIS file.
 #   __init__.py  export the kernel accessor, the predicate and the builders.

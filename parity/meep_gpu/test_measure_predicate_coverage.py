@@ -74,11 +74,22 @@ def test_the_pure_python_batteries_declare_no_hook():
     assert census.runtime_reasons_of("cuda_predicate_battery") == []
 
 
-def test_in_process_and_child_preflight_agree_for_the_same_interpreter(tmp_path):
+def _another_path_to_this_interpreter() -> str:
+    """This interpreter under a different path string, which forces the child route.
+
+    Spelled inside the interpreter's own directory rather than as a symlink elsewhere: a
+    virtual environment is found from the directory of the executable that was started,
+    so a symlink outside it would run the base interpreter without the environment.
+    """
+    return os.path.join(os.path.dirname(sys.executable), ".",
+                        os.path.basename(sys.executable))
+
+
+def test_in_process_and_child_preflight_agree_for_the_same_interpreter():
     own = census.preflight_runtime(sys.executable, "predicate_battery", _child_environment())
-    link = tmp_path / "python"           # a distinct path to the same interpreter forces
-    link.symlink_to(sys.executable)      # the child route
-    assert census.preflight_runtime(str(link), "predicate_battery", _child_environment()) == own
+    other = _another_path_to_this_interpreter()
+    assert other != sys.executable
+    assert census.preflight_runtime(other, "predicate_battery", _child_environment()) == own
 
 
 def test_a_child_whose_torch_import_fails_reports_that_reason(tmp_path):
@@ -86,10 +97,8 @@ def test_a_child_whose_torch_import_fails_reports_that_reason(tmp_path):
     shadow.mkdir()
     (shadow / "torch.py").write_text("raise ImportError('shadowed for the test')\n",
                                      encoding="utf-8")
-    link = tmp_path / "python"
-    link.symlink_to(sys.executable)
-    reasons = census.preflight_runtime(str(link), "predicate_battery",
-                                       _child_environment(str(shadow)))
+    reasons = census.preflight_runtime(_another_path_to_this_interpreter(),
+                                       "predicate_battery", _child_environment(str(shadow)))
     assert len(reasons) == 1 and reasons[0].startswith("torch is not importable"), reasons
     assert "shadowed for the test" in reasons[0]
 

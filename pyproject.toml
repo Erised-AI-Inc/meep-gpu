@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 #     python tools/rename_distribution.py --name NEW-NAME --apply
 # and never edit the name by hand.
 name = "meep-gpu"
-version = "0.9.0"
+version = "0.9.1"
 description = "GPU time stepping for MEEP simulations: steps a simulation built by the user's own MEEP installation on one NVIDIA or Apple GPU"
 readme = "README.md"
 license = "GPL-2.0-or-later"

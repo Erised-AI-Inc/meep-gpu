@@ -12,7 +12,7 @@
 # must run AFTER the last gate, deliberately and separately, because a fingerprint
 # cut before the gates that check it certifies nothing. This script never calls it.
 #
-# Rule 7: one flushed line per gate as it lands, plus a per-gate log, so the state
+# progress reporting: one flushed line per gate as it lands, plus a per-gate log, so the state
 # of a fifteen-gate run is readable from the filesystem while it is still running.
 #
 # THE OPTIONAL SECOND ARGUMENT IS A REBIND STAMP, and it exists because the artifact

@@ -59,7 +59,7 @@ LEGS (one process each; a policy is chosen before the first compile or not at al
               CUPY_ACCELERATORS='' set before CuPy imports (the module refuses
               otherwise, and the refusal names the variable).
 
-Rule 7: one flushed line per phase per sub-step, and the JSON artifact is
+Progress reporting: one flushed line per phase per sub-step, and the JSON artifact is
 rewritten atomically as each sub-step lands, so an interrupted run keeps
 everything up to the failure.
 
@@ -95,7 +95,7 @@ SLOTS: Tuple[str, ...] = ("step_B", "update_H", "step_D", "update_E", "update_P"
 _STARTED = time.time()
 
 
-def say(message: str) -> None:  # Rule 7: unbuffered, one line, elapsed.
+def say(message: str) -> None:  # progress reporting: unbuffered, one line, elapsed.
     print(f"[{time.time() - _STARTED:8.1f}s] {message}", flush=True)
 
 
@@ -105,7 +105,7 @@ def say(message: str) -> None:  # Rule 7: unbuffered, one line, elapsed.
 
 
 def save(record: Dict[str, Any], path: str) -> None:
-    """Atomic rewrite: tmp + fsync + replace, after every sub-step (rule 7)."""
+    """Atomic rewrite: tmp + fsync + replace, after every sub-step (progress reporting)."""
     directory = os.path.dirname(os.path.abspath(path)) or "."
     os.makedirs(directory, exist_ok=True)
     handle, tmp = tempfile.mkstemp(dir=directory, suffix=".tmp")

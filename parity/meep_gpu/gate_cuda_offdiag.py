@@ -537,10 +537,18 @@ class KernelBackend:
 
     THE GUARD AND THE MUTATION BOTH REACH NVRTC THROUGH THE SOURCE-KEYED MEMO.
     ``_get_kernel`` keys on ``(name, options, policy, source)``, so overriding
-    ``_COMPILE_OPTIONS`` or wrapping ``offdiag_source`` is a MISS and the compiler
-    sees the bytes this leg intends. The memo is dropped at both ends anyway,
+    ``_COMPILE_OPTIONS`` or wrapping ``offdiag_launch_source`` is a MISS and the
+    compiler sees the bytes this leg intends. The memo is dropped at both ends anyway,
     because a leg that measured a guard it never applied is the failure family the
     disposition records three instances of.
+
+    THE TEXT THIS BACKEND MUTATES AND DIGESTS IS THE LAUNCH TEXT,
+    ``offdiag_emitter.offdiag_launch_source``: the certified statement form in the
+    own-cell register view, which is what ``_get_kernel`` compiles. A mutation is
+    applied AFTER the hoist, so the port rule never sees a mutated helper (two of the
+    defects below rewrite ``constitutive_apply`` into a form its hazard check refuses),
+    and every digest this backend records -- ``sources_used`` and the compile-log match
+    of each mutation leg -- is of bytes NVRTC received.
     """
 
     name = "cupy"
@@ -549,7 +557,7 @@ class KernelBackend:
     def __init__(self, kernels):
         self.kernels = kernels
         self.source_transform: Optional[Callable[[str], Tuple[str, int]]] = None
-        self._pristine_emitter = offdiag_emitter.offdiag_source
+        self._pristine_emitter = offdiag_emitter.offdiag_launch_source
         self.sources_used: Dict[str, str] = {}
 
     def set_guard(self, guard: Sequence[str]) -> None:
@@ -568,9 +576,8 @@ class KernelBackend:
             return mutated
 
         # Patched on the EMITTER MODULE, which is where ``_get_kernel`` looks the
-        # function up at call time; the kernel module re-exports the name but does
-        # not call through its own copy.
-        offdiag_emitter.offdiag_source = emitted
+        # launch text up at call time.
+        offdiag_emitter.offdiag_launch_source = emitted
         self.kernels._clear_kernel_cache()
 
     def pristine_source(self, mask) -> str:
@@ -1274,11 +1281,14 @@ def run_mutations(backend, xp, results: Dict[str, Any], out_path: str,
         if transform is not None:
             sites = 0
             for mask in leg.get("masks", GATE_ROW_MASKS[:2]):
-                pristine = backend.pristine_source(mask)
-                mutated_text, count = transform(pristine)
+                _mutated, count = transform(backend.pristine_source(mask))
                 sites += count
                 if classification is None or classification["evaluator_sees_it"]:
-                    classification = classify_for_evaluator(pristine, mutated_text)
+                    # Asked of the certified statement form on both backends: that is
+                    # the text the evaluator executes, whichever text is compiled.
+                    statement = offdiag_emitter.offdiag_source(mask)
+                    classification = classify_for_evaluator(
+                        statement, transform(statement)[0])
             backend.set_source_mutation(transform)
 
         # THE EVALUATOR BACKEND CANNOT SEE EVERY DEFECT, and a leg it cannot see
@@ -1440,11 +1450,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "seed": SEED,
         "multi_step_budget": args.multi_step_budget,
         "emitter_corpus_digest": offdiag_emitter.corpus_digest(),
+        # The texts the single COMPILES: the certified ones through the own-cell hoist.
+        # The corpus digest above cannot see an edit to the hoist; this one can.
+        "launch_corpus_digest": offdiag_emitter.launch_corpus_digest(),
         "subjects": {
             name: probe.source_digest(os.path.join(
                 _REPO_API, "meep_gpu", "cuda_kernels", name))
             for name in ("offdiag_emitter.py", "offdiag_constitutive_kernels.py",
-                         "coverage.py", "constitutive_kernels.py",
+                         "own_cell_hoist.py", "coverage.py", "constitutive_kernels.py",
                          "step_curl_kernels.py")},
         "gate_sha256": probe.source_digest(os.path.abspath(__file__)),
     }

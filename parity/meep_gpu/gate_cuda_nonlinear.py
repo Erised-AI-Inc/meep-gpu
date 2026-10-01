@@ -101,8 +101,8 @@ THE DIVISION SPELLING PROBE
 =============================================================================
 
 The kernel divides with ``__fdiv_rn``. The sibling Triton track MEASURED that the
-plain operator was not IEEE division on THAT platform (``div.full.f32``, ~2 ulp;
-jobs 2336/2338), and CUDA's default is ``-prec-div=true``, so the two spellings
+plain operator was not IEEE division on THAT platform (``div.full.f32``, ~2 ulp),
+and CUDA's default is ``-prec-div=true``, so the two spellings
 are expected to agree HERE. Expected is not measured: ``plain_division`` rewrites
 ``__fdiv_rn(num, den)`` to ``num / den`` and the result is REPORTED WITH A READING
 rather than gated on, exactly as the contraction guard's control is -- because it

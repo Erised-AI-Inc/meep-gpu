@@ -6,8 +6,9 @@ decision engine). Five groups, in the order that rule names them:
 * KNOWN VALUE -- a hand-built record vetoes exactly the candidate it measured slower
   beyond its spreads, and nothing else;
 * DEGENERATE -- no record, an empty one, a missing key, a key marked unmeasured, a
-  ratio inside the spread, a record for another table, a record cut on another repair
-  route (the WHOLE route identity, not its digest alone), a record cut on another
+  ratio inside the spread, a record for another table, a record cut on another compute
+  capability, a device whose capability the caller cannot read, a record cut on another
+  repair route (the WHOLE route identity, not its digest alone), a record cut on another
   fused-pair emitter, a live route or emitter the caller cannot state, a baseline that
   is not what the candidate would displace, and every malformed record refusing BY NAME;
 * SCALING -- the band lookup at, below and above each edge, and monotone in cells;
@@ -26,6 +27,7 @@ import ast
 import copy
 import json
 import os
+import pathlib
 
 import pytest
 
@@ -45,6 +47,18 @@ LIVE_ROUTE = {"deposit_repair_sha256": ROUTE, "index": "linear",
               "repairs_per_bracketed_step": 3.0, "restricted": False,
               "fell_back": False}
 LIVE_EMITTERS = {"fused_pairs": PAIRS_SHA}
+
+#: ONE RECORD PRICES ONE ARCHITECTURE, so every record below stamps the capability its
+#: rows ran on and every consult below states the capability it is asking about. The
+#: hand-built records stamp the architecture the shipped ones were cut on, which is the
+#: one :data:`SHIPPED` names its files for; ``OTHER_CAPABILITY`` is a card no record
+#: here was cut on.
+CAPABILITY = "8.6"
+OTHER_CAPABILITY = "9.0"
+
+#: The one host row a hand-built record carries. ``compute_capability`` is what the ROWS
+#: stamped from the device they ran on, and the only field the consult reads off it.
+HOST = {"device": "EXAMPLE GPU", "compute_capability": CAPABILITY}
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +119,8 @@ def _entry(product, *, bracketed, lo, hi, fused, baseline, displaces,
     return entry
 
 
-def _record(entries, table="triton", route=ROUTE, barrier=None, **route_facts):
+def _record(entries, table="triton", route=ROUTE, barrier=None, host=None,
+            **route_facts):
     keys = {}
     for entry in entries:
         keys[dp.key_string(entry["product"], entry["storage"], entry["dimensions"],
@@ -116,6 +131,7 @@ def _record(entries, table="triton", route=ROUTE, barrier=None, **route_facts):
         "schema": dp.SCHEMA,
         "table": table,
         "recorded_utc": "2026-09-19T13:02:20Z",
+        "host": [dict(HOST)] if host is None else [dict(row) for row in host],
         "route": dict(block, id=dp.route_id(block)),
         "subject_barrier": barrier if barrier is not None else {
             "sources": ["fused_pairs"], "digests": {"fused_pairs": [PAIRS_SHA]},
@@ -141,14 +157,39 @@ AS_TIMED = object()          # "what the record was cut on", so None can mean No
 
 
 def _ask(record, candidate, *, bracketed, displaces=("PML", "ordinary"), table="triton",
-         mode="measured", route=ROUTE, live_route=AS_TIMED, emitters=AS_TIMED, **shape):
+         mode="measured", route=ROUTE, live_route=AS_TIMED, emitters=AS_TIMED,
+         capability=CAPABILITY, **shape):
     if live_route is AS_TIMED:
         live_route = dict(LIVE_ROUTE, deposit_repair_sha256=route)
-    return dp.consult(record, table=table, candidate=candidate, displaces=displaces,
+    return dp.consult(record, table=table, capability=capability, candidate=candidate,
+                      displaces=displaces,
                       run_shape=_shape(**shape), bracketed=bracketed, mode=mode,
                       repair_route=live_route,
                       subject_sha256=dict(LIVE_EMITTERS) if emitters is AS_TIMED
                       else emitters)
+
+
+def _capability(record):
+    """The ONE capability a record's rows stamp, read off the record itself.
+
+    Asked of every shipped record below rather than typed beside it, so a re-cut on
+    another card is a consult about that card and never a comparison against a
+    capability the test spelled for it. :func:`dp.load_record` has already refused a
+    record that names more or fewer than one.
+    """
+    capability, = dp.record_capabilities(record)
+    return capability
+
+
+def _tmp_record(tmp_path, table="triton", capability=CAPABILITY):
+    """A writable record path under ``tmp_path``, named the ONE name it may have.
+
+    The name is :func:`dp.record_path`'s even here, so a test cannot read a file under
+    a name nothing in the package looks up.
+    """
+    path = pathlib.Path(dp.record_path(table, capability, root=str(tmp_path)))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +300,74 @@ def test_a_record_for_another_table_is_never_applied():
     with pytest.raises(dp.RecordRefused) as refusal:
         dp.validate(record, expect_table="triton")
     assert refusal.value.code == "wrong_table"
+
+
+def test_a_record_cut_on_another_architecture_is_never_applied():
+    """ONE RECORD PRICES ONE ARCHITECTURE. The ratio a record carries was measured on
+    one card's instruction set and occupancy; applying it to another card is a false
+    veto, so the capability is a barrier exactly like the repair route and the
+    emitters."""
+    record = _record([_entry(**SLOW_PAIR)])
+    assert _ask(record, "fused pair D", bracketed=True).vetoed
+    verdict = _ask(record, "fused pair D", bracketed=True,
+                   capability=OTHER_CAPABILITY)
+    assert verdict.outcome == "no_record" and not verdict.vetoed
+    assert verdict.reason == "record_is_for_another_capability"
+    assert verdict.evidence["record_capability"] == [CAPABILITY]
+    assert verdict.evidence["live_capability"] == OTHER_CAPABILITY
+    assert verdict.evidence["record_sha256"] == record["record_sha256"]
+
+
+def test_a_device_whose_capability_cannot_be_read_is_no_record():
+    """A run that cannot say which architecture it is on may not be priced from a card
+    it may not be: ``None`` is the mismatch it might be, never today's record."""
+    record = _record([_entry(**SLOW_PAIR)])
+    verdict = _ask(record, "fused pair D", bracketed=True, capability=None)
+    assert verdict.outcome == "no_record" and not verdict.vetoed
+    assert verdict.reason == "capability_unread"
+    assert verdict.evidence["record_capability"] == [CAPABILITY]
+    assert "live_capability" not in verdict.evidence
+
+
+def test_a_record_naming_two_architectures_or_none_refuses_by_name():
+    """The refusal is :func:`dp.validate`'s, so a mixed record cannot even be
+    consulted: one number pooled over two architectures is the number a veto is read
+    off, and an unstamped row counts as a value of its own so that it cannot hide
+    inside a record that otherwise names one card."""
+    for host in ([dict(HOST), dict(HOST, compute_capability=OTHER_CAPABILITY)],
+                 [{"device": "EXAMPLE GPU"}],
+                 [dict(HOST, compute_capability="")],
+                 [dict(HOST), {"device": "EXAMPLE GPU"}]):
+        record = _record([_entry(**SLOW_PAIR)], host=host)
+        with pytest.raises(dp.RecordRefused) as refusal:
+            dp.validate(record)
+        assert refusal.value.code == "host_names_no_single_capability", host
+    # an unstamped row is KEPT as a distinct value rather than dropped, which is what
+    # makes the count wrong and the refusal fire
+    unstamped = _record([_entry(**SLOW_PAIR)], host=[dict(HOST),
+                                                     {"device": "EXAMPLE GPU"}])
+    assert dp.record_capabilities(unstamped) == (
+        CAPABILITY, "<no compute capability stamped>")
+    assert dp.record_capabilities(_record([_entry(**SLOW_PAIR)])) == (CAPABILITY,)
+
+
+def test_the_record_for_one_table_and_one_capability_has_one_spelling(tmp_path):
+    """:func:`dp.record_path` is where a record lives, for the cutter and the consult
+    alike: the capability is in the file name, so a directory listing says which
+    architectures have been timed."""
+    assert dp.record_path("triton", CAPABILITY) == os.path.join(
+        HERE, "triton_kernels", "timing_cc86.json")
+    assert dp.record_path("cuda", "9.0", root=str(tmp_path)) == os.path.join(
+        str(tmp_path), "cuda_kernels", "timing_cc90.json")
+    with pytest.raises(dp.ConsultRefused) as refusal:
+        dp.record_path("opencl", CAPABILITY)
+    assert refusal.value.code == "unknown_table"
+    # the capability has ONE spelling; the others CuPy hands out are refused by name
+    # rather than normalised by a second reader that could disagree with fastpath's
+    for spelling in ("86", "sm_86", "8", "8.6.0", "", "eight.six"):
+        with pytest.raises(dp.ConsultRefused) as refusal:
+            dp.record_path("triton", spelling)
+        assert refusal.value.code == "unreadable_capability", spelling
 
 
 def test_a_record_cut_on_another_repair_route_is_never_applied():
@@ -486,11 +595,12 @@ def test_span_mode_is_todays_behaviour_and_touches_nothing(tmp_path):
     assert span.outcome == "no_record" and not span.vetoed
     assert span.reason == "span_mode_record_not_consulted"
     # no I/O in span mode: a path that does not exist, and a file that is not a record
-    missing = str(tmp_path / "absent" / "timing.json")
-    garbage = tmp_path / "timing.json"
+    missing = dp.record_path("triton", CAPABILITY, root=str(tmp_path / "absent"))
+    garbage = _tmp_record(tmp_path)
     garbage.write_text("{ not json")
     for path in (missing, str(garbage)):
-        verdict = dp.consult_path(path, table="triton", candidate="fused pair D",
+        verdict = dp.consult_path(path, table="triton", capability=CAPABILITY,
+                                  candidate="fused pair D",
                                   displaces=("PML", "ordinary"), run_shape=_shape(),
                                   bracketed=True, mode="span",
                                   repair_route=LIVE_ROUTE,
@@ -502,13 +612,17 @@ def test_span_mode_is_todays_behaviour_and_touches_nothing(tmp_path):
 
 
 def test_measured_mode_reads_the_path_it_is_given(tmp_path):
-    path = tmp_path / "timing.json"
+    path = _tmp_record(tmp_path)
     path.write_text(dp.dumps(_record([_entry(**SLOW_PAIR)])))
-    asked = dict(table="triton", candidate="fused pair D", displaces=("PML", "ordinary"),
+    asked = dict(table="triton", capability=CAPABILITY, candidate="fused pair D",
+                 displaces=("PML", "ordinary"),
                  run_shape=_shape(), bracketed=True, mode="measured",
                  repair_route=LIVE_ROUTE, subject_sha256=LIVE_EMITTERS)
     assert dp.consult_path(str(path), **asked).vetoed
-    absent = dp.consult_path(str(tmp_path / "none.json"), **asked)
+    # a table whose architecture has never been timed reads no record at all, which is
+    # today's behaviour rather than another architecture's number
+    absent = dp.consult_path(
+        str(_tmp_record(tmp_path, capability=OTHER_CAPABILITY)), **asked)
     assert absent.outcome == "no_record" and absent.reason == "no_record_supplied"
     path.write_text("{ not json")
     with pytest.raises(dp.RecordRefused) as refusal:
@@ -578,7 +692,8 @@ def test_cells_come_from_the_run_shape_by_one_function():
     record = _record([_entry(**SLOW_PAIR)])
     shape = {"dimensions": 2, "grid_shape": (200, 120, 1), "complex_storage": False,
              "susceptibilities": 0}
-    verdict = dp.consult(record, table="triton", candidate="fused pair D",
+    verdict = dp.consult(record, table="triton", capability=CAPABILITY,
+                         candidate="fused pair D",
                          displaces=("PML", "ordinary"), run_shape=shape, bracketed=True,
                          mode="measured", repair_route=LIVE_ROUTE,
                          subject_sha256=LIVE_EMITTERS)
@@ -591,7 +706,8 @@ def test_a_run_shape_missing_an_axis_refuses_by_name():
         shape = _shape()
         shape.pop(missing)
         with pytest.raises(dp.ConsultRefused) as refusal:
-            dp.consult(record, table="triton", candidate="fused pair D",
+            dp.consult(record, table="triton", capability=CAPABILITY,
+                       candidate="fused pair D",
                        displaces=("PML", "ordinary"), run_shape=shape, bracketed=True,
                        mode="measured", repair_route=LIVE_ROUTE,
                        subject_sha256=LIVE_EMITTERS)
@@ -606,7 +722,7 @@ def test_a_record_round_trips_through_its_own_bytes(tmp_path):
     record = _banded()
     text = dp.dumps(record)
     assert json.loads(text) == record
-    path = tmp_path / "timing.json"
+    path = _tmp_record(tmp_path)
     path.write_text(text)
     loaded = dp.load_record(str(path), expect_table="triton")
     assert loaded == record
@@ -693,25 +809,35 @@ def test_the_shape_class_reads_the_axes_the_release_tables_compute():
 DRIVE_CEILING = 110592          # the largest DRIVE witness, 48 cubed
 SWEEP_TOP = 5400000
 
+#: The compute capability the shipped records were cut on: one RTX A6000, and the
+#: architecture whose name their files carry. :func:`dp.record_path` spells the path, so
+#: these tests cannot read a record under a name the package does not look up.
+SHIPPED_CAPABILITY = "8.6"
+
 SHIPPED = {
-    "triton": (os.path.join(HERE, "triton_kernels", "timing.json"),
+    "triton": (dp.record_path("triton", SHIPPED_CAPABILITY),
                "fused pair D", "fused pair B"),
-    "cuda": (os.path.join(HERE, "cuda_kernels", "timing.json"),
+    "cuda": (dp.record_path("cuda", SHIPPED_CAPABILITY),
              "cuda:fused electric pair", "cuda:fused magnetic pair"),
 }
 
 
 def _shipped(table):
     # A TRACKED FILE, so its absence is a failure and never a skip: the record ships
-    # beside the kernel table it describes.
+    # beside the kernel table it describes, under the name of the architecture it prices.
     path = SHIPPED[table][0]
     assert os.path.exists(path), f"{path} is not in the tree"
-    return dp.load_record(path, expect_table=table)
+    record = dp.load_record(path, expect_table=table)
+    assert _capability(record) == SHIPPED_CAPABILITY, (
+        f"{path} is named for compute capability {SHIPPED_CAPABILITY} and its rows "
+        f"were timed on {_capability(record)}")
+    return record
 
 
 def _ask_entry(record, table, entry, cells):
     return dp.consult(
-        record, table=table, candidate=entry["product"], displaces=entry["displaces"],
+        record, table=table, capability=_capability(record),
+        candidate=entry["product"], displaces=entry["displaces"],
         run_shape={"dimensions": entry["dimensions"], "grid_shape": [cells, 1, 1],
                    "complex_storage": entry["storage"] == "complex",
                    "susceptibilities": entry["susceptibilities"]},
@@ -768,7 +894,8 @@ def test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster(table):
 
     def ask(product, grid_shape):
         return dp.consult(
-            record, table=table, candidate=product, displaces=singles,
+            record, table=table, capability=_capability(record), candidate=product,
+            displaces=singles,
             run_shape={"dimensions": 2, "grid_shape": grid_shape,
                        "complex_storage": False, "susceptibilities": 0},
             bracketed=True, mode="measured", repair_route=record["route"],
@@ -802,7 +929,8 @@ def test_a_shipped_record_answers_no_record_for_a_tree_on_another_route(table):
     live = dict(record["route"], deposit_repair_sha256=dp.repair_route_sha256())
     entry = next(e for e in record["keys"].values() if e["status"] == "measured")
     verdict = dp.consult(
-        record, table=table, candidate=entry["product"], displaces=entry["displaces"],
+        record, table=table, capability=_capability(record),
+        candidate=entry["product"], displaces=entry["displaces"],
         run_shape={"dimensions": entry["dimensions"],
                    "grid_shape": [entry["band"]["lo_cells"], 1, 1],
                    "complex_storage": entry["storage"] == "complex",
@@ -821,7 +949,8 @@ def test_span_mode_never_vetoes_anything_a_shipped_record_would(table):
     for entry in record["keys"].values():
         for cells in (entry["band"]["lo_cells"], entry["band"]["hi_cells"]):
             verdict = dp.consult(
-                record, table=table, candidate=entry["product"],
+                record, table=table, capability=_capability(record),
+                candidate=entry["product"],
                 displaces=entry["displaces"],
                 run_shape={"dimensions": entry["dimensions"], "grid_shape": [cells, 1, 1],
                            "complex_storage": entry["storage"] == "complex",

@@ -76,7 +76,7 @@ cylindrical branch of any kind — grep the functions: the words "cylindrical",
 "is_axis" and "m" do not appear. They are element-wise with per-axis coefficient
 tables indexed on the component's OWN axis, and Dcyl changes nothing there except
 that axis 1 has n = 1. So the CERTIFIED ``complex_fields.bloch_constitutive_step``
-body (job 2330/2343) already computes them, and this file adds only a restated
+body already computes them, and this file adds only a restated
 predicate — :func:`cylindrical_complex_constitutive_coverage` — plus a plan
 builder that delegates to :class:`complex_fields.ComplexConstitutivePlan`. That is
 the same shape ``cylindrical_triton.cylindrical_constitutive_coverage`` took for
@@ -778,7 +778,7 @@ def cyl_complex_pml_curl_step(
     BLOCK: tl.constexpr,
 ):
     """One COMPLEX cylindrical curl sub-step at |m| >= 1 — the certified complex
-    body (``complex_fields.bloch_pml_curl_step``, job 2330) with the four
+    body (``complex_fields.bloch_pml_curl_step``) with the four
     cylindrical additions of the module docstring and NOTHING else.
 
     Differences from the certified body, and only these:
@@ -1115,8 +1115,7 @@ def _mul_general_coefficient_left(c_re, c_im, z_re, z_im, EXPANSION: tl.constexp
 
     NEGATION IS ``* -1.0``, NEVER unary ``-``: Triton lowers ``-x`` as
     ``0.0 - x`` (triton 3.1.0, language/semantic.py:386-391) and canonicalizes
-    every +-0 addend to +0, which was measured REACHABLE at driver level by jobs
-    2343/2345.
+    every +-0 addend to +0, which was measured REACHABLE at driver level.
     """
     if EXPANSION == 1:  # FMA_V1
         out_re = tl.math.fma(c_re, z_re, (c_im * z_im) * -1.0)
@@ -1662,7 +1661,7 @@ def plan_cylindrical_complex_constitutive(fields: Any, pml: Any, side: str,
     """Build the CERTIFIED complex constitutive plan for the admitted Dcyl slice.
 
     The compiled arithmetic is ``complex_fields.bloch_constitutive_step``, which
-    is already certified (job 2330/2343); complex cylindrical changes neither its
+    is already certified; complex cylindrical changes neither its
     pointwise expression nor its coefficient layout, and the identity leg in the
     module docstring measures that. This wrapper owns the distinct predicate, so
     the complex tranche cannot silently broaden its blanket Dcyl refusal.

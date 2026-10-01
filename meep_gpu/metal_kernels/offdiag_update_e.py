@@ -123,8 +123,8 @@ fields.py:1237-1241 repeats it — but ``_validated_offdiagonal_rows``
 (fields.py:1262-1310) installs rows UNCHANGED on folded grids. This family refuses
 folds anyway (the shared extent/coefficient-index clause), so the refusal is THIS
 KERNEL FAMILY'S, not the engine's, and the gate's refusals leg shows the predicate
-refusing a folded run that ``stepping`` demonstrably steps. The doc fix belongs to
-the sessions that own those files.
+refusing a folded run that ``stepping`` demonstrably steps. The doc fix belongs in
+those files.
 
 DISPATCH IS STILL NOT WIRED; THE ARM NOW IS. ``plan_step`` composes this family as
 of tranche 2, after the composition sweep measured the co-admission question over a

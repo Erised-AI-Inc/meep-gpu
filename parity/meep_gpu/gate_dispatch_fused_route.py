@@ -83,7 +83,7 @@ and a null is evidence only when it is shown discriminating, so the gate MUTATES
 the pass — writes a value into the wall plane that a wipe cannot produce — and
 requires the comparison to catch it.
 
-Rule 7: one flushed line per leg per chunk, and every row is appended to
+Progress reporting: one flushed line per leg per chunk, and every row is appended to
 ``cases.jsonl`` as it lands.
 
 Run (the GPU host, ONE pinned GPU, nothing installed by the harness so rung 8b does
@@ -6112,7 +6112,7 @@ def main() -> int:
     os.makedirs(arguments.out, exist_ok=True)
 
     # A GATE MUST NOT WRITE INTO ANOTHER RUN'S ARTIFACT. ``cases.jsonl`` and
-    # ``controls.jsonl`` are opened in APPEND mode, because rule 7 wants every row
+    # ``controls.jsonl`` are opened in APPEND mode, because progress reporting wants every row
     # on disk the moment it lands; the cost of that is that pointing --out at a
     # directory a previous run already wrote silently INTERLEAVES two runs' rows
     # in one file. ``summary.json`` is then rewritten from THIS process's in-memory
@@ -6277,7 +6277,7 @@ def main() -> int:
                    "traceback": traceback.format_exc()[-4000:]}
         row["case_wall_s"] = round(time.time() - started, 2)
         rows.append(row)
-        with open(rows_path, "a", encoding="utf-8") as handle:  # rule 7, incremental
+        with open(rows_path, "a", encoding="utf-8") as handle:  # progress reporting, incremental
             handle.write(json.dumps(row, default=str) + "\n")
             handle.flush()
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "
@@ -6301,7 +6301,7 @@ def main() -> int:
             """Append one control row and FLUSH IT, one row per control.
 
             Written as each control lands rather than in a per-case block, for the
-            two reasons rule 7 gives. A block write loses every control a crash
+            two reasons progress reporting gives. A block write loses every control a crash
             interrupts; and the block this replaced took a FIXED ``controls[-4:]``
             slice against a per-case count that varies with ``seam`` (four rows for
             ``pml_2d``, three for ``conductive_2d``), so a three-control case
@@ -6397,7 +6397,7 @@ def main() -> int:
         entry.setdefault("control", "envelope")
         controls.append(entry)
         with open(os.path.join(arguments.out, "controls.jsonl"), "a",
-                  encoding="utf-8") as handle:   # rule 7: flushed as it lands
+                  encoding="utf-8") as handle:   # progress reporting: flushed as it lands
             handle.write(json.dumps(entry, default=str) + "\n")
             handle.flush()
 

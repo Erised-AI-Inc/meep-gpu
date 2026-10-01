@@ -99,6 +99,17 @@ def _opted_in(monkeypatch):
     monkeypatch.delenv(fastpath.WARM_SWITCH, raising=False)
 
 
+#: THE ARCHITECTURE THE SHIPPED TRITON LEDGER HAS LIVE RUNS FOR, and the one every
+#: test below that asks for a RUN fact asks on. Each weld keeps one record per compute
+#: capability under ``fastpath.RUNS``, so a lookup that names no capability quotes no
+#: host, no ``recorded_utc`` and no per-family budget at all — deliberately, because
+#: quoting one card's run beside a plan on another is the mismatch the container closes.
+#: Spelled as the literal the ledger is keyed by rather than derived from
+#: :func:`fastpath.capability_admission`, so a round that certifies a SECOND
+#: architecture does not silently move which run these assertions read.
+CERTIFIED_CAPABILITY = "8.6"
+
+
 class StubBackend(types.SimpleNamespace):
     """Stands in for the ``cupy`` module without importing or needing it."""
 
@@ -1112,8 +1123,40 @@ def _validated_capabilities_by_table():
             for table in fastpath.NVIDIA_TABLE_PRECEDENCE}
 
 
+def _licensed_capabilities():
+    """The compute capabilities whose dispatch-by-default licence the Triton record holds.
+
+    A licence lives on the PRIMARY table for its capability
+    (:func:`fastpath.primary_table`): the first table in the shipped precedence that
+    admits it, whose plan composes first and is therefore what the ship leg measured.
+    That is where ``recut_driver_dispatch_record.py`` writes it, so it is where a
+    reader looks -- one licence per architecture, never one for the record as a whole.
+    """
+    admitted = set()
+    for table in fastpath.NVIDIA_TABLE_PRECEDENCE:
+        admitted |= set(fastpath.capability_admission(table)["admitted"] or ())
+    return sorted(wanted for wanted in admitted
+                  if fastpath.primary_table(wanted) == "triton")
+
+
+def _licence_at(record, capability):
+    """``runs[<capability>].dispatch_by_default_licence``, or ``None`` while unwritten."""
+    run = (record.get(fastpath.RUNS) or {}).get(capability) or {}
+    return run.get("dispatch_by_default_licence")
+
+
 def _assert_the_licence_holds(record, package) -> None:
-    """``driver_dispatch.dispatch_by_default_licence``, checked field by field.
+    """Every licence the Triton record has to carry, each checked field by field."""
+    licensed = _licensed_capabilities()
+    assert licensed, (
+        "no compute capability has the Triton table as its primary table, so there is "
+        "no record a dispatch-by-default licence could be transcribed into")
+    for wanted in licensed:
+        _assert_one_licence_holds(record, package, wanted)
+
+
+def _assert_one_licence_holds(record, package, wanted) -> None:
+    """``driver_dispatch.runs[<capability>].dispatch_by_default_licence``, field by field.
 
     What the transcription enforces when it writes the block, checked again here
     against the block as it stands, so a hand-typed licence carrying only the fields
@@ -1128,12 +1171,14 @@ def _assert_the_licence_holds(record, package) -> None:
     import hashlib
 
     recut = _recut_tool()
-    licence = record.get("dispatch_by_default_licence")
+    licence = _licence_at(record, wanted)
     assert licence, (
-        "dispatch_by_default is True but driver_dispatch carries no "
-        "dispatch_by_default_licence: run gate_dispatch_end_to_end's ship leg on "
-        "the shipping bytes (harness installing no policy, MEEP_GPU_DISPATCH unset) "
-        "and transcribe it with recut_driver_dispatch_record.py --end-to-end")
+        f"dispatch_by_default is True but driver_dispatch carries no "
+        f"dispatch_by_default_licence for compute capability {wanted} under "
+        f"runs[{wanted!r}], where recut_driver_dispatch_record.py writes it: run "
+        "gate_dispatch_end_to_end's ship leg on the shipping bytes (harness installing "
+        "no policy, MEEP_GPU_DISPATCH unset) and transcribe it with "
+        "recut_driver_dispatch_record.py --end-to-end")
     assert licence["gate"] == recut.LICENCE_GATE, licence.get("gate")
     assert licence["run"] and licence["recorded_utc"] and licence["host"], licence
     verdicts = licence["verdicts"]
@@ -1186,6 +1231,10 @@ def _assert_the_licence_holds(record, package) -> None:
     capability = (licence.get("device") or {}).get("compute_capability")
     assert capability, (
         f"the licence recorded no readable compute capability: {licence.get('device')}")
+    assert fastpath._normalized_capability(capability) == wanted, (
+        f"the licence filed under runs[{wanted!r}] ran on compute capability "
+        f"{capability}: a licence licenses the architecture it measured, and one filed "
+        f"under another's key would license a card its run never touched")
     served = {table for names in (licence.get("tables_dispatched") or {}).values()
               for table in (names or ())}
     assert served, "no case of the licence leg recorded a table that served it"
@@ -1307,10 +1356,16 @@ def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
                         .read_text(encoding="utf-8"))["driver_dispatch"]
     if not fastpath.DISPATCH_BY_DEFAULT:
         return  # no default to license; the weld above pins the record to False
-    licence = record.get("dispatch_by_default_licence")
-    assert licence, (
-        "dispatch_by_default is True and driver_dispatch carries no "
-        "dispatch_by_default_licence; transcribe the ship leg with "
+    licences = {wanted: _licence_at(record, wanted)
+                for wanted in _licensed_capabilities()}
+    assert licences, (
+        "no compute capability has the Triton table as its primary table, so there is "
+        "no record a dispatch-by-default licence could be transcribed into")
+    missing = sorted(wanted for wanted, licence in licences.items() if not licence)
+    assert not missing, (
+        f"dispatch_by_default is True and driver_dispatch carries no "
+        f"dispatch_by_default_licence for compute capability {missing} under "
+        f"runs[<capability>]; transcribe the ship leg with "
         "recut_driver_dispatch_record.py --end-to-end")
     results = package.parent / "parity" / "meep_gpu" / "results"
     if not results.is_dir():
@@ -1318,10 +1373,13 @@ def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
             "parity_meep_gpu_results",
             "parity/meep_gpu/results is gitignored and absent here, so the licence's "
             "artifacts cannot be re-hashed")
-    pairs = [("ship leg", licence.get("artifact"), licence.get("artifact_sha256"))]
-    null_run = licence.get("null_control_run") or {}
-    pairs.append(("null control", null_run.get("artifact"),
-                  null_run.get("artifact_sha256")))
+    pairs = []
+    for wanted, licence in sorted(licences.items()):
+        pairs.append((f"{wanted} ship leg", licence.get("artifact"),
+                      licence.get("artifact_sha256")))
+        null_run = licence.get("null_control_run") or {}
+        pairs.append((f"{wanted} null control", null_run.get("artifact"),
+                      null_run.get("artifact_sha256")))
     for what, spelled, recorded in pairs:
         assert spelled and recorded, f"the licence names no {what} artifact and digest"
         path = _licence_artifact(package, spelled)
@@ -1457,10 +1515,19 @@ def test_every_recorded_certification_points_at_a_readable_record():
     while the eight legacy families carried all three. The record is transcribed
     into ``fingerprints.json`` now, so the exemption is gone and the assertion is
     what stops it coming back.
+
+    ASKED ON ONE ARCHITECTURE, because that is where a run record now lives: the
+    three facts are the certifying RUN's, and the run is the one keyed by
+    :data:`CERTIFIED_CAPABILITY`. ``capabilities_live`` is asserted beside them so a
+    weld whose record stopped binding the shipped bytes cannot answer here by
+    carrying a run for an architecture the entry no longer certifies.
     """
     for arm, (family, gate) in fastpath.ARM_CERTIFICATION.items():
         assert family and gate, arm
-        entry = fastpath._certification_for(arm)
+        entry = fastpath._certification_for(arm, capability=CERTIFIED_CAPABILITY)
+        assert CERTIFIED_CAPABILITY in entry["capabilities_live"], (
+            f"{arm} names {gate}, whose records bind bytes that have since moved: "
+            f"live capabilities {entry['capabilities_live']}")
         assert "recorded_utc" in entry, f"{arm} names {gate}, which fingerprints.json lacks"
         assert entry["host"], arm
         assert entry["step_budget"], arm
@@ -1474,8 +1541,9 @@ def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
     }
     for arm, gate in expected.items():
         assert arm not in fastpath.PENDING_DEVICE_GATE_ARMS
-        entry = fastpath._certification_for(arm)
+        entry = fastpath._certification_for(arm, capability=CERTIFIED_CAPABILITY)
         assert entry["gate"] == gate
+        assert entry["capability"] == CERTIFIED_CAPABILITY
         assert "A6000" in entry["host"]
         # NOT a fixed date. The intent is "certified no EARLIER than the
         # no-absorber closure", i.e. a weld may never silently revert to an
@@ -1547,6 +1615,11 @@ def test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld():
     THE NEAR-HOMONYM IS PINNED BESIDE IT. ``folded complex off-diagonal`` is the
     update_H admission mapped to the complex family since 2026-08-16; a lift that
     edited that label instead would leave this arm pending and pass review by eye.
+
+    BOTH CONDITIONS ARE THE RUN'S, so both are read out of the run record for
+    :data:`CERTIFIED_CAPABILITY` rather than off the entry: the rebind writes one
+    record per architecture under ``fastpath.RUNS``, and it is that record's date and
+    policy stamp that say the re-run happened on the card this arm dispatches on.
     """
     import json
     import pathlib
@@ -1563,13 +1636,17 @@ def test_the_complex_folded_offdiag_arm_is_certified_on_a_rebound_weld():
                          / "fingerprints.json").read_text(encoding="utf-8"))
     entry = ledger["triton_complex_offdiag_device_gate"]
     assert entry["status"] == "PASS", entry["status"]
-    assert entry["recorded_utc"] >= "2026-09-15T", (
-        f"triton_complex_offdiag_device_gate was recorded {entry['recorded_utc']}, "
+    assert CERTIFIED_CAPABILITY in fastpath.live_capabilities(entry), (
+        f"triton_complex_offdiag_device_gate records no live run on "
+        f"{CERTIFIED_CAPABILITY}: {fastpath.live_capabilities(entry)}")
+    run = entry[fastpath.RUNS][CERTIFIED_CAPABILITY]
+    assert run["recorded_utc"] >= "2026-09-15T", (
+        f"triton_complex_offdiag_device_gate was recorded {run['recorded_utc']}, "
         "before the ruling that lifted its arm; re-run gate_triton_complex_offdiag.py "
         "and rebind with parity/meep_gpu/rebind_triton_welds.py")
-    assert re.search(r"\bkeep\b", str(entry["subnormal_policy"])), (
+    assert re.search(r"\bkeep\b", str(run["subnormal_policy"])), (
         f"triton_complex_offdiag_device_gate names no policy "
-        f"({entry['subnormal_policy']!r}); the lifted arm dispatches on this weld")
+        f"({run['subnormal_policy']!r}); the lifted arm dispatches on this weld")
 
 
 def test_every_pending_fused_label_is_one_the_composer_installs():
@@ -2823,11 +2900,16 @@ def test_every_released_arm_carries_a_certification_and_a_case(monkeypatch):
     ``ARM_CERTIFICATION`` maps each fused label to the family gate that cut its
     BYTES; ``RELEASED_FUSED_ARMS`` maps it to the seam gate's cases that drove it
     through the driver. Both are required, and neither substitutes for the other.
+
+    The gate must resolve ON THE ARCHITECTURE THE ARM DISPATCHES ON, which is what
+    ``capability=`` asks: a released arm whose weld has a run for some other card is
+    the same over-claim one step in.
     """
     for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
         family, gate = fastpath.ARM_CERTIFICATION[arm]
         assert family != "unmapped" and gate != "unmapped", arm
-        assert "recorded_utc" in fastpath._certification_for(arm), arm
+        assert "recorded_utc" in fastpath._certification_for(
+            arm, capability=CERTIFIED_CAPABILITY), arm
         assert cases and all(isinstance(case, str) and case for case in cases), arm
     # And nothing pending may be released: the two sets must not intersect.
     assert not (set(fastpath.RELEASED_FUSED_ARMS)
@@ -3251,10 +3333,17 @@ def test_an_exception_out_of_a_dispatched_run_propagates(monkeypatch):
 
 
 def test_the_artifact_answers_all_four_questions(monkeypatch):
+    """Question 3 IS A PER-ARCHITECTURE QUESTION, so this drives a grid whose device
+    reads: a weld keeps one run record per compute capability, and a plan on a host
+    whose card cannot be read quotes no run at all rather than guessing one. The
+    unreadable-device case is its own test (``test_an_unreadable_device_is_recorded_
+    as_unknown_and_not_refused``); here the artifact has to carry the evidence.
+    """
     b = CountingPlan("step_B")
     plan = plan_on_a_cupy_host(monkeypatch, step_plan(
         {"step_B": b}, {"step_B": "PML"},
-        {"update_E": ("update_E: the off-diagonal rows are live",)}))
+        {"update_E": ("update_E: the off-diagonal rows are live",)}),
+        grid=cupy_like_grid_with_device())
     record = plan.report()
     # 1. Did I get kernels, and where?
     assert record["step_path"] == "fused" and record["decision"] == "dispatched"
@@ -3264,6 +3353,8 @@ def test_the_artifact_answers_all_four_questions(monkeypatch):
     # 3. On what certification did the ones I got ride?
     certification = record["families"]["PML"]
     assert certification["gate"] == "bit_identity_gate"
+    assert certification["capability"] == CERTIFIED_CAPABILITY, (
+        certification.get("run_record"))
     assert certification["recorded_utc"] and certification["host"]
     assert certification["certification_policy"] == "keep"
     assert "24000/24000" in record["certification_budget"]
@@ -4095,8 +4186,35 @@ def cupy_like_grid_with_device(capability=(8, 6), name=b"NVIDIA RTX A6000"):
 
 
 def test_the_recorded_gates_name_the_architecture_they_ran_on():
-    assert fastpath.validated_compute_capabilities() == ("8.6",), (
-        "fingerprints.json must record which GPU architecture the gates ran on")
+    """DERIVED FROM THE LEDGER ON DISK, not compared against a typed tuple.
+
+    The list used to be one hand-written key, and asserting ``("8.6",)`` here was the
+    same defect one layer up: a round that certified a second architecture would have
+    to come and edit this line, so the line said what it had always said. The
+    expectation is re-derived instead — the intersection, over the gates the arms
+    cite, of the capabilities whose run record still binds the entry's bytes — read
+    out of ``fingerprints.json`` directly rather than through the package's cache.
+    ``CERTIFIED_CAPABILITY`` is asserted to be IN it rather than to BE it, because
+    this file's run-fact lookups read that architecture's record and would otherwise
+    go quiet if it ever left the ledger.
+    """
+    import json
+    import pathlib
+
+    ledger = json.loads(
+        (pathlib.Path(fastpath.__file__).parent / "triton_kernels"
+         / "fingerprints.json").read_text(encoding="utf-8"))
+    derived = None
+    for _family, gate in fastpath.ARM_CERTIFICATION.values():
+        live = set(fastpath.live_capabilities(ledger.get(gate)))
+        derived = live if derived is None else (derived & live)
+    assert derived, (
+        "fingerprints.json must record which GPU architecture the gates ran on, and "
+        "every cited gate must have a run that still binds the shipped bytes")
+    assert fastpath.validated_compute_capabilities() == tuple(sorted(derived))
+    assert CERTIFIED_CAPABILITY in derived, (
+        f"this file reads run facts on {CERTIFIED_CAPABILITY} and the ledger now "
+        f"derives {sorted(derived)}")
 
 
 @pytest.mark.parametrize("value,expected", [((8, 6), "8.6"), ("86", "8.6"),
@@ -4147,8 +4265,13 @@ def test_an_unreadable_device_is_recorded_as_unknown_and_not_refused(monkeypatch
 
 
 def test_the_nine_families_certified_this_round_carry_real_provenance(monkeypatch):
-    """Their gate was a path into a GITIGNORED directory, so it resolved to nothing."""
-    entry = fastpath._certification_for("nonlinear")
+    """Their gate was a path into a GITIGNORED directory, so it resolved to nothing.
+
+    The nine families' own rows live inside the RUN record now (``families`` is a run
+    field), so the per-family ``run_id`` and ``rc`` are reached only by naming the
+    architecture — which is the point: a run id is a statement about one run.
+    """
+    entry = fastpath._certification_for("nonlinear", capability=CERTIFIED_CAPABILITY)
     assert entry["gate"] == fastpath.FAMILY_RECERT_GATE
     assert entry["recorded_utc"] == "2026-08-14T11:00:00Z"
     assert "A6000" in entry["host"]
@@ -4157,12 +4280,21 @@ def test_the_nine_families_certified_this_round_carry_real_provenance(monkeypatc
 
 
 def test_each_family_is_credited_with_its_own_step_budget_not_the_campaigns(monkeypatch):
-    """The constant said 24000 steps on two cases most families never ran."""
-    assert "80/80" in fastpath._certification_for("BFAST run")["step_budget"]
-    assert "192/192" in fastpath._certification_for("complex beta run")["step_budget"]
-    assert "78/78" in fastpath._certification_for("complex")["step_budget"]
-    budgets = {fastpath._certification_for(arm)["step_budget"]
-               for arm in fastpath.ARM_CERTIFICATION}
+    """The constant said 24000 steps on two cases most families never ran.
+
+    A budget is the measurement of ONE run, so every lookup here names the
+    architecture; asked without one, each arm gets the "not stated per family"
+    sentence instead and the set below would collapse to a single element — the very
+    shape this test refuses, arrived at from the other direction.
+    """
+    def budget(arm):
+        return fastpath._certification_for(
+            arm, capability=CERTIFIED_CAPABILITY)["step_budget"]
+
+    assert "80/80" in budget("BFAST run")
+    assert "192/192" in budget("complex beta run")
+    assert "78/78" in budget("complex")
+    budgets = {budget(arm) for arm in fastpath.ARM_CERTIFICATION}
     assert len(budgets) > 1, "one budget for every family is the defect, not the fix"
 
 
@@ -4195,6 +4327,13 @@ def test_the_family_modules_drift_declaration_matches_the_shipped_bytes():
     and a declaration that outlives its drift fails too. The FILE SET is what is
     asserted; the digest beside each name is the value at declaration time, not a
     pin, because a declared file may keep moving while its recut is pending.
+
+    THE TWO HALVES SIT AT DIFFERENT LEVELS and that is what the comparison is
+    between: the nine families' ``source_sha256_at_recert`` maps belong to the RUN
+    that measured them (``families`` is a run field, under ``fastpath.RUNS``), while
+    the drift DECLARATION is a statement about the tree and stays on the entry. So
+    the declaration is compared against the drift of one architecture's run, which
+    is the only level where "what was certified" has a single answer.
     """
     import hashlib
     import json
@@ -4206,7 +4345,7 @@ def test_the_family_modules_drift_declaration_matches_the_shipped_bytes():
     declared = entry["source_drift_since_recert"]
 
     drifted = {}
-    for family in entry["families"].values():
+    for family in entry[fastpath.RUNS][CERTIFIED_CAPABILITY]["families"].values():
         for name, digest in family["source_sha256_at_recert"].items():
             path = package / name
             if not path.exists():

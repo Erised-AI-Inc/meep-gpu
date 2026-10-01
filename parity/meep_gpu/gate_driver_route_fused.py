@@ -90,7 +90,7 @@ supports exactly one policy and the honest second leg is to MEASURE that: a
 harness installs nothing — which is precisely the missing evidence
 ``fastpath.DISPATCH_BY_DEFAULT`` names.
 
-Rule 7: one flushed line per case per leg, and a JSONL row appended as each case
+Progress reporting: one flushed line per case per leg, and a JSONL row appended as each case
 lands, so an interrupted run keeps everything up to the failure.
 
 Run (the GPU host, ONE pinned GPU)::

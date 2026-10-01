@@ -183,7 +183,7 @@
 # a probe root, or is unreleased; 2 usage; 3 another live driver holds this
 # campaign; 4 the per-leg environments are not isolated.
 #
-# Rule 7: one flushed line per leg as it starts and as it lands, with UTC times, a
+# progress reporting: one flushed line per leg as it starts and as it lands, with UTC times, a
 # per-leg log and the gate's own `progress.log` inside each leg directory, and a
 # closing line giving wall clock against the sum of leg seconds -- so the state of a
 # multi-hour campaign is readable from the filesystem while it is still running.

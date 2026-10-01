@@ -45,6 +45,11 @@ MODULE_NAME = "meep_gpu.triton_kernels.folded_beta_complex_fused_magnetic_pair"
 MODULE_PATH = PACKAGE_DIR / "folded_beta_complex_fused_magnetic_pair.py"
 API_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DRIVER_PATH = API_ROOT / "meep_gpu" / "driver.py"
+
+#: The architecture whose run record this module's weld is read on. Each weld keeps
+#: one record per compute capability, so "the run that measured it" is a question with
+#: an architecture in it.
+CERTIFIED_CAPABILITY = "8.6"
 PARITY_DIR = API_ROOT / "parity" / "meep_gpu"
 GATE = PARITY_DIR / "probe_triton_folded_beta_complex_fused_magnetic_pair.py"
 
@@ -576,15 +581,28 @@ def test_the_module_claims_identity_ONLY_through_the_run_that_measured_it():
     is the weld's SOUNDNESS: it must record a PASS, name this module, and name it at
     the bytes on disk. An entry that drifts from the file it certifies is worse than
     no entry, because it reads as evidence.
+
+    AND THE RUN IS NAMED, which is what the title has always said and what the ledger
+    shape now makes checkable: the artifact digest, the timestamp and the host belong
+    to ONE run of the gate, kept under ``runs[<compute capability>]``, and they are
+    read out of the record for the architecture this module's arm dispatches on. Read
+    off the entry instead, they would be the last architecture rebound while reading
+    as though they described every card.
     """
     import hashlib  # noqa: PLC0415
+
+    from meep_gpu import fastpath  # noqa: PLC0415
 
     fingerprints = json.loads(
         (PACKAGE_DIR / "fingerprints.json").read_text(encoding="utf-8"))
     weld = fingerprints[
         "triton_folded_beta_complex_fused_magnetic_pair_device_gate"]
     assert weld["status"] == "PASS"
-    assert weld["artifact_sha256"] and weld["recorded_utc"] and weld["host"]
+    assert CERTIFIED_CAPABILITY in fastpath.live_capabilities(weld), (
+        f"the weld records no live run on compute capability "
+        f"{CERTIFIED_CAPABILITY}: {fastpath.live_capabilities(weld)}")
+    run = weld[fastpath.RUNS][CERTIFIED_CAPABILITY]
+    assert run["artifact_sha256"] and run["recorded_utc"] and run["host"]
     module_key = "meep_gpu/triton_kernels/folded_beta_complex_fused_magnetic_pair.py"
     assert module_key in weld["source_sha256"], \
         "the weld does not name the module it certifies"

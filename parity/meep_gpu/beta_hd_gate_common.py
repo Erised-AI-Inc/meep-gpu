@@ -42,7 +42,7 @@ substantive claims -- refused BY NAME, the refusal names ``INSTALLABLE = False``
 selection unchanged, both released neighbours keeping their slots -- and records the
 positional ones (present/absent in the tables, rows removed afterwards) beside them.
 
-Rule 7: one flushed line per case; the artifact is rewritten after every leg.
+Progress reporting: one flushed line per case; the artifact is rewritten after every leg.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

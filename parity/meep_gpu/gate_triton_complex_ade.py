@@ -17,7 +17,7 @@ Three coefficient mutations and a wrong-drive mutation must diverge.  Predicate
 refusals cover the adjacent real, active-PML, unstored-E and unprobed classes.
 Every case emits a flushed progress line and an fsync'd JSONL row as it lands.
 
-Run only through the repository's the GPU host Slurm wrapper on one confirmed-idle
+Run only on one confirmed-idle
 GPU, with private policy-labelled CuPy and Triton caches::
 
     python -u gate_triton_complex_ade.py --out <results-dir>/gate.json --cycles 8

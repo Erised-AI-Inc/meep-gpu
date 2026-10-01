@@ -43,7 +43,7 @@ ZERO-INIT + SIGNED-ZERO CENSUS IS MANDATORY for a complex tranche. One case
 initialises every array to ``+0.0`` under a thin absorber whose deepest
 ``kms = kappa - sigma`` goes NEGATIVE, and counts ``0x80000000`` words after
 every step. A census of 0 FAILS the case as VACUOUS: random-seeded states are
-provably blind to the signed-zero class, and jobs 2343/2345 proved that class
+provably blind to the signed-zero class, and device runs proved that class
 reachable at the driver level.
 
 SUBNORMAL POLICY. This probe runs UNDER THE STRIPPED IEEE-KEEP POLICY — the ship

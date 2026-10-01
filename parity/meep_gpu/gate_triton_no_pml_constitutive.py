@@ -146,8 +146,8 @@ except ImportError:  # The whole gate runs without it; the backend row says so.
 
 # The subnormal-policy machinery is SHARED, never re-implemented: the strip, its
 # licensing reasons and the per-backend stamp all live in the complex gate, which is
-# where the mechanism was measured (results/device_subnormal_policy_2026-08-11/, jobs
-# 2324-2326). Carried here even though this family compiles nothing, because a gate
+# where the mechanism was measured (results/device_subnormal_policy_2026-08-11/).
+# Carried here even though this family compiles nothing, because a gate
 # that silently omits the policy stamp cannot be told apart from one whose policy was
 # never considered — and because the ``--backend cupy`` row must be attributable to
 # the ship configuration like every other artifact in this package.
@@ -1037,7 +1037,7 @@ RELATIVE_IMPORT_REWRITE = ("from .coverage import",
 def compile_mutant(source: str, label: str) -> Any:
     """Import a mutated copy of the module under its own name.
 
-    The stale-binary hazard job 2334 measured has no kernel-cache analogue here, but
+    The measured stale-binary hazard has no kernel-cache analogue here, but
     it has a MODULE-cache one: importing the shipped module under the mutant's name
     would report every defect uncaught. ``spec_from_file_location`` onto a distinct
     temporary file with a distinct module name closes it, and the caller records the

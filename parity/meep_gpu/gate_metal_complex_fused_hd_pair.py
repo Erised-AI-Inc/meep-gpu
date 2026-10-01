@@ -70,7 +70,7 @@ THE LEGS
                       equivalence
  13  disarm           the shipped bytes through the mutation path must NOT diverge
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
 THIS GATE IS ALSO A CENSUS BATTERY (``SUBJECT_PACKAGE``, :func:`evaluate`,
 :func:`runtime_reasons`), so ``measure_predicate_coverage.py --battery

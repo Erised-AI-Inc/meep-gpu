@@ -14,7 +14,7 @@ the script asks for it to run** — after any ``add_flux`` monitors, after any
 ``examples/`` is written to: the child runs in a scratch directory with the corpus's
 data files symlinked in.
 
-Rule 7: one flushed line per example as it is attempted, and each result is appended
+Progress reporting: one flushed line per example as it is attempted, and each result is appended
 to the JSONL as it lands, so the run is readable while it is still going.
 
 Usage (from ``the repository root``)::

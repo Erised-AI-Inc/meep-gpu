@@ -3560,7 +3560,9 @@ class Near2FarMigration:
         # one dft chunk per image, with identical is/ie and the zero-extent split
         # weights w0 / w1 = 1 - w0 in the chunk's own s0 (measured on
         # binary_grating_n2f's point region: two chunks per component, s0.y = 0.0 and
-        # 1.0). This engine holds ONE plane there at the summed weight 1, so each
+        # 1.0, on arm64; x86-64 MEEP makes one chunk at 1.0 for a region exactly on the
+        # site, because the arm64 build fuses the multiply-add in its grid rounding).
+        # This engine holds ONE plane there at the summed weight 1, so each
         # MEEP chunk is emitted scaled by its own s0 on that axis — emitting the full
         # plane for both images would double the surface.
         grid = self.entries[0][2].grid if self.entries else None

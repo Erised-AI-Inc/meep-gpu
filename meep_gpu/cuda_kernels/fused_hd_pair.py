@@ -127,7 +127,7 @@ neighbour claims its seam) together with ``_spans_may_absorb`` reading the live
 composition does not rely on it.
 
 What this product IS worth is stated plainly, because no artifact here may imply
-otherwise: the priced predicate gap closed under the owner rule *close all fusion gaps
+otherwise: the priced predicate gap closed under the project's rule *close all fusion gaps
 regardless*, and a certified half of the only span that could ever pay. **No timing
 exists for this shape and none is licensed by anything in this module.** The fused
 route does MORE memory traffic than the two singles for the same step-level launch

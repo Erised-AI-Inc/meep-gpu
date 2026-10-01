@@ -69,12 +69,12 @@ SUBNORMAL POLICY — THE STRIP IS THE SHIP CONFIGURATION. CuPy 13.5.1 appends
 ``-ftz=true`` to every NVRTC compile (cupy/cuda/compiler.py:552), flushing
 float32 subnormals on the device; the engine ships IEEE subnormal-KEEP, the only
 alignment direction (NVRTC rejects a duplicate ``-ftz`` option and Triton has no
-flush knob — settled in ``results/device_subnormal_policy_2026-08-11/``, jobs
-2324-2326). Job 2327 measured the mixed-dtype orientations through that flush
+flush knob — settled in ``results/device_subnormal_policy_2026-08-11/``).
+An earlier run measured the mixed-dtype orientations through that flush
 lens and matched NO licensed arm (54/48/125 mismatch words); the 2026-08-11
 diagnosis reproduced all 21 mismatch counts lane-exactly from ftz semantics
 alone, and under the strip the platform is exact FMA_V1 on every orientation
-(job 2328, byte-identical to the host IEEE-keep emulation on all 2280 vectors).
+(byte-identical to the host IEEE-keep emulation on all 2280 vectors).
 WHAT THAT REPRODUCTION DOES AND DOES NOT CERTIFY, because it was once read as
 more than it is: it establishes that the mismatches are FTZ semantics — operands
 and results flushed — and nothing else. It does NOT certify WHAT THE TININESS
@@ -308,9 +308,9 @@ def write_provenance(results_dir: str, extra: Optional[Dict[str, Any]] = None) -
 # ---------------------------------------------------------------------------
 #
 # Mechanism demonstrated by results/device_subnormal_policy_2026-08-11/scripts/
-# run_boundedness_aligned.py (jobs 2324-2326) and certified for this gate's
+# run_boundedness_aligned.py and certified for this gate's
 # expansion by the 2026-08-11 diagnosis (results/complex_expansion_diagnosis_
-# 2026-08-11/, job 2328): wrapping ``cupy.cuda.compiler.compile_using_nvrtc``
+# 2026-08-11/): wrapping ``cupy.cuda.compiler.compile_using_nvrtc``
 # and filtering the ``-ftz=true`` option flips every CuPy device binary to IEEE
 # subnormal-keep. The wrapper composes with ``backends.guard_kernel_compilation``
 # (the guard wraps whatever is installed at the seam), and the cache dir must be
@@ -343,8 +343,8 @@ FTZ_STRIP_MECHANISM = (
     "unconditionally by _compile_with_cache_cuda, cupy/cuda/compiler.py:552, "
     "CuPy 13.5.1) filtered from every NVRTC option tuple; private "
     "policy-suffixed CUPY_CACHE_DIR because the cache key is computed above "
-    "the seam (results/device_subnormal_policy_2026-08-11/, jobs 2324-2326; "
-    "certified for this gate's expansion by job 2328)")
+    "the seam (results/device_subnormal_policy_2026-08-11/; certified for "
+    "this gate's expansion by the 2026-08-11 diagnosis)")
 
 POLICY_DEPENDENCE = (
     "the FMA_V1 classification and every license derived from it hold UNDER "
@@ -353,7 +353,7 @@ POLICY_DEPENDENCE = (
     "MEEP to measure); on x86 with MEEP imported it resolves to 'flush' and the "
     "flush stamp's dependence applies instead. Bytes cut under the other policy "
     "differ in the subnormal range. Scoring a flushed device against these KEPT "
-    "candidates is what produced the 54/48/125-word NEITHER of job 2327 — a "
+    "candidates is what produced the 54/48/125-word NEITHER of an earlier run — a "
     "broken comparison, not a platform that matches no arm "
     "(results/complex_expansion_flush_coincidence_2026-08-15/). Every "
     "orientation in this record DISCRIMINATES under the policy it was cut "
@@ -1979,7 +1979,7 @@ def run_expansion(results: Dict[str, Any], out_path: str,
     either the strip could not be confirmed exercised (``leg['refusal']`` says
     so) or the patterns license no single constexpr. The policy check runs
     FIRST: a classification cut under the wrong subnormal policy is not a
-    classification of the ship configuration at all (job 2327's lesson).
+    classification of the ship configuration at all.
     """
     leg: Dict[str, Any] = {}
     leg["numpy"] = measure_expansion_record(np, "numpy")
@@ -2820,8 +2820,8 @@ ENGINE_STEPS = 4
 #: byte-VISIBLE. The field-level constraint is the m1 note above: at the exact
 #: Brillouin edge the two tables differ by 1.2246e-16j — sub-half-ulp of every
 #: nonzero float32 word — so on a generically seeded state ZERO field words
-#: can move (measured: 0/7680 on the NumPy transcription, 0/15360 on device,
-#: job 2329) and a field-level must-catch there contradicts this gate's own
+#: can move (measured: 0/7680 on the NumPy transcription, 0/15360 on device)
+#: and a field-level must-catch there contradicts this gate's own
 #: design. The seam (the engine consumes the TABLE, not a recomputation from
 #: k) is instead proven where a defect is visible:
 #:

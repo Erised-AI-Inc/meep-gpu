@@ -143,7 +143,7 @@ every row it reached and only this flag stood in the way. The flag is kept as be
 braces; the composition does not rely on it.
 
 What this product IS worth is stated plainly, because no artifact here may imply
-otherwise: the priced predicate gap closed under the owner rule *close all fusion gaps
+otherwise: the priced predicate gap closed under the project's rule *close all fusion gaps
 regardless*, and a certified half of the only span that could ever pay -- the four-slot
 ``step_B -> update_H -> step_D -> update_E`` weld, which is NOT built here. **No timing
 exists for this shape and none is licensed by anything in this module.** The fused route

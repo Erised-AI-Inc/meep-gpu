@@ -22,7 +22,6 @@ ADMITTED = coverage_module.Coverage(True, ())
 REFUSED = coverage_module.Coverage(False, ("outside this routing test",))
 PARITY_DIR = pathlib.Path(__file__).parents[1] / "parity" / "meep_gpu"
 PROBE = PARITY_DIR / "probe_triton_cylindrical_composition.py"
-SLURM = PARITY_DIR / "run_triton_cylindrical_composition.slurm"
 
 
 def cylindrical_fields():
@@ -238,7 +237,7 @@ def test_cylindrical_composition_provenance_welds_the_live_central_seam():
         # and restored here for the same reason. A ``weld_survives_edit`` fall-through
         # stood between these two lines and was removed on 2026-08-29: this gate's
         # record carries neither ``device_sha256`` nor ``code_sha256`` (its digest keys
-        # are artifact/log/probe/recert/slurm/source), and that helper returns False
+        # are artifact/log/probe/recert/source), and that helper returns False
         # whenever it has neither — so the branch could admit nothing it was asked
         # about, while standing ready to start admitting the moment either block was
         # added to this record. Measured before removing it: all four paths pass the
@@ -252,4 +251,3 @@ def test_cylindrical_composition_provenance_welds_the_live_central_seam():
             f"{name} drifted from the bytes this gate executed; declare it under "
             f"driver_dispatch or re-run the gate")
     assert gate["probe_sha256"] == hashlib.sha256(PROBE.read_bytes()).hexdigest()
-    assert gate["slurm_launcher_sha256"] == hashlib.sha256(SLURM.read_bytes()).hexdigest()

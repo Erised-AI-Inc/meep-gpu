@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.9.1 — one certification record per GPU architecture (2026-10-01)
+
+Still a preview, and for the same reason as 0.9.0: the certification round on the
+released bytes has not run, so the certification test selection fails until it
+does (`tools/ci/pending_certification.txt`). What changes here is that the round,
+when it runs, can certify more than one GPU architecture — and that a later round
+on another card adds to the first instead of replacing it.
+
+### Certification records are now per compute capability
+
+- **The defect.** Each weld in the two NVIDIA ledgers held one run's facts beside
+  the digests of the bytes that run certified. That shape holds exactly one GPU
+  architecture, so a round on a second card overwrote the first card's evidence
+  and left its label behind; the list of validated compute capabilities was a
+  hand-typed key that no tool wrote.
+- **The records.** Each weld keeps one record per compute capability under a
+  `runs` key, each carrying `bound_sha256`, the digest of the digests it
+  certified. A record is live only while that equals the entry's current digests,
+  so editing a certified file retires every architecture's evidence for that weld
+  at once rather than leaving some of it describing code that no longer ships.
+- **The list is derived.** A table's validated compute capabilities are the
+  intersection, over the welds its arms cite, of each weld's live architectures.
+  The declaration can only say what some run measured, and a round widens it by
+  writing records rather than by editing code. A partial round admits nothing and
+  names the welds that are short.
+- **Certifying another architecture** is documented end to end in
+  `docs/development/certification.md`: the round procedure, which architecture
+  binds first and why only the rebind order is constrained, what names the card,
+  and the toolchain versions to pin, with which step-2 tools check them.
+
+Compute capability 8.6 remains the one architecture the ledgers certify. Every
+other NVIDIA card still takes the array path, and a card can be opted in for a
+run of its own certification with `MEEP_GPU_ALLOW_UNCERTIFIED=1`.
+
+### Also in this release
+
+- The CUDA off-diagonal `update_E` kernel hoists its own-cell loads and memoizes
+  its launch text on the certified digest, instead of regenerating that text on
+  every launch.
+- Two DFT-region tests and the near2far control no longer sit on a grid tie.
+  MEEP's arm64 build fuses `pt*a - .5` where its x86-64 build rounds twice, so a
+  coordinate exactly on a grid site resolves differently per platform; beneath
+  that tie, `get_dft_array` returns zero for a single-site region on both
+  platforms. The engine was correct on both hosts; the fixes are to the tests.
+- The Gaussian-beam oracle resolves under the libstdc++ symbol spelling as well.
+- The bytecode-cache test reads only this interpreter's cache tag, and the skip
+  tally prefers the resource named in a skip's reason.
+- `parity/meep_gpu/cases.py`, the benchmark case builders three composition gates
+  import, is now in the repository. Earlier certification rounds staged it beside
+  the checkout as an untracked file, and a fresh clone could not run those gates.
+- Two architectures gated on one commit can be bound in either order and leave the
+  same ledger. A rebind carries a per-run fact from an architecture's previous record
+  only while that record is live on the bytes being bound; it used to carry whenever
+  the bytes had not moved in that pass, so binding the new architecture first copied
+  a measurement of other code into the old one's record. The composition re-cut no
+  longer carries a run's description of the host it ran on into a later run at all.
+
+### Shipped files that moved
+
+- `meep_gpu/triton_kernels/timing.json` and `meep_gpu/cuda_kernels/timing.json`,
+  with their reports, are now `timing_cc86.json` and `timing_cc86.report.txt` —
+  one timing record per compute capability. The bytes are unchanged.
+
 ## 0.9.0 — preview release (2026-09-28)
 
 The first public release. It is a preview: the package runs and its kernels were

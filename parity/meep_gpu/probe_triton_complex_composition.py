@@ -43,7 +43,7 @@ random-seeded certification provably could not see:
    on every ODD step across fu_Bx/fu_Bz/fu_Dx/fu_Dz/Bz/f_w_Hz, 0 on even —
    the -0 feeds back as ``-0 * negative = +0`` — hence the ODD budget), which
    the unary-minus addend lowering canonicalizes to +0 (semantic.py:386-391).
-   Job 2330's random seeds and the seeded rows' strictly-negative-imag
+   The certifying run's random seeds and the seeded rows' strictly-negative-imag
    companions could not reach this class. Exercises _mul_field_left /
    _mul_coefficient_left (the zero-imaginary product helpers' re-addends).
 9. ``zero_init_quiet_bloch``    — the same class under a SECOND-QUADRANT
@@ -91,7 +91,7 @@ guard wraps the strip and both apply. A probe artifact handed in with
 refused otherwise; every claim in this artifact states the policy it was cut
 under.
 
-Job 2327's NEITHER under CuPy's default ``-ftz=true`` was a BROKEN COMPARISON,
+The earlier NEITHER under CuPy's default ``-ftz=true`` was a BROKEN COMPARISON,
 not a property of the platform: the device flushed while the candidate arms were
 built under keep, so the platform matched none of the three arms. Cut the
 candidates under the policy in force and the same platform classifies (see
@@ -1001,7 +1001,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
 
     # Strip FIRST, guard second: the guard wraps whatever is installed at the
-    # seam, so both apply (the demonstrated composition order, jobs 2324-2326).
+    # seam, so both apply (the demonstrated composition order).
     # Raises at startup on a cache dir that could mix policies.
     gate.install_ftz_strip()
     backends.guard_kernel_compilation(cp)

@@ -105,7 +105,7 @@ LEGS
   mutation           the armed kernel and host defects, each with its declared outcome
   disarm             the identical harness, shipped bytes, must not diverge
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands.
 
     MEEP_GPU_COMPLEX_EXPANSION_PROBE=<keep-cut probe.json> \\
       CUDA_VISIBLE_DEVICES=<n> TRITON_LIBCUDA_PATH=$HOME/triton_libcuda_stub \\

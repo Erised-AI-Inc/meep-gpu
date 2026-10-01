@@ -58,7 +58,7 @@ THE FAMILY IS NOT WIRED. ``launch.plan_step`` assigns at most one plan per slot 
 this product spans two of them with no measured composition rule. Nothing in
 ``launch.py`` names it and ``fastpath`` is unchanged.
 
-Rule 7: one flushed line per step, every row appended to the artifact as it lands.
+Progress reporting: one flushed line per step, every row appended to the artifact as it lands.
 """
 
 from __future__ import annotations

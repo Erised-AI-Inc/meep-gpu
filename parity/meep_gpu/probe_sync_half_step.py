@@ -36,7 +36,7 @@ Run (the GPU host, one pinned GPU, the route lane's environment)::
     CUDA_VISIBLE_DEVICES=<idx> python -u parity/meep_gpu/probe_sync_half_step.py \\
         --gpu-id 0 --case folded_dispersive_2d --out <dir>/probe.json
 
-Rule 7: one flushed line per leg per chunk and per stage.
+Progress reporting: one flushed line per leg per chunk and per stage.
 """
 from __future__ import annotations
 

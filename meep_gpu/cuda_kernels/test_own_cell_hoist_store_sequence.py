@@ -38,6 +38,14 @@ THE PROPERTY, per kernel, the hoisted text against the certified pre-hoist text:
    reads back the ``Dz`` word pair its own lane stored (2 per arm, on both texts).
 
 Clause 3 is what the hoist is FOR and clauses 1-2 are what it must not break.
+
+THE EMITTED SINGLE. The off-diagonal ``update_E`` (``update_E_pml_real_offdiag``) is hoisted
+at its launch door: ``offdiag_emitter.offdiag_launch_source`` issues the certified
+``offdiag_source`` through ``own_cell_hoist.hoisted_kernel_code``. Its certified text is
+emitted per row mask rather than frozen, so the last section of this file asks the three
+clauses of every one of its 63 (certified, launch) pairs, requires the inverse to return the
+certified text byte for byte, pins the pair the 2026-09-28 kernel screen timed by sha256,
+and requires the rule to refuse the folded and dispersive off-diagonal singles by name.
 :func:`test_each_clause_catches_its_planted_defect` plants four defects on every hoisted text
 and requires each to be caught by the clause named for it -- and the two load defects to be
 INVISIBLE to the other load clause, so neither load clause is redundant.
@@ -90,7 +98,10 @@ import pytest
 from . import complex_emitter
 from . import cylindrical_fused_electric_pair
 from . import cylindrical_fused_magnetic_pair
+from . import dispersive_offdiag_update_e
+from . import folded_offdiag_kernels
 from . import fused_magnetic_pair
+from . import offdiag_emitter
 from . import own_cell_hoist
 
 HERE = pathlib.Path(__file__).parent
@@ -1063,3 +1074,175 @@ def test_each_clause_catches_its_planted_defect(key, mutation, readings, hoisted
         assert stores_equal and loads_equal, (
             f"{key}: the sunk load also moved the stores or the multiset, so clause 3 is "
             f"not what this control isolates")
+
+
+# =============================================================================
+# THE EMITTED SINGLE: the off-diagonal update_E ('cuda:off-diagonal')
+# =============================================================================
+#
+# ``offdiag_source(mask)`` is the certified text (the emitter's corpus digest in
+# ``certification.json``'s ``offdiag_2026-08-16`` binds all 63 of them), so it is read here
+# rather than frozen, and ``offdiag_launch_source(mask)`` is what NVRTC compiles. Reading
+# all 63 pairs with the instrument takes about 1.3 s.
+
+OFFDIAG = offdiag_emitter.KERNEL_NAME
+
+#: The pair the 2026-09-28 kernel screen compiled and timed on ``pml_3d`` (all six rows
+#: live): 0 differing words at 512,000, 2,097,152 and 7,077,888 cells. A change to either
+#: text is a change to what was measured, and owes the device a new screen and the family
+#: gate a new run.
+OFFDIAG_SCREENED_MASK = (1, 1, 1, 1, 1, 1)
+OFFDIAG_SCREENED_SHA256 = {
+    "certified": "3dc04cbe7d958e2adce638a22ab08d547757e2c10a18cc8f3b9ed64b7de3f42c",
+    "launch": "45d2bbc49c8c2846c246e934c1ec6831c3515592b5f4f0a860b021a76c4441d8",
+}
+
+#: The row masks ``gate_cuda_offdiag.GATE_ROW_MASKS`` sweeps; the planted controls run here.
+OFFDIAG_GATE_MASKS = ((1, 0, 0, 1, 0, 0), (1, 1, 1, 1, 1, 1), (1, 0, 0, 0, 0, 0),
+                      (0, 0, 1, 1, 0, 0))
+
+#: The table the rule carries, and the one module that issues a hoist through its forward.
+RULE_TABLE = {"update_H_pml_real", "update_E_pml_real", "step_B_pml_real",
+              "step_D_pml_real", OFFDIAG}
+EMITTED_HOIST_MODULES = {"offdiag_emitter"}
+
+
+def _mask_id(mask) -> str:
+    return "".join(str(flag) for flag in mask)
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@pytest.fixture(scope="module")
+def offdiag_readings() -> dict:
+    return _PerKey(lambda mask: (read(offdiag_emitter.offdiag_source(mask)),
+                                 read(offdiag_emitter.offdiag_launch_source(mask))))
+
+
+def test_the_off_diagonal_row_is_the_plain_update_E_row(certified):
+    """Same helper byte for byte, same prefixes, registers and call form."""
+    assert own_cell_hoist.KERNELS[OFFDIAG] == own_cell_hoist.KERNELS["update_E_pml_real"]
+    shipped = certified["constitutive_kernels"]._update_E_pml_real_kernel_code
+    emitted = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
+    assert (own_cell_hoist._helper_text(emitted, "constitutive_apply")  # noqa: SLF001
+            == own_cell_hoist._helper_text(shipped, "constitutive_apply"))  # noqa: SLF001
+
+
+def test_the_screened_pair_is_the_pair_the_emitter_issues():
+    certified = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
+    launch = offdiag_emitter.offdiag_launch_source(OFFDIAG_SCREENED_MASK)
+    assert _sha(certified) == OFFDIAG_SCREENED_SHA256["certified"]
+    assert _sha(launch) == OFFDIAG_SCREENED_SHA256["launch"]
+
+
+@pytest.mark.parametrize("mask", offdiag_emitter.LIVE_ROW_MASKS, ids=_mask_id)
+def test_the_launch_text_is_the_certified_text_through_the_rule(mask):
+    """What every lifter reads is the inverse of what compiles, on every row mask."""
+    certified = offdiag_emitter.offdiag_source(mask)
+    launch = offdiag_emitter.offdiag_launch_source(mask)
+    assert launch == own_cell_hoist.hoisted_kernel_code(certified, OFFDIAG, "certified")
+    assert own_cell_hoist.unhoisted_kernel_code(launch, OFFDIAG, "launch") == certified
+    assert REGISTER_VIEW_MARKER in launch and REGISTER_VIEW_MARKER not in certified
+    assert offdiag_emitter.shipped_kernel_names(launch) == {OFFDIAG}
+    launch.encode("ascii")  # NVRTC writes the source through the locale encoding
+
+
+@pytest.mark.parametrize("mask", offdiag_emitter.LIVE_ROW_MASKS, ids=_mask_id)
+def test_the_off_diagonal_hoist_keeps_the_three_clauses(mask, offdiag_readings):
+    before, after = offdiag_readings[mask]
+    assert before["entry"] == after["entry"] == OFFDIAG
+    # 1. the store sequence: six stores, auxiliary then field per component
+    assert len(after["stores"]) == 6
+    assert after["stores"] == before["stores"]
+    assert after["int_decls"] == before["int_decls"]
+    assert after["guards"] == before["guards"]
+    assert after["opaque_reads"] == before["opaque_reads"]
+    # 2. the load multiset: per component D and inv_eps, two per live row term, the two
+    #    PML coefficients and the two own-cell words -- 18 + 2 per live row
+    assert len(after["loads"]) == 18 + 2 * sum(mask)
+    assert after["loads"] == before["loads"]
+    # 3. no own-cell word read after the first store; the certified text exposes five
+    assert after["exposed_after_first_store"] == []
+    assert after["own_before_first_store"] == 6
+    assert len(before["exposed_after_first_store"]) == 5
+    assert after["reloads_after_first_store"] == before["reloads_after_first_store"] == []
+
+
+@pytest.mark.parametrize("mutation", MUTATIONS)
+@pytest.mark.parametrize("mask", OFFDIAG_GATE_MASKS, ids=_mask_id)
+def test_each_clause_catches_its_planted_defect_on_the_off_diagonal_single(
+        mask, mutation, offdiag_readings):
+    before, _ = offdiag_readings[mask]
+    launch = offdiag_emitter.offdiag_launch_source(mask)
+    planted = _plant_single(launch, OFFDIAG, mutation)
+    assert planted != launch
+    after = read(planted)
+    stores_equal = after["stores"] == before["stores"]
+    loads_equal = after["loads"] == before["loads"]
+    exposed = after["exposed_after_first_store"]
+    if mutation in ("drop_a_store", "reorder_two_stores"):
+        assert not stores_equal, f"{mask}: {mutation} left the store sequence equal"
+        if mutation == "reorder_two_stores":
+            with pytest.raises(AssertionError, match="write-back"):
+                own_cell_hoist.unhoisted_kernel_code(planted, OFFDIAG, OFFDIAG)
+    elif mutation == "add_a_load_after_a_store":
+        assert not loads_equal, f"{mask}: an added load left the load multiset equal"
+        assert stores_equal
+        assert exposed == [], "a reload of the lane's own write is not an exposed load"
+    else:
+        assert exposed, f"{mask}: a hoisted load sunk past a store was not caught"
+        assert stores_equal and loads_equal
+
+
+@pytest.mark.parametrize("kernel", SINGLES)
+def test_the_forward_reproduces_the_shipped_register_view_singles(kernel, hoisted):
+    """The forward spelling is the one Round B spelt by hand, byte for byte."""
+    statements = own_cell_hoist.unhoisted_kernel_code(hoisted[kernel], kernel, kernel)
+    assert own_cell_hoist.hoisted_kernel_code(statements, kernel, kernel) == hoisted[kernel]
+
+
+def test_the_forward_refuses_a_text_its_inverse_would_not_return():
+    certified = offdiag_emitter.offdiag_source(OFFDIAG_SCREENED_MASK)
+    # the helper stores the field before the auxiliary: the hazard half refuses
+    swapped = certified.replace(
+        "    fw[idx] = src;\n    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;\n",
+        "    float a = f[idx] + kps * src;\n    f[idx] = a - kms * prev;\n    fw[idx] = src;\n",
+        1)
+    assert swapped != certified
+    with pytest.raises(AssertionError, match="write-back order"):
+        own_cell_hoist.hoisted_kernel_code(swapped, OFFDIAG, "swapped")
+    # a text already in the register view carries no certified call to rewrite
+    launch = offdiag_emitter.offdiag_launch_source(OFFDIAG_SCREENED_MASK)
+    with pytest.raises(AssertionError, match="not one"):
+        own_cell_hoist.hoisted_kernel_code(launch, OFFDIAG, "launch")
+    # a second decode line leaves the load block without an anchor
+    decode = "    int i = idx / (ny * nz);\n"
+    with pytest.raises(AssertionError, match="load block has no anchor"):
+        own_cell_hoist.hoisted_kernel_code(certified.replace(decode, decode + decode, 1),
+                                           OFFDIAG, "twice")
+
+
+@pytest.mark.parametrize("kernel,text", [
+    (folded_offdiag_kernels.KERNEL_NAME,
+     lambda: folded_offdiag_kernels.folded_offdiag_source(OFFDIAG_SCREENED_MASK)),
+    (dispersive_offdiag_update_e.KERNEL_NAME,
+     lambda: dispersive_offdiag_update_e.dispersive_offdiag_source(OFFDIAG_SCREENED_MASK,
+                                                                   (1, 1, 1))),
+], ids=["folded", "dispersive"])
+def test_the_rule_refuses_the_off_diagonal_singles_it_does_not_carry(kernel, text):
+    """Their emitters are their own, so nothing here admits them; the refusal is by name."""
+    assert kernel not in own_cell_hoist.KERNELS
+    for function in (own_cell_hoist.hoisted_kernel_code, own_cell_hoist.unhoisted_kernel_code):
+        with pytest.raises(ValueError, match=f"kernel must be one of .*got '{kernel}'"):
+            function(text(), kernel, kernel)
+
+
+def test_every_emitted_hoist_in_the_package_is_in_this_table():
+    """A hoist issued through the rule's forward from another module fails by name."""
+    assert set(own_cell_hoist.KERNELS) == RULE_TABLE
+    issuers = {path.stem for path in HERE.glob("*.py")
+               if not path.stem.startswith("test_") and path.stem != "own_cell_hoist"
+               and re.search(r"\bhoisted_kernel_code\(", path.read_text(encoding="utf-8"))}
+    assert issuers == EMITTED_HOIST_MODULES

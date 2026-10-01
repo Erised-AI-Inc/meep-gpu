@@ -44,7 +44,7 @@ WHAT THE GATE REFUSES TO INFER
   emits no wall-clear line at all and the defect would report uncaught while
   measuring nothing.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

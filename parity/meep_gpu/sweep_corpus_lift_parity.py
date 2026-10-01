@@ -55,7 +55,7 @@ reproduced. Both sides step the same captured object for the same short time and
 their fields are compared. Scripts captured at ``run_k_points`` or ``solve_cw`` are
 stepped with a plain ``run(until=...)`` like every other row.
 
-Rule 7: the parent prints one flushed line per script and appends its JSONL row as it
+Progress reporting: the parent prints one flushed line per script and appends its JSONL row as it
 lands; each child appends its own phase markers to a shared progress log, so a run
 that is inside a slow lift is distinguishable from a hung one by ``tail`` alone.
 

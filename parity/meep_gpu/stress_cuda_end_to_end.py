@@ -148,7 +148,7 @@ Device (the GPU host, ONE verified-idle GPU, pinned)::
         parity/meep_gpu/stress_cuda_end_to_end.py --backend cuda \\
         --steps 5000 --checkpoint-every 100 --out results/stress_e2e_<stamp>
 
-Rule 7: the parent prints one flushed line per row; the CHILD appends one JSONL
+Progress reporting: the parent prints one flushed line per row; the CHILD appends one JSONL
 row per CHECKPOINT as it lands and rewrites its per-row artifact atomically after
 every checkpoint, so an interrupted run keeps everything up to the failure and
 ``tail`` on the machine that owns the job is the whole status check.

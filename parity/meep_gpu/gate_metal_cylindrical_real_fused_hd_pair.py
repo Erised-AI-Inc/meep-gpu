@@ -84,7 +84,7 @@ WHAT THE GATE REFUSES TO INFER
   product is not in the composer's tables; leg 7 measures what the composer does with it
   today and with the row applied in-process, and says which is which.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands; the lift
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands; the lift
 leg writes one JSON per corpus row and a progress log the child appends to.
 """
 

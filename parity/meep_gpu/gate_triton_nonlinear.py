@@ -24,7 +24,7 @@ Legs, in order (``--legs`` selects a subset):
   (all-periodic, all-metallic, mixed), x chi forms (chi3-only scalar — the
   corpus form — chi2-only, chi2+chi3, chi3 volume, chi2 volume, partial Ez
   only), x amplitude classes (normal ~1e-3 expansion; NEAR-POLE ~0.22 < 1/3, u
-  far from 1 so a Pade defect is byte-visible in f32 — job 2329's
+  far from 1 so a Pade defect is byte-visible in f32 — the complex gate's
   assertion-layer lesson), x guard off/on, plus scalar-epsilon rows and
   real-layer coefficient tables cut at Courant 0.35 AND 0.5. The reference side
   of every comparison is computed on NUMPY (host IEEE keep), so the sweep is
@@ -57,8 +57,8 @@ pass ``-ftz=false`` as a user option — NVRTC rejects the duplicate.
 
 Every case prints one flushed line as it lands; the JSON artifact is rewritten
 atomically after every case (the progress-reporting rule); the gate writes its own
-provenance record (``fingerprints.json`` is another session's file and is only
-hashed). Correctness only: no throughput or timing claims.
+provenance record (``fingerprints.json`` is a shared ledger this gate does not
+write; it is only hashed). Correctness only: no throughput or timing claims.
 
 Usage (the GPU host, one clear device; the cache dir MUST carry the policy token)::
 
@@ -1057,8 +1057,8 @@ def kernel_ptx_set(jit_fn: Any) -> List[str]:
 
 
 #: The kernel spells the quotient ``tl.math.div_rn(num, den)`` — the plain
-#: ``/`` is ``div.full.f32`` (~2 ulp) on this platform, measured by job 2336's
-#: 0/116 sweep and pinned by the divprobe (job 2338: ``div_rn`` 0 differing
+#: ``/`` is ``div.full.f32`` (~2 ulp) on this platform, measured by a
+#: 0/116 sweep and pinned by the divprobe (``div_rn`` 0 differing
 #: words on 3 x 2^20 vectors, plain ``/`` ~30%% differing at max_ulp 2).
 _QUOTIENT = "return tl.math.div_rn(num, den)"
 

@@ -475,7 +475,11 @@ CUDA_FUSED_ARM_CONSTITUENTS: Mapping[str, Tuple[str, ...]] = {
 # ``cuda_alone``: the preference unset and Triton made unimportable in the gate
 # process, which is the composition a host without a validated Triton gets and which
 # no earlier leg drove.
-CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-09-27_flip"
+# ``_2026-09-30_091`` (named 2026-09-30, before its campaign) is release 0.9.1's route:
+# the off-diagonal ``update_E`` single now launches its own-cell hoisted text, so the
+# legs that drive it execute different device bytes. ``_2026-09-27_flip`` stays the
+# record of the 0.9.0 route.
+CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-09-30_091"
 
 #: THE ARMS THIS TABLE MAY DISPATCH, and the gate cases that drove each. TIER 1
 #: (2026-09-11), TIER 2 (2026-09-13) AND TIER 3 (2026-09-13, typed ahead of its
@@ -1589,7 +1593,12 @@ _LEDGER: Dict[str, Mapping[str, Any]] = {}
 
 
 def _read_json(name: str) -> Mapping[str, Any]:
-    """One of ``cuda_kernels``' two records, read once per process. Never raises."""
+    """A ``cuda_kernels`` record, read once per process. Never raises.
+
+    Serves ``certification.json``. The weld ledger beside it is NOT read here: it
+    goes through :func:`fastpath._fingerprints`, the one reader admission uses (see
+    :func:`fingerprints`).
+    """
     if name not in _LEDGER:
         try:
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -1602,8 +1611,18 @@ def _read_json(name: str) -> Mapping[str, Any]:
 
 
 def fingerprints() -> Mapping[str, Any]:
-    """``cuda_kernels/fingerprints.json`` — the WELD ledger, one entry per campaign."""
-    return _read_json("fingerprints.json")
+    """``cuda_kernels/fingerprints.json`` — the WELD ledger, one entry per campaign.
+
+    Read through :func:`fastpath._fingerprints`, the reader device admission uses,
+    and NOT through this module's own cache. Two caches of one file can disagree as
+    soon as either is replaced, and admission derives the architectures this table
+    may run on from this ledger while :func:`certification_for` quotes the run for
+    the architecture it is running on: from two caches, a plan admitted on an
+    architecture could report that no run certified it there.
+    """
+    from . import fastpath  # noqa: PLC0415
+
+    return fastpath._fingerprints(fastpath.CUDA_TABLE)
 
 
 def certification() -> Mapping[str, Any]:
@@ -1611,7 +1630,7 @@ def certification() -> Mapping[str, Any]:
     return _read_json("certification.json")
 
 
-def certification_for(arm: str) -> Dict[str, Any]:
+def certification_for(arm: str, *, capability: Optional[str] = None) -> Dict[str, Any]:
     """What certified this CUDA arm, in the shape ``fastpath._certification_for`` returns.
 
     THE ENTRY SHAPE IS THE SHARED ONE ON PURPOSE — family, gate, the gate's own
@@ -1641,10 +1660,33 @@ def certification_for(arm: str) -> Dict[str, Any]:
             "here means the campaign has not seeded its weld yet, and "
             "CUDA_ARM_CERTIFICATION names which writer cuts it")
     else:
+        # THE RUN THAT CERTIFIED THIS DEVICE'S ARCHITECTURE, for the reason
+        # ``fastpath._certification_for`` gives: this ledger keeps one run per compute
+        # capability, and quoting another one's host beside this plan would misdescribe
+        # the evidence.
+        from . import fastpath  # noqa: PLC0415
+
+        live = fastpath.live_capabilities(record)
+        entry["capabilities_live"] = list(live)
+        run: Mapping[str, Any] = {}
+        if capability is None:
+            entry["run_record"] = (
+                "this host's compute capability could not be read, so no run of this "
+                "gate is quoted; the capabilities it has live runs for are above")
+        elif capability in live:
+            run = record[fastpath.RUNS][capability]
+            entry["capability"] = capability
+        else:
+            entry["run_record"] = (
+                f"this gate has no live run on compute capability {capability}: its "
+                f"live capabilities are {list(live)}. A plan that dispatched here was "
+                f"admitted by the opt-in, not by a record")
         for key in ("recorded_utc", "host", "purpose", "records", "step_budget",
                     "status", "subnormal_policy", "legs", "kernels",
                     "kernel_module"):
-            if key in record:
+            if key in run:
+                entry[key] = run[key]
+            elif key in record:
                 entry[key] = record[key]
     if entry.get("step_budget") is None:
         entry["step_budget"] = (
@@ -1670,45 +1712,29 @@ GOVERNED_EXECUTORS: Tuple[str, ...] = ("host", "cupy", "triton")
 def validated_compute_capabilities() -> Tuple[str, ...]:
     """The GPU architectures this table's cited gates ran on. DERIVED, never typed.
 
-    Two sources, unioned:
+    THE INTERSECTION OF THE CITED WELDS' LIVE RUNS, through the same reader the Triton
+    table uses (``fastpath.capability_report``): an architecture this table claims is
+    one that EVERY family it dispatches has a live run on, because an arm can be served
+    from any of them. It used to be the UNION of the capabilities named by the
+    ``certification.json`` blocks the welds point at, plus the route record's own list,
+    which had two defects: a re-cut of one narrative block admitted every arm of the
+    table on that architecture, and the route record's list was read from a field no
+    gate writes, so it was always empty.
 
-    * every ``certification.json`` block a :data:`CUDA_ARM_CERTIFICATION` ledger key
-      points at (through the weld's own ``_notes._narrative_lives_in``, falling back
-      to the key name), read for its ``compute_capability``. Seventy blocks carry
-      one today and every one of them reads ``8.6``;
-    * the CUDA ``driver_dispatch`` weld's own ``validated_compute_capabilities``
-      once ``recut_driver_dispatch_record.py --backend cuda`` has cut it, which is
-      read off the campaign legs' device stamp rather than transcribed.
-
-    EMPTY IS UNKNOWN, NOT REFUSED — ``fastpath._device_is_validated`` is
-    three-valued and an empty list means "no recorded gate says", which is rung 4b's
-    rule. So no bootstrap leg is needed to make the first campaign runnable.
+    ``None`` from the report means the ledger could not be read, and rung 4b treats
+    that as unknown. ``()`` is a readable ledger whose cited welds share no live
+    capability, and it refuses every device.
     """
     from . import fastpath  # noqa: PLC0415
 
-    ledger = fingerprints()
-    blocks = certification()
-    found: List[str] = []
+    # READ THROUGH ``fastpath``'s LEDGER CACHE, not this module's. Both read the same
+    # file, so in a run they agree; but rung 4b asks ``fastpath.capability_admission``,
+    # and two readers of one file mean a test (or a tool) that swaps one of them gets
+    # a record whose declared list and whose verdict disagree. One reader, one answer.
     keys = {gate for _family, gate in CUDA_ARM_CERTIFICATION.values()}
-    dispatch = ledger.get("driver_dispatch")
-    if isinstance(dispatch, Mapping):
-        for value in dispatch.get("validated_compute_capabilities") or ():
-            found.append(fastpath._normalized_capability(value))  # noqa: SLF001
-    for key in sorted(keys):
-        entry = ledger.get(key)
-        block_name = key
-        if isinstance(entry, Mapping):
-            notes = entry.get("_notes")
-            if isinstance(notes, Mapping):
-                cited = str(notes.get("_narrative_lives_in") or "")
-                if ":" in cited:
-                    block_name = cited.rsplit(":", 1)[1]
-        block = blocks.get(block_name)
-        if isinstance(block, Mapping) and block.get("compute_capability"):
-            found.append(
-                fastpath._normalized_capability(  # noqa: SLF001
-                    block["compute_capability"]))
-    return tuple(sorted(set(found)))
+    admitted = fastpath.table_capabilities(
+        fastpath._fingerprints(fastpath.CUDA_TABLE), sorted(keys))  # noqa: SLF001
+    return () if admitted is None else admitted
 
 
 # ---------------------------------------------------------------------------

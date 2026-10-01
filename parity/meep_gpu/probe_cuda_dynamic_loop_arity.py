@@ -9,8 +9,9 @@ WHAT IT MEASURES, in the order it measures it:
                         (a backward branch), does the unrolled one really not,
                         does each carry exactly the float arithmetic the
                         transcription says, and is ``fma.rn.f32`` absent from
-                        both under ``--fmad=false``. Needs NVRTC only -- no free
-                        device, no CUDA context.
+                        both under ``--fmad=false``. Needs NVRTC, and a VISIBLE
+                        device to read the architecture off (``ptx_arch``) -- still
+                        no FREE device and no CUDA context.
 
                         ONE CAVEAT, MEASURED RATHER THAN ASSUMED, AND IT LIMITS
                         WHAT THIS SECTION LICENSES. This section compiles under
@@ -105,23 +106,48 @@ def load_subject():
 
 SUBJECT = load_subject()
 
-#: The PTX architecture the sibling PTX probe reads (RTX A6000, sm_86).
-ARCH_PTX = "compute_86"
-
-
 def log(message: str) -> None:
     print(message, flush=True)
+
+
+def ptx_arch() -> str:
+    """``compute_NN`` for the device THIS PROCESS has open, read when asked.
+
+    WHY NOT A CONSTANT (changed 2026-09-30). This was ``ARCH_PTX =
+    "compute_86"``, bound as ``compile_to_ptx``'s default argument — so the value
+    was fixed when the module was IMPORTED and the recorded ``arch`` was a typed
+    claim rather than a measurement. Run on any other card, the probe would compile
+    sm_86 PTX, census it, and record the whole section as if it described the device
+    it was launching on: a census of the wrong architecture is not a weaker result,
+    it is a false one, and PTX is exactly what differs between architectures.
+
+    ``Device().compute_capability`` is CuPy's own undotted string (``"86"``,
+    ``"90"``, ``"100"`` for cc 10.0), which is already the spelling NVRTC's
+    ``--gpu-architecture=compute_NN`` wants, so it is concatenated rather than
+    re-derived from major/minor ints — the same read ``gate_cuda_complex.py`` makes
+    for its NVRTC guard. RAISES on a host with no readable device: the callers
+    record that as a named section error, because a PTX census with no device behind
+    it has nothing to say.
+    """
+    import cupy as cp  # noqa: PLC0415 - a device read, never at import time
+
+    return "compute_" + str(cp.cuda.Device().compute_capability)
 
 
 # ---------------------------------------------------------------------------
 # PTX -- no device needed
 # ---------------------------------------------------------------------------
 
-def compile_to_ptx(code: str, options: Sequence[str], arch: str = ARCH_PTX) -> str:
+def compile_to_ptx(code: str, options: Sequence[str], arch: str) -> str:
     """Real PTX text from NVRTC's own ``getPTX``.
 
     ``compile_using_nvrtc`` returns a CUBIN on CuPy 13.5.1, so counting opcodes
     in its result measures nothing. Needs the NVRTC library, not a context.
+
+    ``arch`` IS REQUIRED and has no default: a default would be evaluated once at
+    import and the caller could not tell a measured architecture from a stale one.
+    The caller reads it from :func:`ptx_arch` and records the same value it
+    compiles under.
     """
     from cupy.cuda import nvrtc  # noqa: PLC0415
 
@@ -207,7 +233,7 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
     """PTX for every variant at every swept arity, plus the option-tuple pin."""
     log("== section ptx ==")
     out: Dict[str, Any] = {
-        "arch": ARCH_PTX,
+        "arch": None,
         "options": list(SUBJECT.COMPILE_OPTIONS),
         "ftz_caveat": (
             "compiled under our option tuple ALONE. cupy.RawKernel -- the launch "
@@ -217,6 +243,27 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
             "THIS compile and not about the launched binary. It does not affect "
             "the association-order question, which is what this gate measures."),
         "census": {}, "errors": [], "failures": []}
+
+    # THE ARCHITECTURE IS READ ONCE, HERE, AND RECORDED AS WHAT WAS COMPILED. A
+    # failure is an ERROR row rather than a raised exception because this module's
+    # ``main`` runs the byte verdict after this section and writes the artifact at
+    # the end: losing a completed device leg to an unreadable identity would be the
+    # expensive failure, and ``out["ok"]`` already turns any error into a non-zero
+    # exit.
+    try:
+        arch = ptx_arch()
+    except Exception as error:  # noqa: BLE001 - recorded, not raised
+        out["errors"].append(
+            f"the PTX architecture cannot be read from the device "
+            f"({type(error).__name__}: {error}); a census compiled under a typed "
+            f"architecture would describe a card this run never opened")
+        out["ok"] = False
+        log(f"   PTX ARCH UNREADABLE: {type(error).__name__}: {error}")
+        results["ptx"] = out
+        return
+    out["arch"] = arch
+    log(f"   arch read from the live device: {arch}")
+
     if ptx_dir:
         os.makedirs(ptx_dir, exist_ok=True)
     for variant in SUBJECT.ALL_VARIANTS:
@@ -229,7 +276,7 @@ def section_ptx(results: Dict[str, Any], ptx_dir: Optional[str],
             code = SUBJECT.source_for(variant, triple)
             key = "any" if arity is None else str(arity)
             try:
-                text = compile_to_ptx(code, SUBJECT.COMPILE_OPTIONS)
+                text = compile_to_ptx(code, SUBJECT.COMPILE_OPTIONS, arch)
             except Exception as error:  # noqa: BLE001 - recorded, not raised
                 out["errors"].append(f"{variant}@{key}: {type(error).__name__}: {error}")
                 log(f"   {variant:20s} np={key:>3s}  COMPILE FAILED: {error}")

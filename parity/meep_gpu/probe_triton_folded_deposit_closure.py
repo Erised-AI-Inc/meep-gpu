@@ -1048,7 +1048,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         rows.append(run_case(case, device, xp))
         payload["cases"] = rows
-        save(payload, args.out)          # partial results as they land (rule 7)
+        save(payload, args.out)          # partial results as they land (progress reporting)
 
     structural = [prior_evidence_leg(), unfolded_product_leg()]
     payload["structural_legs"] = structural

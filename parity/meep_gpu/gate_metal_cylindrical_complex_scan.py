@@ -60,7 +60,7 @@ WHAT THE GATE REFUSES TO INFER
 * **A mutation that never launched is DISARMED and fails; one whose needle matched
   nothing is NEEDLE-MISSED and fails** (``metal_gate_kit.MutationHarness``).
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

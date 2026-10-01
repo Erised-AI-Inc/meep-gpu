@@ -59,7 +59,7 @@ THE LEGS
                        plus a byte-neutral control that must NOT diverge
  11  disarm            the shipped bytes through the mutation path must not diverge
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

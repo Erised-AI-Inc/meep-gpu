@@ -49,7 +49,7 @@ The cases span the corpus demand and nothing else:
    change. Flux spectra are compared bit-exactly at the end alongside the
    per-step field compare.
 
-   NON-VACUITY, added 2026-08-12 after the certifying run (job 2339) was
+   NON-VACUITY, added 2026-08-12 after the certifying run was
    found to have compared two untouched buffers: at 16 steps against the
    factor of 21 the engine resolved then, NO sample ever accumulated and the
    recorded spectrum was ``[0, 0, 0, 0, 0]`` — "bit-exact" over exact zeros
@@ -166,8 +166,8 @@ CASES: Tuple[Dict[str, Any], ...] = (
     # compare is vacuous — asserted at monitor-add time, in the device path
     # and the self-check both. 16 clears the factor of 1 a nonlinear run now
     # resolves (dft.cpp:207-210's guard, mirrored in the engine); it did NOT
-    # clear the factor of 21 the engine resolved when job 2339 ran this case,
-    # which is why that run's spectrum was identically zero.
+    # clear the factor of 21 the engine resolved for the certifying run of this
+    # case, which is why that run's spectrum was identically zero.
     {"name": "dft_flux_decimation", "kind": "synthetic", "steps": 16,
      "seed_amplitude": 0.25, "margin_target": None,
      "chi2": 0.045, "chi3": 0.08, "flux": True},
@@ -531,7 +531,7 @@ def run_case(cp, case: Dict[str, Any],
             # NON-VACUITY: FluxMonitor.update accumulates only when
             # step % decimation_factor == 0 (dft.py), so a budget below the
             # resolved factor never touches the accumulators — measured on
-            # job 2339, where 16 steps against a resolved factor of 21 left
+            # the certifying run, where 16 steps against a factor of 21 left
             # the "bit-exact" compare running over two untouched zero
             # buffers. Same assertion as the off-diagonal tranche's.
             if steps < 2 * row["resolved_decimation"]:

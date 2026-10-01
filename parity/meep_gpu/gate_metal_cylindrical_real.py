@@ -105,7 +105,7 @@ THE LEGS:
 10. ``mutations``     armed, launch-counted, caught-of-armed reported honestly,
                       including the classes only a complete step can see.
 
-    KMP_DUPLICATE_LIB_OK=TRUE python -u gate_metal_cylindrical_real.py \\
+    python -u gate_metal_cylindrical_real.py \\
         --out results/metal_cylindrical_real_<date>/gate.json
 """
 

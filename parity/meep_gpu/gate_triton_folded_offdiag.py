@@ -238,8 +238,8 @@ Legs, in order (``--legs`` selects a subset):
   NULL CONTROLS, each with its recorded reason and each still required to launch
   with PTX differing from every shipped specialization: the commuted row sum
   (f32 addition is bitwise commutative), m4 (0.25 distributed — an exact power
-  of two commutes with round-to-nearest away from underflow; job 2340 measured
-  it not caught), and (iii) above. m4 is carried TWICE: asserted not-caught on
+  of two commutes with round-to-nearest away from underflow; the offdiag gate
+  measured it not caught), and (iii) above. m4 is carried TWICE: asserted not-caught on
   the normal needle, and RECORDED on a subnormal needle, because "away from
   underflow" is its own caveat and the subnormal class is where it can fail —
   measured on the host today, the distributed spelling leaves every byte equal
@@ -299,8 +299,8 @@ Nothing here runs longer than a few seconds per case on either backend.
 
 Every case prints one flushed line as it lands; the JSON artifact is rewritten
 atomically after every case (the progress-reporting rule); the gate writes its own
-provenance record (``fingerprints.json`` is another session's file and is only
-hashed). Correctness only: no throughput or timing claims.
+provenance record (``fingerprints.json`` is a shared ledger this gate does not
+write; it is only hashed). Correctness only: no throughput or timing claims.
 
 Usage (the GPU host, one clear device; the cache dir MUST carry the policy token)::
 
@@ -530,7 +530,7 @@ def reference_shift_down(field: np.ndarray, axis: int, kind: str,
     if ghost == "minus_lowering_row2":
         # f6: the ghost addend respelled with a UNARY MINUS. Triton's
         # semantic.minus lowers -x as 0.0 - x (measured reachable at driver
-        # level, jobs 2343/2345), so the respelling is `0.0 - ((0.0 - w) * v)`:
+        # level), so the respelling is `0.0 - ((0.0 - w) * v)`:
         # algebraically identical, and byte-identical too EXCEPT on signed
         # zeros, where 0.0 - (+0.0) == +0.0 while (-1.0) * (+0.0) == -0.0.
         value = field[_face(axis, row)]
@@ -1232,8 +1232,8 @@ def run_refusals(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
         "pass": installed and stepped,
         "note": "the installer does NOT refuse folded off-diagonal rows "
                 "(fields.py:1262-1310) and stepping.update_E steps them; the "
-                "three docstrings that claim otherwise are stale and belong to "
-                "the sessions that own those files",
+                "three docstrings that claim otherwise are stale; the fix "
+                "belongs in those files",
     })
     log(f"[refusals] stale_docstring_guard: installed={installed} "
         f"stepped={stepped}")
@@ -2953,7 +2953,7 @@ def mutate_f6_unary_minus_respell(source: str) -> Tuple[str, int]:
     IEEE too EXCEPT on signed zeros, because Triton's ``semantic.minus`` lowers
     ``-x`` as ``0.0 - x`` and ``0.0 - (+0.0) == +0.0`` while
     ``(-1.0) * (+0.0) == -0.0``. Measured reachable at driver level on other
-    families (jobs 2343/2345); the signed-zero needle is what decides it here,
+    families; the signed-zero needle is what decides it here,
     and the outcome is RECORDED either way."""
     hits = 0
     for needle in _F6_NEEDLES:
@@ -3082,8 +3082,8 @@ def mutate_m4_distribute_quarter(source: str) -> Tuple[str, int]:
 
     An exact power-of-two factor commutes with round-to-nearest AWAY FROM
     UNDERFLOW, so the distributed form is bitwise identical wherever nothing is
-    subnormal (job 2340 measured it launched, PTX-verified-different and byte
-    identical on the certified family's cancellation class). It is carried on
+    subnormal (measured: launched, PTX-verified-different and byte identical
+    on the certified family's cancellation class). It is carried on
     two needles here: the normal one, where it is asserted NOT caught, and the
     SUBNORMAL one, where the caveat lives and the outcome is only RECORDED.
 
@@ -3264,7 +3264,7 @@ MUTATIONS: Dict[str, Dict[str, Any]] = {
         analogue={"variant": "distributed_quarter"}, needle="fold_partner",
         expectation=False,
         why=("NULL: an exact power of two commutes with round-to-nearest away "
-             "from underflow (job 2340 measured it launched, PTX-different and "
+             "from underflow (measured: launched, PTX-different and "
              "not caught). Declared in this leg's description from the start "
              "and previously carried by no entry at all")),
     "m4_distributed_quarter_subnormal": dict(

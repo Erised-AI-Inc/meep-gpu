@@ -35,7 +35,7 @@ phases are the same functions, imported and called in the other order, with
 CuPy's in-process memo dropped between them so the array sub-steps actually
 recompile and can be censused rather than served from memory.
 
-Rule 7: one flushed line per step, and the artifact is saved as each phase lands.
+Progress reporting: one flushed line per step, and the artifact is saved as each phase lands.
 
 Run (the GPU host, ONE pinned GPU), one case per process::
 

@@ -71,7 +71,7 @@ THE SINGLE COMMAND THE NEXT DEVICE VISIT RUNS::
     python -u gate_triton_complex_no_pml_curl.py \\
         --out results/complex_no_pml_curl_<UTCSTAMP>/gate.json --cycles 8
 
-Rule 7: one flushed line per case, and one fsync'd JSONL row per case written as
+Progress reporting: one flushed line per case, and one fsync'd JSONL row per case written as
 it lands, so an interrupted run keeps everything up to the failure.
 """
 
@@ -111,7 +111,7 @@ SUB_STEP_FUNCTIONS = {"step_B": stepping.step_B, "step_D": stepping.step_D}
 
 
 def log(handle, message: str) -> None:
-    """One flushed line, to stdout AND to the run's own log (rule 7)."""
+    """One flushed line, to stdout AND to the run's own log (progress reporting)."""
     print(message, flush=True)
     if handle is not None:
         handle.write(message + "\n")

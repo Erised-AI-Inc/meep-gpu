@@ -105,7 +105,7 @@ LEGS
                        claim is against the CERTIFIED SINGLES, because a defect in this
                        weld cannot appear in them
 
-Rule 7: one flushed line per case, and the artifact is rewritten after every leg, so
+Progress reporting: one flushed line per case, and the artifact is rewritten after every leg, so
 an interrupted run keeps everything that landed.
 
 RUNNING IT (the GPU host, ONE verified-empty GPU)::

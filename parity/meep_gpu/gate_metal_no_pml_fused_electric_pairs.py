@@ -50,7 +50,7 @@ THE LEGS, each armed (a negative leg that does not diverge is reported and fails
                       REFUSED; the counts are parsed from the emitted text and must
                       equal each module's BINDINGS_PER_COMPONENT.
 
-Rule 7: one flushed line per case. Runs locally on MPS. Nothing here is dispatch:
+Progress reporting: one flushed line per case. Runs locally on MPS. Nothing here is dispatch:
 ``meep_gpu.fastpath.plan_fast_path`` still returns ``None`` on every branch.
 """
 

@@ -162,7 +162,9 @@ GOVERNED_EXECUTORS: Tuple[str, str] = ("host", "mps")
 #: is on by default and held residency is this table's default, with the release at
 #: every freeze, the ``reset`` layer and the admission rung, so every leg executes
 #: different bytes and the fleet and the route are re-run on them.
-METAL_DRIVER_ROUTE_GATE = "dispatch_metal_route_2026-09-27_flip"
+#: REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
+#: round re-runs the fleet and the route on the released files.
+METAL_DRIVER_ROUTE_GATE = "dispatch_metal_route_2026-09-30_091"
 
 #: The four expansion-probe families, as ``(plan_step keyword, module)``. Each
 #: module owns its own ``PROBE_PATH_ENVIRONMENT`` and ``load_expansion_probe``; the

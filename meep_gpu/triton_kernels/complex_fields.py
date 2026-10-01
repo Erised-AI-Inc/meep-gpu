@@ -379,12 +379,13 @@ ENVIRONMENT_DEFAULTS: Tuple[Dict[str, str], ...] = (
         "artifact": ("apps/api/parity/meep_gpu/results/"
                      "complex_expansion_diagnosis_2026-08-11/gate_stripped.json"),
         "evidence": (
-            "job 2328, stripped leg: the platform is EXACT FMA_V1 on all four "
-            "probe patterns — 0 mismatch words over 2075-2280 vectors per "
-            "pattern — measured under the ftz-stripped IEEE-keep policy, which "
-            "keeps the subnormal lanes that separate the arms. The default leg "
-            "of the same job, scored against kept candidates while the device "
-            "flushed, is the 54/48/125 NEITHER this table exists to not repeat."),
+            "the 2026-08-11 diagnosis run, stripped leg: the platform is EXACT "
+            "FMA_V1 on all four probe patterns — 0 mismatch words over "
+            "2075-2280 vectors per pattern — measured under the ftz-stripped "
+            "IEEE-keep policy, which keeps the subnormal lanes that separate "
+            "the arms. The default leg of the same run, scored against kept "
+            "candidates while the device flushed, is the 54/48/125 NEITHER "
+            "this table exists to not repeat."),
     },
 )
 
@@ -465,7 +466,7 @@ def _mul_field_left(z_re, z_im, c, EXPANSION: tl.constexpr):
     lost — while the array path's complex multiply negates the rounded cross
     product sign-exactly (a NumPy/CuPy sign flip). ``* -1.0`` is the IEEE-exact
     negation (LLVM folds it to neg.f32; measured on device by the special_kz
-    tranche's m9 product-layer pin, job 2332). The unary spelling carried here
+    tranche's m9 product-layer pin). The unary spelling carried here
     until 2026-08-12 canonicalized every ±0 addend to +0 before a store, and
     the zero-init composition census showed the class is REACHED: from all-+0.0
     state the array path stores ``re = -0.0`` words wherever a thin absorber's

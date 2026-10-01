@@ -1084,7 +1084,7 @@ def _time(callable_: Callable[[], None]) -> float:
 # TWO RULES SHAPE EVERY CLAUSE BELOW.
 #
 # 1. A COUNT IS COMPARED AGAINST WHAT A COMPLETE LEG PRODUCES, never against
-#    itself. The artifact is rewritten every 25 cases (rule 7), and every leg's
+#    itself. The artifact is rewritten every 25 cases (progress reporting), and every leg's
 #    running summary is a ratio of what has landed SO FAR — so a sweep killed at
 #    case 300 leaves ``300/300 identical`` behind it. Against itself that reads
 #    as a pass; against the 512 the constants say a complete sweep runs, it does

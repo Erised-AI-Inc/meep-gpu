@@ -55,7 +55,7 @@ the ``keep`` policy by name. The gate records the resolved policy and asserts th
 reference walk is subnormal-free at every step, which is the precondition that
 refusal buys.
 
-Rule 7: one flushed line per case. Runs locally on MPS, routed through
+Progress reporting: one flushed line per case. Runs locally on MPS, routed through
 ``metal_gate_runner``. Nothing here is dispatch: ``meep_gpu.fastpath
 .plan_fast_path`` still returns ``None`` on every branch.
 """

@@ -13,8 +13,8 @@ composition is DEFERRED — ``coverage.constitutive_coverage(side="E")`` already
 refuses every off-diagonal run at exactly this sub-step (coverage.py:367-370),
 and DELIBERATELY only this sub-step: the curl predicates admit off-diagonal
 runs (coverage.py:26-31, :343-346), so this kernel is the LAST uncovered
-sub-step of an offdiag run, not the first. ``coverage.py`` is another session's
-file and is imported, never edited; ``fingerprints.json`` carries no entry for
+sub-step of an offdiag run, not the first. ``coverage.py`` is a shared module
+and is imported, never edited; ``fingerprints.json`` carries no entry for
 this module — the byte gate binds its own provenance record inside its results
 directory. Callers are the gate (``parity/meep_gpu/gate_triton_offdiag.py``),
 the composition probe (``probe_triton_offdiag_composition.py``) and the laptop
@@ -64,7 +64,7 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    exact in f32 and the association is the transcribed one — but it is NOT a
    byte-observable choice: an exact power-of-two factor commutes with
    round-to-nearest away from underflow, so the distributed form is bitwise
-   identical wherever nothing is subnormal (gate job 2340 measured the
+   identical wherever nothing is subnormal (the gate's first cut measured the
    planted distribution NOT caught on the cancellation class with a
    PTX-verified-different binary; laptop, 0/2M mismatches). The gate carries
    the distribution as a recorded NULL control; the transcribed association
@@ -111,7 +111,7 @@ metallic zero ghost, per axis, composed independently for the corner. One of
 them is transcription fidelity rather than a byte-observable choice: the
 partner-axis metallic NEAR (down) zero ghost's entire support is the
 partner-axis face-0 plane, which the wall-coupling mask zeroes before the row
-sum — gate job 2340 measured the wrapped-ghost mutant (PTX-verified-different)
+sum — the gate measured the wrapped-ghost mutant (PTX-verified-different)
 byte-identical on the all-metallic sweep, and the gate records it as a NULL
 control with that derivation (mirrors, where the mask abstains, are refused
 by this family's predicate). The
@@ -135,7 +135,7 @@ on folded grids, with fold-equivalence measured 8.3e-13..4.7e-12 and pinned by
 family refuses folds anyway (the shared extent/coefficient-index clause), so
 the refusal is THIS KERNEL FAMILY'S, not the engine's: the gate's refusals leg
 shows the predicate refusing a folded run that stepping demonstrably steps.
-The doc fix belongs to the sessions that own those files.
+The doc fix belongs in those files.
 
 WHAT IS REFUSED, BY NAME, in :func:`offdiag_constitutive_coverage`: every
 ``coverage._grid_reasons`` clause IN FORCE and called directly (no clause is
@@ -213,7 +213,7 @@ HALF_INTEGER = True
 DEFAULT_BLOCK = 256
 
 #: The shared clause builders the predicate composes from, named as data so the
-#: laptop test can assert every one still exists in the other session's file.
+#: laptop test can assert every one still exists in the shared ``coverage.py``.
 SHARED_CLAUSES: Tuple[str, ...] = (
     "_grid_reasons", "_susceptibility_reasons", "_boundary_kinds",
     "_layout_reasons", "_inverse_epsilon_reasons", "_coefficient_reasons",

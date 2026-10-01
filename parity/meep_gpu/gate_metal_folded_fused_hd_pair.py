@@ -145,7 +145,7 @@ the stale ``id(plan)`` PML lookup). A second copy would be a second place for ea
 those to come back. What this file owns is everything FOLDED: the fixtures, the folded
 arrangements, the fold-specific legs and the fold-specific defects.
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands; the
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands; the
 lift leg writes one JSON per corpus row as it lands and a progress log the child
 appends to per step.
 """

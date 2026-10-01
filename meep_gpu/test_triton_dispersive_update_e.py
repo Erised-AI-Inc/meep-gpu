@@ -641,12 +641,9 @@ def test_the_dispersive_composition_fingerprint_names_the_exact_gated_bytes():
         pathlib.Path(module.__file__).read_bytes()).hexdigest()
 
     gate = record["dispersive_composition_gate"]
-    # ``slurm_job_id`` NAMES THE JOB THAT FIRST CERTIFIED THIS WELD and does not move
-    # when the record is re-cut; ``records`` names the artifact the digests are bound
-    # to. Both siblings re-cut on 2026-08-30 carry the same split (2319 and 2317
-    # beside a 2026-08-30 records line), and ``recut_composition_records.MUTABLE``
-    # deliberately excludes the job id for that reason.
-    assert gate["slurm_job_id"] == 2298
+    # ``records`` names the artifact the digests are bound to. The record pins what
+    # the gate executed, not how it was launched: no scheduler job id or launch-script
+    # digest is kept (test_triton_weld_contract.py asserts that for every entry).
     # RE-PINNED 2026-08-31 from a fresh GPU-host run of probe_triton_engine_route,
     # bound by recut_composition_records.py with the move declared in CLAIM_RECUTS.
     # Both counters moved, for two different reasons, and neither is a regression:

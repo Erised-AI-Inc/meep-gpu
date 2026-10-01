@@ -48,7 +48,7 @@ THE LEGS ARE ARMED (a negative leg that does not diverge is VACUOUS and fails):
                   30-pointer-plus-``Params`` kernel COMPILES and the same kernel
                   with one more pointer is REFUSED with the platform's own error.
 
-Rule 7: one flushed line per case. Runs locally on MPS, routed through
+Progress reporting: one flushed line per case. Runs locally on MPS, routed through
 ``metal_gate_runner``. Nothing here is dispatch: ``meep_gpu.fastpath
 .plan_fast_path`` still returns ``None`` on every branch.
 """

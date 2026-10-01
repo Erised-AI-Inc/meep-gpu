@@ -85,7 +85,7 @@ LEGS
                           measured reason on the row
  11  disarm               the same harness, shipped bytes, must not diverge
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 from __future__ import annotations

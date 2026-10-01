@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import os
 
 import numpy as np
 
@@ -222,30 +223,65 @@ def beam_fields(offsets, x0, kdir, w0, freq, eps, mu, E0, dimensions: int):
     return out
 
 
-# ``gaussianbeam::get_fields(std::complex<double>*, meep::vec const&) const`` under
-# the Itanium C++ ABI as libc++ spells it. Test-oracle only — see the module docstring.
-GET_FIELDS_SYMBOL = "_ZNK4meep12gaussianbeam10get_fieldsEPNSt3__17complexIdEERKNS_3vecE"
+# ``gaussianbeam::get_fields(std::complex<double>*, meep::vec const&) const`` under the
+# Itanium C++ ABI, as libc++ (macOS builds) and libstdc++ (Linux builds) spell it; read
+# from conda-forge's libmeep with ``nm``. Test-oracle only — see the module docstring.
+GET_FIELDS_SYMBOLS = (
+    "_ZNK4meep12gaussianbeam10get_fieldsEPNSt3__17complexIdEERKNS_3vecE",
+    "_ZNK4meep12gaussianbeam10get_fieldsEPSt7complexIdERKNS_3vecE",
+)
+
+
+def _loaded_meep_libraries():
+    """Paths of the MEEP shared libraries this process has mapped (Linux only).
+
+    On Linux the extension module loads ``libmeep`` privately, so its symbols are not
+    in the global scope ``ctypes.CDLL(None)`` searches; the library has to be opened by
+    its own path. macOS resolves them globally and has no ``/proc``.
+    """
+    try:
+        with open("/proc/self/maps", encoding="utf-8") as maps:
+            paths = {line.split(None, 5)[5].strip() for line in maps
+                     if len(line.split(None, 5)) == 6}
+    except OSError:
+        return []
+    return sorted(path for path in paths if os.path.basename(path).startswith("libmeep"))
+
+
+def _resolve_get_fields():
+    """MEEP's compiled ``get_fields``, or None if no spelling resolves anywhere."""
+    libraries = [ctypes.CDLL(None)]
+    for path in _loaded_meep_libraries():
+        try:
+            libraries.append(ctypes.CDLL(path))
+        except OSError:
+            continue
+    for library in libraries:
+        for symbol in GET_FIELDS_SYMBOLS:
+            try:
+                return getattr(library, symbol)
+            except AttributeError:
+                continue
+    return None
 
 
 def compiled_beam_fields(mp, offsets, x0, kdir, w0, freq, eps, mu, E0, dimensions: int):
     """MEEP's OWN compiled ``get_fields``, one point at a time, as the test oracle.
 
     ``get_fields`` has no SWIG typemap for its ``std::complex<double>*`` output
-    argument, so it is unreachable through the Python bindings; the symbol is exported
-    from the extension module, though, and ``ctypes.CDLL(None)`` resolves it once meep
-    has been imported. Raises rather than falling back: an unresolved symbol means the
-    oracle is unavailable, and a silent substitution here would validate the
-    transcription against itself.
+    argument, so it is unreachable through the Python bindings; MEEP's shared library
+    exports the symbol, though, and it resolves once meep has been imported. Raises
+    rather than falling back: an unresolved symbol means the oracle is unavailable,
+    and a silent substitution here would validate the transcription against itself.
     """
-    try:
-        get_fields = getattr(ctypes.CDLL(None), GET_FIELDS_SYMBOL)
-    except AttributeError as exc:  # a libstdc++ build spells the symbol differently
+    get_fields = _resolve_get_fields()
+    if get_fields is None:
         raise RuntimeError(
-            f"MEEP's compiled gaussianbeam::get_fields is not resolvable as "
-            f"{GET_FIELDS_SYMBOL!r} in this process; the C++ oracle is unavailable on "
-            f"this build. This is a TEST oracle only — meep_gpu.gaussian_beam."
+            f"MEEP's compiled gaussianbeam::get_fields is not resolvable as any of "
+            f"{list(GET_FIELDS_SYMBOLS)!r} in this process; the C++ oracle is unavailable "
+            f"on this build. This is a TEST oracle only — meep_gpu.gaussian_beam."
             f"beam_fields does not depend on it."
-        ) from exc
+        )
     get_fields.restype = None
     get_fields.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 

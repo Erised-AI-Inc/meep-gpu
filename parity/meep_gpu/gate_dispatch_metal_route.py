@@ -73,7 +73,7 @@ executors, and the ``harness_keep`` leg is what shows the seam refusing rather t
 silently splitting: under an installed ``keep`` every dispatch case must be refused
 BY NAME at rung 8bM and stay byte-identical to the array path.
 
-Rule 7: one flushed line per leg per chunk, and every row is appended to
+Progress reporting: one flushed line per leg per chunk, and every row is appended to
 ``cases.jsonl`` / ``controls.jsonl`` as it lands.
 
 Run (this Mac, ONE MPS device, through the runner that welds the artifact)::
@@ -4679,7 +4679,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     os.makedirs(arguments.out, exist_ok=True)
     # A GATE MUST NOT WRITE INTO ANOTHER RUN'S ARTIFACT. The JSONL files are opened
-    # in APPEND mode because rule 7 wants every row on disk the moment it lands; the
+    # in APPEND mode because progress reporting wants every row on disk the moment it lands; the
     # cost is that pointing --out at a directory a previous run wrote silently
     # INTERLEAVES two runs' rows in one file while summary.json is rewritten from
     # this process's own list, so the two disagree and only the JSONL carries the
@@ -4759,7 +4759,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     controls: List[Dict[str, Any]] = []
 
     def record(entry: Dict[str, Any], case_name: Optional[str] = None) -> None:
-        """Append one control row and FLUSH IT, one row per control (rule 7)."""
+        """Append one control row and FLUSH IT, one row per control (progress reporting)."""
         if case_name is not None:
             entry.setdefault("case", case_name)
         controls.append(entry)
@@ -4823,7 +4823,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                    "traceback": traceback.format_exc()[-4000:]}
         row["case_wall_s"] = round(time.time() - started, 2)
         rows.append(row)
-        with open(rows_path, "a", encoding="utf-8") as handle:  # rule 7, incremental
+        with open(rows_path, "a", encoding="utf-8") as handle:  # progress reporting, incremental
             handle.write(json.dumps(row, default=str) + "\n")
             handle.flush()
         say(f"=== case {index}/{len(names)}: {name} -> {row.get('verdict')} "

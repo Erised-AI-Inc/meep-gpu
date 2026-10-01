@@ -12,7 +12,7 @@ The shared complex expansion probe licenses the only multiplication orientation
 this body executes.  Every case is flushed to JSONL as it lands and the final
 payload is written atomically.
 
-Run only through the repository's the GPU host Slurm wrapper on one confirmed-idle
+Run only on one confirmed-idle
 GPU, with the established private CuPy/Triton cache and KEEP policy::
 
     python -u gate_triton_complex_no_pml_stored_e.py \

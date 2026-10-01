@@ -200,7 +200,7 @@ try:
 except ImportError:
     _TRITON_AVAILABLE = False
 
-# Shared machinery from the CERTIFIED complex gate (job 2330/2343) — imported,
+# Shared machinery from the CERTIFIED complex gate — imported,
 # never re-implemented: the subnormal policy seam, the launch counter and the
 # provenance writer are the same objects the five certified families were cut
 # with, so this gate's verdict is about the cylindrical additions and not about

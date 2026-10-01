@@ -33,7 +33,7 @@ instead of pairing a stale selection with a fresh read of device code.
 The capture and lift machinery is the surveys' own, imported rather than re-written, so
 the object the predicates see is the object the corpus campaign scored.
 
-Rule 7: one flushed line per row, a JSONL row appended as it lands, and a shared
+Progress reporting: one flushed line per row, a JSONL row appended as it lands, and a shared
 progress log every child appends to.
 
 Usage (from ``the repository root``)::
@@ -276,8 +276,8 @@ EXAMPLES_DIR = (os.path.join(_CORPUS_ROOT, "examples") if _CORPUS_ROOT
 TESTS_DIR = (os.path.join(_CORPUS_ROOT, "tests") if _CORPUS_ROOT
              else os.path.join(os.environ.get("MGPU_SITE_MEEP_SOURCE", os.path.join(os.path.expanduser("~"), "meep")), "python", "tests"))
 
-#: The certified expansion probe. A MEASURED device fact from the recut job that
-#: certified both the complex tranche (2343/2345) and, through its extended pattern,
+#: The certified expansion probe. A MEASURED device fact from the re-cut run that
+#: certified both the complex tranche and, through its extended pattern,
 #: the special_kz tranche. Passed in so the probe clause is satisfied by the same
 #: artifact the gate ran under rather than factored out as unmeasurable.
 #:

@@ -16,7 +16,7 @@ refuses ``beta != 0`` -- and :mod:`.folded_fused_hd_pair` refuses the folded one
 same way. This module is the product on the beta side of that inversion, under REAL
 float32 storage.
 
-TWO ROWS IS A SMALL CELL AND THAT IS STATED RATHER THAN DRESSED UP. The owner rule is
+TWO ROWS IS A SMALL CELL AND THAT IS STATED RATHER THAN DRESSED UP. The project's rule is
 *close all fusion gaps regardless*: a priced predicate gap is closed because it is
 priced, not because it is large, and the alternative -- leaving two corpus rows
 unserved on a seam whose other four cells are served -- is a hole a later reader has

@@ -12,16 +12,12 @@
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:ade_2026-08-19"
     },
-    "artifact_sha256": "aa61c37dd50395d813c8b46671a2bd29b681d0157c7d8042a402646dee4f83bf",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/ade_kernels.py": "c6ced0c4cc8563c284033a82bc4abc8e52d634a23c94836d0f25be5e6ebea20e",
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "parity/meep_gpu/gate_cuda_ade.py": "fa24532477c88d03114dccfe6a632cd6f545b0e4d4de305939d15593b36c188b",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T11:40:52Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/ade_kernels.py"
     ],
@@ -34,8 +30,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:ade_2026-08-19.",
-    "recorded_utc": "2026-09-26T00:33:50Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_ade_2026-08-19/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/ade_kernels.py": "145db5897ca8eb3e8660846a11842b7dae2b82d7c366be99b24cd688cbc57e74",
@@ -44,21 +38,28 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_ade_2026-08-19/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "aa61c37dd50395d813c8b46671a2bd29b681d0157c7d8042a402646dee4f83bf",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T11:40:52Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:50Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_ade_2026-08-19/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_ade_2026-08-19/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "a7d0d9c77bb26747833c2d2479376904773bbb11154ed7330c6e634ef946a569"
+      }
+    }
   },
   "bit_identity_gate": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:bit_identity_gate"
     },
-    "artifact_sha256": "10287917e0e6abd71f15387316420e79bfc54fe0da2a29edf0e9ac8f5bd9c159",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/step_curl_kernels.py": "bb2a452fcd3ee5d52c593bae09e323d7c02e94bf34ea053e302c0cc316b6436c",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:07:32Z",
-    "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:bit_identity_gate)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/step_curl_kernels.py"
     ],
@@ -71,31 +72,36 @@
       "keep/probe.json"
     ],
     "purpose": "Device byte gate welded to certification.json:bit_identity_gate.",
-    "recorded_utc": "2026-09-26T00:33:50Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/fused_pml_bit_identity_hand_2026-08-22_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/step_curl_kernels.py": "c9e4b525d59fc9c14a513e26e1a386a4fe3986297645926d83204b1b735000ed",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/fused_pml_bit_identity_hand_2026-08-22_rename/{flush/probe.json,keep/probe.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "10287917e0e6abd71f15387316420e79bfc54fe0da2a29edf0e9ac8f5bd9c159",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:07:32Z",
+        "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:bit_identity_gate)",
+        "recorded_utc": "2026-09-26T00:33:50Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/fused_pml_bit_identity_hand_2026-08-22_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/fused_pml_bit_identity_hand_2026-08-22_rename/{flush/probe.json,keep/probe.json}:canonical_verdict.released",
+        "bound_sha256": "e77bd5bdc40943ba3bacc92907fb35a16584deebbbae9f1ff3c6e740ec7e039b"
+      }
+    }
   },
   "complex_pml_2026-08-26": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:complex_pml_2026-08-26"
     },
-    "artifact_sha256": "3155a4c7801a982607ac69fb4b0747a80a7e7742d1b895ebce441d31c7de5248",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_pml_kernels.py": "1a0d3df11a5b730e7b3d0e22efdadf17de9dc55380f9a2cbd23b5bc195fcb184",
       "parity/meep_gpu/gate_cuda_complex.py": "194387e1ed6d4663d8c6b1a2bd926d74973d7bc80cb248d59f72c2e1b447cca1",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T12:06:17Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_pml_kernels.py"
     ],
@@ -110,8 +116,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:complex_pml_2026-08-26.",
-    "recorded_utc": "2026-09-26T00:33:51Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_regate_2026-08-26/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -120,21 +124,28 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_regate_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "3155a4c7801a982607ac69fb4b0747a80a7e7742d1b895ebce441d31c7de5248",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T12:06:17Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:51Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_regate_2026-08-26/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_regate_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "8d4045f7b5c8cea7b8d0a30ed0d5524af091f76f80ed123da3ec45f7d012f323"
+      }
+    }
   },
   "constitutive_2026-08-15": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:constitutive_2026-08-15"
     },
-    "artifact_sha256": "a6ca0903ffb035b428a4ea6a8a8aa6147e310265850d9d4328d2ac4a225e249a",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/constitutive_kernels.py": "d4f4cb844975fe024d883b3c0383bc1ca05644f038f0ed9e914d134e064c5533",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:00:15Z",
-    "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:constitutive_2026-08-15)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/constitutive_kernels.py"
     ],
@@ -147,31 +158,36 @@
       "keep/cgate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:constitutive_2026-08-15.",
-    "recorded_utc": "2026-09-26T00:33:51Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_constitutive_recut_2026-08-22_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/constitutive_kernels.py": "437e65f66fefeb5b18e35bdf9bbc3d2f3eaeeac89ae93372446fe7ae7150aaf5",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_constitutive_recut_2026-08-22_rename/{flush/cgate.json,keep/cgate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "a6ca0903ffb035b428a4ea6a8a8aa6147e310265850d9d4328d2ac4a225e249a",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:00:15Z",
+        "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:constitutive_2026-08-15)",
+        "recorded_utc": "2026-09-26T00:33:51Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_constitutive_recut_2026-08-22_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_constitutive_recut_2026-08-22_rename/{flush/cgate.json,keep/cgate.json}:canonical_verdict.released",
+        "bound_sha256": "91c9cace168525bb201e39b31d30d33bf42bafe40854af4a9ba5f88ee468d479"
+      }
+    }
   },
   "cuda_bfast_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_bfast_2026-08-21"
     },
-    "artifact_sha256": "5b3fa6faceda0823a7a5bcd428d3e3a61ece4bd803dcb9292023d266fa4edd51",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/bfast_curl.py": "d94a2eeacc61443f28d2ecda2685d530027863d07947b53f2ae297373c7549f1",
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "parity/meep_gpu/gate_cuda_bfast.py": "d7f498ca5422bc6772fb1c53a3af0cbfa223369bf9591aee661c1f9d7cfc8216",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T11:43:19Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/bfast_curl.py"
     ],
@@ -184,8 +200,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_bfast_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:33:51Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_bfast_2026-08-21_rename_r2/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/bfast_curl.py": "26d14f4ed089940e6692bd9519b8781cad0b09d828d16803558cad0f811ce7bc",
@@ -194,23 +208,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_bfast_2026-08-21_rename_r2/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5b3fa6faceda0823a7a5bcd428d3e3a61ece4bd803dcb9292023d266fa4edd51",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T11:43:19Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:51Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_bfast_2026-08-21_rename_r2/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_bfast_2026-08-21_rename_r2/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "a50587b101349f070ab35817213796d80d339061a7c2e878a4603abd8657d2a4"
+      }
+    }
   },
   "cuda_bfast_fused_electric_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_bfast_fused_electric_pair_2026-09-02"
     },
-    "artifact_sha256": "ce8b832267b23dc19159bfe94d9f1017c152572d7e29f12c88da19795fcf6a1b",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/bfast_fused_electric_pair.py": "fc0dfa88e0bceeb5d5d77905561c681925da19b3be33a518081476d0249e0e01",
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:50:51Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/bfast_fused_electric_pair.py"
     ],
@@ -222,8 +243,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_bfast_fused_electric_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:51Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_bfast_electric_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/bfast_fused_electric_pair.py": "80ca6d48f6cb81b2176776312dfb6f9f403a9d89efe7790ba392f47db06102a8",
@@ -232,23 +251,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_bfast_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "ce8b832267b23dc19159bfe94d9f1017c152572d7e29f12c88da19795fcf6a1b",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:50:51Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:51Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_bfast_electric_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_bfast_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "a090d0397f5b5e24121fa220f520989be20b0e393aa525d8854e18f1a1ca4a9c"
+      }
+    }
   },
   "cuda_bfast_fused_magnetic_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_bfast_fused_magnetic_pair_2026-09-02"
     },
-    "artifact_sha256": "5231e2193d4b22b7fc91a4f8d625f1d6a1da2267215c5279d6550c72e135a953",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/bfast_fused_magnetic_pair.py": "6bd174d92f366014be2a88cefe85719f6c18fe20f253c6e7708adb42fe4d71af",
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:16:17Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/bfast_fused_magnetic_pair.py"
     ],
@@ -260,8 +286,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_bfast_fused_magnetic_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:51Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_bfast_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/bfast_fused_magnetic_pair.py": "a3fbaee3617d6cdcb57518b327bdbb04d9867209a82832cc0bfec4c8c2aa9955",
@@ -270,15 +294,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_bfast_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5231e2193d4b22b7fc91a4f8d625f1d6a1da2267215c5279d6550c72e135a953",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:16:17Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:51Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_bfast_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_bfast_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "e6c143ece435d96bf27c89ff9e1bb830d85c5b31cf6377739e5c893623727e8d"
+      }
+    }
   },
   "cuda_complex_beta_2026-09-01": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_beta_2026-09-01"
     },
-    "artifact_sha256": "e7f76ab74f05e30b0fb5b190550c741470685108a3f7dda1f96fcf39730dc79f",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_beta_kernels.py": "6ed37ff5ec26c1b5f8885a8225346318540e63421bb41413d5c77cb14438c31d",
@@ -287,8 +320,6 @@
       "parity/meep_gpu/gate_cuda_complex_folded.py": "012f4c706248a69afd9badce4c9adee5e522a36bb7dc13414e1fa708696c20b3",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T11:47:01Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_beta_kernels.py"
     ],
@@ -301,8 +332,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_beta_2026-09-01.",
-    "recorded_utc": "2026-09-26T00:33:52Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_beta_2026-09-01/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -313,23 +342,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_beta_2026-09-01/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "e7f76ab74f05e30b0fb5b190550c741470685108a3f7dda1f96fcf39730dc79f",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T11:47:01Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:52Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_beta_2026-09-01/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_beta_2026-09-01/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "17976f240b99607460191db172188f934925cf10210ba43c17b10f9da8d22788"
+      }
+    }
   },
   "cuda_complex_beta_fused_electric_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_beta_fused_electric_pair_2026-09-02"
     },
-    "artifact_sha256": "59979bca7422a8a0ae65922b3015098806d25850ab9624b818919bbf379cc438",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_beta_fused_electric_pair.py": "603c3845510c8573a56c512156d75e61cabfbffd358f2bac10d99888e110a421",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:51:47Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_beta_fused_electric_pair.py"
     ],
@@ -341,8 +377,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_beta_fused_electric_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:52Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_beta_electric_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -351,23 +385,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_beta_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "59979bca7422a8a0ae65922b3015098806d25850ab9624b818919bbf379cc438",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:51:47Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:52Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_beta_electric_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_beta_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "401811f5ebff316951a6ba362bfc095a54e6726391ffec240392a997612d485b"
+      }
+    }
   },
   "cuda_complex_beta_fused_magnetic_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_beta_fused_magnetic_pair_2026-09-02"
     },
-    "artifact_sha256": "defe53c799f5e09125875f1ff9cf40ee7a7214e6479ff5b5129d1987acdd8220",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_beta_fused_magnetic_pair.py": "452f3c5596303ec4d3017e306a306c79ca1c51981dcd134ad04df6c06cb835db",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:17:26Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_beta_fused_magnetic_pair.py"
     ],
@@ -379,8 +420,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_beta_fused_magnetic_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:52Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_beta_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -389,15 +428,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_beta_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "defe53c799f5e09125875f1ff9cf40ee7a7214e6479ff5b5129d1987acdd8220",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:17:26Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:52Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_beta_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_beta_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "6b2f800d44a8436d1f67478d5c562ad744505367b354aaac7592043b428dd20e"
+      }
+    }
   },
   "cuda_complex_folded_2026-09-01": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_folded_2026-09-01"
     },
-    "artifact_sha256": "53f95d808dc3090dc6ac7e2cf2c7dd27c79d0b882a5b765a9bfde1ce370f7f1e",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_folded_kernels.py": "c91c689d0fce72d26b699d00eaffb9e1be5f61e1c1672aec89f65afa87186138",
@@ -405,8 +453,6 @@
       "parity/meep_gpu/gate_cuda_complex_folded.py": "012f4c706248a69afd9badce4c9adee5e522a36bb7dc13414e1fa708696c20b3",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T11:50:12Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_folded_kernels.py"
     ],
@@ -419,8 +465,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_folded_2026-09-01.",
-    "recorded_utc": "2026-09-26T00:33:52Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_folded_2026-09-01/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -430,23 +474,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_folded_2026-09-01/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "53f95d808dc3090dc6ac7e2cf2c7dd27c79d0b882a5b765a9bfde1ce370f7f1e",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T11:50:12Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:52Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_folded_2026-09-01/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_folded_2026-09-01/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "7b43e9abb48fa3cf1d46e2699367f0117661beaf3234cc6b2dc16fac1f67388c"
+      }
+    }
   },
   "cuda_complex_folded_fused_electric_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_folded_fused_electric_pair_2026-09-02"
     },
-    "artifact_sha256": "e509858799e1af26cf1bade310239c7c3139a9574bb2756b2be4454efaccab6b",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_folded_fused_electric_pair.py": "e7f664624d02d18b71a822d5897d064d615068afee095680ef30f4fc652014ee",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:55:54Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_folded_fused_electric_pair.py"
     ],
@@ -458,8 +509,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_folded_fused_electric_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:52Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_folded_complex_electric_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -468,23 +517,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_folded_complex_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "e509858799e1af26cf1bade310239c7c3139a9574bb2756b2be4454efaccab6b",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:55:54Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:52Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_folded_complex_electric_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_folded_complex_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "1ca321ec08e1dd8c10ae41f412be94231d0f6355f61611cb07209a651801a09e"
+      }
+    }
   },
   "cuda_complex_folded_fused_magnetic_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_folded_fused_magnetic_pair_2026-09-02"
     },
-    "artifact_sha256": "9aced43d8c585dcc73c8e69401a38d99178c0f612ab9d8ed2aa6a7ed118fd82a",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_folded_fused_magnetic_pair.py": "714a42bebc5bd0bd7bf1e08fa745568635bebe34ed93f4f7a132fe693e88bd01",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:20:18Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_folded_fused_magnetic_pair.py"
     ],
@@ -496,8 +552,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_folded_fused_magnetic_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:53Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_folded_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -506,23 +560,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_folded_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "9aced43d8c585dcc73c8e69401a38d99178c0f612ab9d8ed2aa6a7ed118fd82a",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:20:18Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:53Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_folded_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_complex_folded_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "7d1d5464d7091657cbb4226358a435a54d830c3ce412076d4537ecd2b6a9df50"
+      }
+    }
   },
   "cuda_complex_fused_electric_pair_2026-09-11_regate": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_fused_electric_pair_2026-09-11_regate"
     },
-    "artifact_sha256": "5eb75489eb50ca6762556eced82f93f5d95726674b6ec343c0b4512521484546",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_fused_electric_pair.py": "26062cc47c3baa2801bee228d88a597e6fd00a5b942498f7857426e4c9f828be",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:58:53Z",
-    "host": "the GPU host (machine-stamped: complex_electric_flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_fused_electric_pair.py"
     ],
@@ -534,8 +595,6 @@
       "complex_electric_keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_fused_electric_pair_2026-09-11_regate.",
-    "recorded_utc": "2026-09-26T00:33:53Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -544,15 +603,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/{complex_electric_flush/gate.json,complex_electric_keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5eb75489eb50ca6762556eced82f93f5d95726674b6ec343c0b4512521484546",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:58:53Z",
+        "host": "the GPU host (machine-stamped: complex_electric_flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:53Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/{complex_electric_flush/gate.json,complex_electric_keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "fc990c5d0bfc076409abf097d167438eacd5bf22c443f8f87c8b57880d49c873"
+      }
+    }
   },
   "cuda_complex_fused_hd_pair_2026-09-07": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_fused_hd_pair_2026-09-07"
     },
-    "artifact_sha256": "8b8775cc7fbabb49fc3e881984129e1e77f7e49698085d4a451f38e8904a964e",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_fused_hd_pair.py": "626117a4d71c46e5f32cc296c6589be920d29009d9cae0942910196dec75509a",
@@ -561,8 +629,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-26T00:20:32Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_fused_hd_pair.py"
     ],
@@ -575,8 +641,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_fused_hd_pair_2026-09-07.",
-    "recorded_utc": "2026-09-26T00:33:53Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -587,23 +651,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "8b8775cc7fbabb49fc3e881984129e1e77f7e49698085d4a451f38e8904a964e",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-26T00:20:32Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:53Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "2459ca39b3b0cc9d57ca525130b8bce3ccda5757fdd40755708f107672f1237e"
+      }
+    }
   },
   "cuda_complex_fused_magnetic_pair_2026-09-11_regate": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_fused_magnetic_pair_2026-09-11_regate"
     },
-    "artifact_sha256": "5eb75489eb50ca6762556eced82f93f5d95726674b6ec343c0b4512521484546",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_fused_magnetic_pair.py": "6dc4a3680bd32f7759fe1246e66a85a881f0b46af3c9f470e290fb8e2ce268e4",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:59:38Z",
-    "host": "the GPU host (machine-stamped: complex_flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_fused_magnetic_pair.py"
     ],
@@ -615,8 +686,6 @@
       "complex_keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_fused_magnetic_pair_2026-09-11_regate.",
-    "recorded_utc": "2026-09-26T00:33:53Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -625,23 +694,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/{complex_flush/gate.json,complex_keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5eb75489eb50ca6762556eced82f93f5d95726674b6ec343c0b4512521484546",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:59:38Z",
+        "host": "the GPU host (machine-stamped: complex_flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:53Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-11_regate/{complex_flush/gate.json,complex_keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "d6909123dc866b503c4c630bcb513acabda573002a9a515808ebb7c6e242c1fc"
+      }
+    }
   },
   "cuda_complex_no_pml_2026-08-27": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_no_pml_2026-08-27"
     },
-    "artifact_sha256": "554e26e94d0da253047a36cab191a082a267ac363f9f1d1285ce7f0bdf25207b",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_no_pml_kernels.py": "01e9caff22d232d4836ee59e0bc91243e220cb53be3be88695d8af6fc67a91a2",
       "parity/meep_gpu/gate_cuda_complex_no_pml.py": "eb3c38f4422180fbb2e86ad07be11056a0a77477f0a4f2bd91022493291f3259",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T11:53:29Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_no_pml_kernels.py"
     ],
@@ -659,8 +735,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_no_pml_2026-08-27.",
-    "recorded_utc": "2026-09-26T00:33:54Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_no_pml_2026-08-27/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -669,15 +743,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_no_pml_2026-08-27/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "554e26e94d0da253047a36cab191a082a267ac363f9f1d1285ce7f0bdf25207b",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T11:53:29Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:54Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_no_pml_2026-08-27/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_no_pml_2026-08-27/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "91b4ad0168842867e22e208bb7edd126b9febbdbed1cd57b77054b7068641be9"
+      }
+    }
   },
   "cuda_complex_no_pml_fused_polarization_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_no_pml_fused_polarization_pair_2026-09-02"
     },
-    "artifact_sha256": "aa75578c783c243b8dd7e4ce850d6544617190c1ecd1d3c1c9cf4fb726bc0fd1",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_no_pml_fused_polarization_pair.py": "6931e7d1e5adee385da8f4c8ae9610484a104a29a2b21ed964255f90467dca6f",
@@ -685,8 +768,6 @@
       "parity/meep_gpu/gate_cuda_complex_polarization_pair.py": "1d4b04a097ed07e2d67bc2ea7c58c65c2570b288eefeac163b136401299240ea",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:53:15Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_no_pml_fused_polarization_pair.py"
     ],
@@ -698,8 +779,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_no_pml_fused_polarization_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:54Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -709,15 +788,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "aa75578c783c243b8dd7e4ce850d6544617190c1ecd1d3c1c9cf4fb726bc0fd1",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:53:15Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:54Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "dc99ef99273c131008bd81b717464442c651da6a40e16c02f9a3c82a41c89a1c"
+      }
+    }
   },
   "cuda_complex_no_pml_fused_polarization_pair_2026-09-02b": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_no_pml_fused_polarization_pair_2026-09-02b"
     },
-    "artifact_sha256": "923883f38db6432837d03b77eac38feac31c51a4e07933847b92ad32814bd6fe",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_no_pml_fused_polarization_pair.py": "6931e7d1e5adee385da8f4c8ae9610484a104a29a2b21ed964255f90467dca6f",
@@ -725,8 +813,6 @@
       "parity/meep_gpu/gate_cuda_complex_polarization_pair.py": "1d4b04a097ed07e2d67bc2ea7c58c65c2570b288eefeac163b136401299240ea",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:54:06Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_no_pml_fused_polarization_pair.py"
     ],
@@ -738,8 +824,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_no_pml_fused_polarization_pair_2026-09-02b.",
-    "recorded_utc": "2026-09-26T00:33:54Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02b/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -749,15 +833,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02b/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "923883f38db6432837d03b77eac38feac31c51a4e07933847b92ad32814bd6fe",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:54:06Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:54Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02b/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_complex_polarization_pair_2026-09-02b/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "dc99ef99273c131008bd81b717464442c651da6a40e16c02f9a3c82a41c89a1c"
+      }
+    }
   },
   "cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04"
     },
-    "artifact_sha256": "ebac796ea94a4c449884a085eb461ba6fc70cad30cb2ba2d9597f1912d7f2c92",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_no_pml_three_slot_dispersive_weld.py": "3b66dd76f9afdc323cf14c23a4bffda3b475bbd0e6a113ca2225ea11932ca84a",
@@ -770,8 +863,6 @@
       "parity/meep_gpu/gate_cuda_three_slot_weld.py": "310f9e70c3b0a08595fe1d0a1ade952d9ccb495b6afefeda299c7fc360e5ae12",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T12:21:32Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_no_pml_three_slot_dispersive_weld.py"
     ],
@@ -784,8 +875,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_no_pml_three_slot_dispersive_weld_2026-09-04.",
-    "recorded_utc": "2026-09-26T00:33:54Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_three_slot_weld_2026-09-04_gatefix/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -800,15 +889,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_three_slot_weld_2026-09-04_gatefix/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "ebac796ea94a4c449884a085eb461ba6fc70cad30cb2ba2d9597f1912d7f2c92",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T12:21:32Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:54Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_three_slot_weld_2026-09-04_gatefix/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_three_slot_weld_2026-09-04_gatefix/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "f3a50cde34ebf2d1b28a724863b044a5ab959c63f3cee94b9a3cdbc50048648e"
+      }
+    }
   },
   "cuda_complex_offdiag_stencil_welds_2026-09-17": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_complex_offdiag_stencil_welds_2026-09-17"
     },
-    "artifact_sha256": "6024cbc67a892f81937571408523d9c700c36c7a652d077fbd80d08c0fc0aefc",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/complex_no_pml_offdiag_fused_electric_pair.py": "38e307afe284c27f37a6b551b0eda3b34b8d40a9abf15f0177433445910ea2cc",
@@ -818,8 +916,6 @@
       "parity/meep_gpu/gate_cuda_complex_offdiag_stencil_welds.py": "5d126979ec2b889c3194c7ac8b084a24ba129adb0628e1452158057b7a816934",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T12:00:28Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/complex_no_pml_offdiag_fused_electric_pair.py",
       "meep_gpu/cuda_kernels/complex_offdiag_stencil_weld.py",
@@ -834,8 +930,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_complex_offdiag_stencil_welds_2026-09-17.",
-    "recorded_utc": "2026-09-26T00:33:54Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_offdiag_stencil_welds_2026-09-17/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -847,23 +941,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_offdiag_stencil_welds_2026-09-17/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "6024cbc67a892f81937571408523d9c700c36c7a652d077fbd80d08c0fc0aefc",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T12:00:28Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:54Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_complex_offdiag_stencil_welds_2026-09-17/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_complex_offdiag_stencil_welds_2026-09-17/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "30a45a5a58b9b0e8d405e8838588462c011c7ef67587e4a557ed7b01099eb30a"
+      }
+    }
   },
   "cuda_conductive_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_conductive_2026-08-21"
     },
-    "artifact_sha256": "b8d51bc93ed8ca16ce6d81e3f8a795fbe56bca74ddbd4004227282ad691db1e4",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/conductive_kernels.py": "391673fee513f5e2f0384c241ae8ec161a9478c8223c932719f79753e6dd1d47",
       "parity/meep_gpu/gate_cuda_conductive.py": "1a104237ca6d12a320e1e4ae5db40a1edf5364b85818c2a891e4be1b407be936",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T12:23:45Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/conductive_kernels.py"
     ],
@@ -879,8 +980,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_conductive_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:33:55Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_conductive_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -889,15 +988,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_conductive_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "b8d51bc93ed8ca16ce6d81e3f8a795fbe56bca74ddbd4004227282ad691db1e4",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T12:23:45Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:55Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_conductive_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_conductive_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "7e2160d2992bff5c7c72b094fb61fc96c81d158cde20c64f792eee4631831bcc"
+      }
+    }
   },
   "cuda_conductive_fused_electric_pair_2026-09-02b": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_conductive_fused_electric_pair_2026-09-02b"
     },
-    "artifact_sha256": "cbf961fa499296ddc745c5f4609b10e20b4018454bee6a8eea2f12c18b7ed6fe",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/conductive_fused_electric_pair.py": "aae8e09a5fc6ae618fd7559089c9dcc81a7a863f08660b8cee0db397da09d24f",
@@ -905,8 +1013,6 @@
       "parity/meep_gpu/gate_cuda_fused_electric_pair.py": "a5ae1d3994077f70b506866993b8e75ef2f3a78ea780d486a75bbf0a4b58688e",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T12:59:05Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/conductive_fused_electric_pair.py"
     ],
@@ -918,8 +1024,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_conductive_fused_electric_pair_2026-09-02b.",
-    "recorded_utc": "2026-09-26T00:33:55Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_conductive_fused_electric_pair_2026-09-02b/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -929,15 +1033,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_conductive_fused_electric_pair_2026-09-02b/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "cbf961fa499296ddc745c5f4609b10e20b4018454bee6a8eea2f12c18b7ed6fe",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T12:59:05Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:55Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_conductive_fused_electric_pair_2026-09-02b/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_conductive_fused_electric_pair_2026-09-02b/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "5f96368895164aabdf09ae7d632c78761b6e48943a42ce0ef55f23d0e1eb27c7"
+      }
+    }
   },
   "cuda_cylindrical_complex_2026-08-27": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_complex_2026-08-27"
     },
-    "artifact_sha256": "56ce4755a6b1b49831d2b6030a080a908b7b19bed728d03dd293797da678ca2a",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_complex_kernels.py": "1cdf0668426752e0c5a360e73801748fd9440ac287b5dce29cc36c6110918e90",
@@ -945,8 +1058,6 @@
       "parity/meep_gpu/gate_cuda_cylindrical_complex.py": "aa4eeb3eb4eeb902e9b07e01902184017f82840473cd57b722caa121a3dc6e3c",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:03:35Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_complex_kernels.py"
     ],
@@ -959,8 +1070,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_complex_2026-08-27.",
-    "recorded_utc": "2026-09-26T00:33:56Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_complex_2026-08-26/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -970,23 +1079,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_complex_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "56ce4755a6b1b49831d2b6030a080a908b7b19bed728d03dd293797da678ca2a",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:03:35Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:56Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_complex_2026-08-26/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_complex_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "6f0c18420d1a07eae0716772e3d531ad047807e2db0659ada290e430f75e3912"
+      }
+    }
   },
   "cuda_cylindrical_fused_electric_pair_2026-09-13_cyl": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_fused_electric_pair_2026-09-13_cyl"
     },
-    "artifact_sha256": "439396ab95233357db71968e7192d2305eb4286dffe8fe90e7701bb463d1980b",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_fused_electric_pair.py": "b214920b9227df690aba69ef5f95b78a46b62fbf72fc3123075918142ed341d0",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:02:37Z",
-    "host": "the GPU host (machine-stamped: cylindrical_electric_flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_fused_electric_pair.py"
     ],
@@ -998,8 +1114,6 @@
       "cylindrical_electric_keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_fused_electric_pair_2026-09-13_cyl.",
-    "recorded_utc": "2026-09-26T00:33:57Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1008,15 +1122,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/{cylindrical_electric_flush/gate.json,cylindrical_electric_keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "439396ab95233357db71968e7192d2305eb4286dffe8fe90e7701bb463d1980b",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:02:37Z",
+        "host": "the GPU host (machine-stamped: cylindrical_electric_flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:57Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/{cylindrical_electric_flush/gate.json,cylindrical_electric_keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "d88f3ceb95baacd673420c42bd1bdfd86dfd0e664fdd07f063ed2515bfac45e5"
+      }
+    }
   },
   "cuda_cylindrical_fused_hd_pair_2026-09-07": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_fused_hd_pair_2026-09-07"
     },
-    "artifact_sha256": "59c45735143609086740a5284e8b07e8fd0ee66270e4bd76aacc588838bd51cf",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_fused_hd_pair.py": "5f7e04c56fd007b759663b1e3f13f7042890d121a4f9a1a0560fabd2445756d0",
@@ -1026,8 +1149,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:18:15Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_fused_hd_pair.py"
     ],
@@ -1039,8 +1160,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_fused_hd_pair_2026-09-07.",
-    "recorded_utc": "2026-09-26T00:33:57Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1052,23 +1171,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "59c45735143609086740a5284e8b07e8fd0ee66270e4bd76aacc588838bd51cf",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:18:15Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:57Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "b649ef3ffc180fff84070bd69deee3e9b94af97a4acbe154687be01e31b243b2"
+      }
+    }
   },
   "cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl"
     },
-    "artifact_sha256": "439396ab95233357db71968e7192d2305eb4286dffe8fe90e7701bb463d1980b",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_fused_magnetic_pair.py": "d8cf2f73656b8bf85cf259d4d63a129c2ebae7740ec7f020c5afb08bffeac526",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:03:45Z",
-    "host": "the GPU host (machine-stamped: cylindrical_flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_fused_magnetic_pair.py"
     ],
@@ -1080,8 +1206,6 @@
       "cylindrical_keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_fused_magnetic_pair_2026-09-13_cyl.",
-    "recorded_utc": "2026-09-26T00:33:57Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1090,23 +1214,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/{cylindrical_flush/gate.json,cylindrical_keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "439396ab95233357db71968e7192d2305eb4286dffe8fe90e7701bb463d1980b",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:03:45Z",
+        "host": "the GPU host (machine-stamped: cylindrical_flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:57Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_complex_pairs_2026-09-13_cyl/{cylindrical_flush/gate.json,cylindrical_keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "ab2cdb72bff217eae068ab9eae0d8aca5b2f1f1b4470caef36d44b40689fb824"
+      }
+    }
   },
   "cuda_cylindrical_real_2026-08-27": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_real_2026-08-27"
     },
-    "artifact_sha256": "b6cfb0c2890e66bb4fed6ded8d24a610f20346c51b8abbc7ecfda66457f412f6",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_kernels.py": "8eed9408679d6eb48df3e70fde55572c4ffe6f03ded032aed8202338aa8fe6d3",
       "parity/meep_gpu/gate_cuda_cylindrical_real.py": "e431d363ff51a20ad6e7dceeea323a76943454055a1db4e201787b92c748a5c9",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:17:39Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_kernels.py"
     ],
@@ -1119,8 +1250,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_real_2026-08-27.",
-    "recorded_utc": "2026-09-26T00:33:57Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_2026-08-26/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1129,23 +1258,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "b6cfb0c2890e66bb4fed6ded8d24a610f20346c51b8abbc7ecfda66457f412f6",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:17:39Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:57Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_2026-08-26/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "c63230538f8918c96a54a62ba42d449729d5a89ca648cee0259f746d3245bdb4"
+      }
+    }
   },
   "cuda_cylindrical_real_fused_electric_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_real_fused_electric_pair_2026-09-02"
     },
-    "artifact_sha256": "b8aebc2fc62eb9a4f9c361ebb6368dcde728fe922d69e8baf7966089acd2307e",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_real_fused_electric_pair.py": "123ce473704d80a3a704c66ed07a275cb27d6edd25322bb99ac325a29273257d",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:54:58Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_real_fused_electric_pair.py"
     ],
@@ -1157,8 +1293,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_real_fused_electric_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:57Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_cylindrical_real_electric_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1167,15 +1301,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_cylindrical_real_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "b8aebc2fc62eb9a4f9c361ebb6368dcde728fe922d69e8baf7966089acd2307e",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:54:58Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:57Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_cylindrical_real_electric_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_cylindrical_real_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "ab8c565d5054be04fe8fb72fe3adea2deec41577b544ed1cfd2812478781a142"
+      }
+    }
   },
   "cuda_cylindrical_real_fused_hd_pair_2026-09-07": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_real_fused_hd_pair_2026-09-07"
     },
-    "artifact_sha256": "61993ecda561e7c12c19f7e1f9c5c0f3f772b0a60fddc9b6b6c6176443affd74",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_real_fused_hd_pair.py": "46190f48c82cb331edb82f016309c1b1eee6e8ef48043e1d5254ca0d4e53699f",
@@ -1184,8 +1327,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:27:29Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_real_fused_hd_pair.py"
     ],
@@ -1197,8 +1338,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_real_fused_hd_pair_2026-09-07.",
-    "recorded_utc": "2026-09-26T00:33:58Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1209,23 +1348,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "61993ecda561e7c12c19f7e1f9c5c0f3f772b0a60fddc9b6b6c6176443affd74",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:27:29Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:58Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_fused_hd_pair_2026-09-07/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_cylindrical_real_fused_hd_pair_2026-09-07/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "3f0afdcac0250b073f172946646d10d476a2eaa02e93ac19f98ad5023813563a"
+      }
+    }
   },
   "cuda_cylindrical_real_fused_magnetic_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_cylindrical_real_fused_magnetic_pair_2026-09-02"
     },
-    "artifact_sha256": "574401c4269eadf7e06268113c8e83d9ce15611d261dc97af0a334acede61106",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/cylindrical_real_fused_magnetic_pair.py": "0d73ddafe9e8daf08d4cff3e98492309b890f904f1bceff07b2751fa67152fbd",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:22:15Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/cylindrical_real_fused_magnetic_pair.py"
     ],
@@ -1237,8 +1383,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_cylindrical_real_fused_magnetic_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:58Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_cylindrical_real_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1247,23 +1391,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_cylindrical_real_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "574401c4269eadf7e06268113c8e83d9ce15611d261dc97af0a334acede61106",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:22:15Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:58Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_cylindrical_real_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_cylindrical_real_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "fe2d916da418ed718dd07e5d231a7060d38277b27d7bb344026742b141a4f783"
+      }
+    }
   },
   "cuda_dispersive_2026-08-27": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_dispersive_2026-08-27"
     },
-    "artifact_sha256": "507600b89c44247cf338f40047cecbdd8ed63789b187150e3222433e918104f9",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/dispersive_kernels.py": "682b1bc590b4cbb139caea79777e83c11ebcbc2b96560bd24774f87b7e0500a5",
       "parity/meep_gpu/gate_cuda_dispersive.py": "5239ddfde39834d42a318984e3dd5eede2cfe80bf517080220e816c0036450f0",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:20:14Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/dispersive_kernels.py"
     ],
@@ -1276,8 +1427,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_dispersive_2026-08-27.",
-    "recorded_utc": "2026-09-26T00:33:58Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_2026-08-26/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1286,15 +1435,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "507600b89c44247cf338f40047cecbdd8ed63789b187150e3222433e918104f9",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:20:14Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:58Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_2026-08-26/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_2026-08-26/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "3c03db66aa0a82d99a8bdd5abf7fb86fbe2b67d24aecd45fa039a5b2507d0cbe"
+      }
+    }
   },
   "cuda_dispersive_offdiag_2026-08-20": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_dispersive_offdiag_2026-08-20"
     },
-    "artifact_sha256": "161fa6a61f9325dcdd8af3fdef1554b0bc627c54580ed10af96189bffa8485b8",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/dispersive_offdiag_update_e.py": "3c0bfb6d42fa6b22e18ef7487db1da9467510282420ccde08b97aa3cfdb2b814",
@@ -1302,8 +1460,6 @@
       "parity/meep_gpu/gate_cuda_offdiag.py": "cd53db0c6382d314232f23e5266d3c5e28c8ffd1196c0bc65a1dd7f1da0c2b20",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:30:15Z",
-    "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:cuda_dispersive_offdiag_2026-08-20)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/dispersive_offdiag_update_e.py"
     ],
@@ -1315,8 +1471,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_dispersive_offdiag_2026-08-20.",
-    "recorded_utc": "2026-09-26T00:33:59Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_2026-08-20b/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1326,15 +1480,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_2026-08-20b/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "161fa6a61f9325dcdd8af3fdef1554b0bc627c54580ed10af96189bffa8485b8",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:30:15Z",
+        "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:cuda_dispersive_offdiag_2026-08-20)",
+        "recorded_utc": "2026-09-26T00:33:59Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_2026-08-20b/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_2026-08-20b/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "34477cdfb96e28042837e80cb6ad6e7a5150fb1c27f52224aaacccc9001c4f0b"
+      }
+    }
   },
   "cuda_dispersive_offdiag_polarization_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_dispersive_offdiag_polarization_pair_2026-09-02"
     },
-    "artifact_sha256": "c480e6eb9b3f7a0bd739c7ccef478c1212bb41418adeda110e1ac6315ee9a0d0",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/dispersive_offdiag_fused_polarization_pair.py": "21731ccdb527f29bcd50c2c23391d162108cbb2f4db1647f8b34e558ae54f678",
@@ -1342,8 +1505,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:46:16Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/dispersive_offdiag_fused_polarization_pair.py"
     ],
@@ -1355,8 +1516,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_dispersive_offdiag_polarization_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:33:59Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_polarization_pair_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1366,15 +1525,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_polarization_pair_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "c480e6eb9b3f7a0bd739c7ccef478c1212bb41418adeda110e1ac6315ee9a0d0",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:46:16Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:33:59Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_polarization_pair_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_dispersive_offdiag_polarization_pair_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "919daede7d878e963c9e4363cdbe1be8fd0dc09b65237a1be61e98c1dc03b1e7"
+      }
+    }
   },
   "cuda_folded_offdiag_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_folded_offdiag_2026-08-21"
     },
-    "artifact_sha256": "0fa95948261566d59d528c33098e57f59246b501e662f8cc25af807703afe9f4",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/folded_offdiag_kernels.py": "4b48e22a3570d9450cd4fecd07fcdc02182f44e6baf9747e0a0444e8d12e4245",
@@ -1382,8 +1550,6 @@
       "parity/meep_gpu/gate_cuda_offdiag.py": "cd53db0c6382d314232f23e5266d3c5e28c8ffd1196c0bc65a1dd7f1da0c2b20",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:53:47Z",
-    "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:cuda_folded_offdiag_2026-08-21)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/folded_offdiag_kernels.py"
     ],
@@ -1395,8 +1561,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_folded_offdiag_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:33:59Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_offdiag_kernel_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1406,23 +1570,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_offdiag_kernel_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "0fa95948261566d59d528c33098e57f59246b501e662f8cc25af807703afe9f4",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:53:47Z",
+        "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:cuda_folded_offdiag_2026-08-21)",
+        "recorded_utc": "2026-09-26T00:33:59Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_offdiag_kernel_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_offdiag_kernel_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "eabea3c9635c53b4bc7442dcb406d35ae7ed7a3932c83c7a77c744a227084ee2"
+      }
+    }
   },
   "cuda_fused_electric_pair_2026-08-31_fillcarry_r3": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_electric_pair_2026-08-31_fillcarry_r3"
     },
-    "artifact_sha256": "44c000123fee68223693846e85145e6d3336af1d9d2ed21cfb59a4634545a597",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_electric_pair.py": "b6106182e292dcf1ea3c7c84af37c5ade3462c677f2591575aa0bd260b27ac07",
       "parity/meep_gpu/gate_cuda_fused_electric_pair.py": "a5ae1d3994077f70b506866993b8e75ef2f3a78ea780d486a75bbf0a4b58688e",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:06:57Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_electric_pair.py"
     ],
@@ -1434,8 +1605,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_electric_pair_2026-08-31_fillcarry_r3.",
-    "recorded_utc": "2026-09-26T00:34:00Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_electric_pair_2026-08-31_fillcarry_r3/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1444,15 +1613,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_electric_pair_2026-08-31_fillcarry_r3/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "44c000123fee68223693846e85145e6d3336af1d9d2ed21cfb59a4634545a597",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:06:57Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:00Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_electric_pair_2026-08-31_fillcarry_r3/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_electric_pair_2026-08-31_fillcarry_r3/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "428bb635995fa9a1e15c8f79e70aac20f79fa1bcef9f6c00e038410ce175b02e"
+      }
+    }
   },
   "cuda_fused_hd_pair_2026-09-06": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_hd_pair_2026-09-06"
     },
-    "artifact_sha256": "81787a9297ca67a07331cc62707f5d1980b1d99c0e3dd4163bff0a2451734bc8",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_hd_pair.py": "37a66c75e6818d299755f52ad67db4c69f258716138b6e86de76d059a42285ac",
@@ -1460,8 +1638,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:32:12Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_hd_pair.py"
     ],
@@ -1473,8 +1649,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_hd_pair_2026-09-06.",
-    "recorded_utc": "2026-09-26T00:34:00Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_hd_pair_2026-09-06/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1484,23 +1658,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_hd_pair_2026-09-06/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "81787a9297ca67a07331cc62707f5d1980b1d99c0e3dd4163bff0a2451734bc8",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:32:12Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:00Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_hd_pair_2026-09-06/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_hd_pair_2026-09-06/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "57c139bcd4f40581b49530727b459cc31daf430806a73e00d1ec0c3c1a883a50"
+      }
+    }
   },
   "cuda_fused_magnetic_pair_2026-08-27": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_magnetic_pair_2026-08-27"
     },
-    "artifact_sha256": "f030863b0a7a30a9cb6d199daa069ab758925f822374c3a451300f69f6b76e6e",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py": "736763d8374ed385f233ce37f9eeb95c289dafb4c71222526d26fabfa258acb5",
       "parity/meep_gpu/gate_cuda_fused_magnetic_pair.py": "04e6ca232121940161ce34c57416de76029675e0d9f9f36d809034ba289265b0",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:12:01Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py"
     ],
@@ -1512,8 +1693,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_magnetic_pair_2026-08-27.",
-    "recorded_utc": "2026-09-26T00:34:00Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-27/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1522,23 +1701,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-27/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "f030863b0a7a30a9cb6d199daa069ab758925f822374c3a451300f69f6b76e6e",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:12:01Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:00Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-27/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-27/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "f7830d2e8978de35bcac8af1195120c5479b7b5ba2348841e04e08ccc6446750"
+      }
+    }
   },
   "cuda_fused_magnetic_pair_2026-08-29_fillcarry": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_magnetic_pair_2026-08-29_fillcarry"
     },
-    "artifact_sha256": "55bf672101e8a5f765f6b36bddf74f4f982cc0d2fecb4c73a4f2931fafda8f80",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py": "736763d8374ed385f233ce37f9eeb95c289dafb4c71222526d26fabfa258acb5",
       "parity/meep_gpu/gate_cuda_fused_magnetic_pair.py": "04e6ca232121940161ce34c57416de76029675e0d9f9f36d809034ba289265b0",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:15:49Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py"
     ],
@@ -1550,8 +1736,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_magnetic_pair_2026-08-29_fillcarry.",
-    "recorded_utc": "2026-09-26T00:34:00Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-28_fillcarry/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1560,23 +1744,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-28_fillcarry/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "55bf672101e8a5f765f6b36bddf74f4f982cc0d2fecb4c73a4f2931fafda8f80",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:15:49Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:00Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-28_fillcarry/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-08-28_fillcarry/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "f7830d2e8978de35bcac8af1195120c5479b7b5ba2348841e04e08ccc6446750"
+      }
+    }
   },
   "cuda_fused_magnetic_pair_2026-09-01_nonlinear": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_magnetic_pair_2026-09-01_nonlinear"
     },
-    "artifact_sha256": "aaa06ecb23b26f743ae989ff6d423813a19c21c0bdcf8a15cefce34036092eea",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py": "736763d8374ed385f233ce37f9eeb95c289dafb4c71222526d26fabfa258acb5",
       "parity/meep_gpu/gate_cuda_fused_magnetic_pair.py": "04e6ca232121940161ce34c57416de76029675e0d9f9f36d809034ba289265b0",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T14:19:06Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_magnetic_pair.py"
     ],
@@ -1588,8 +1779,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_magnetic_pair_2026-09-01_nonlinear.",
-    "recorded_utc": "2026-09-26T00:34:00Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-09-01_nonlinear/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1598,15 +1787,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-09-01_nonlinear/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "aaa06ecb23b26f743ae989ff6d423813a19c21c0bdcf8a15cefce34036092eea",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T14:19:06Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:00Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-09-01_nonlinear/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_magnetic_pair_2026-09-01_nonlinear/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "f7830d2e8978de35bcac8af1195120c5479b7b5ba2348841e04e08ccc6446750"
+      }
+    }
   },
   "cuda_fused_polarization_pair_2026-09-01": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_fused_polarization_pair_2026-09-01"
     },
-    "artifact_sha256": "83f8cc6513facdba4a8169b19faa54f955e3e779441a6bd9f08f0f8ca044ed23",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_polarization_pair.py": "bfbb008c4485a8c579fc7062e66f39725fe40e5f4a9874debff8b8d1d265e6b4",
@@ -1614,8 +1812,6 @@
       "parity/meep_gpu/gate_cuda_fused_polarization_pair.py": "048fd2fc55b620f4d1bc25805ff021d10d9c412d9adecb7bd2ce7f51e00cda5c",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:05:45Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_polarization_pair.py"
     ],
@@ -1627,8 +1823,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_fused_polarization_pair_2026-09-01.",
-    "recorded_utc": "2026-09-26T00:34:01Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_pml/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1638,23 +1832,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_pml/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "83f8cc6513facdba4a8169b19faa54f955e3e779441a6bd9f08f0f8ca044ed23",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:05:45Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:01Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_pml/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_pml/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "92e9276168d9cb220216832cdae1f0a6537a03cc686425fa3ef92c4b33025ace"
+      }
+    }
   },
   "cuda_no_pml_curl_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_no_pml_curl_2026-08-21"
     },
-    "artifact_sha256": "9c0db4808384df7d77a5a5313726f2b0ac45d95a86c4ed8f817313ed883b1e62",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/no_pml_curl.py": "27b4c8b05eaef0dc8af97c908652fe56f67964cdaa00e17fc255fc88bc91a835",
       "parity/meep_gpu/gate_cuda_no_pml_curl.py": "3146306c29e3dfebb837501a9dec854faf01616983ee697f89891dae1eda4ecf",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:26:15Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/no_pml_curl.py"
     ],
@@ -1668,8 +1869,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_no_pml_curl_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:34:01Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_no_pml_curl_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1678,15 +1877,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_no_pml_curl_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "9c0db4808384df7d77a5a5313726f2b0ac45d95a86c4ed8f817313ed883b1e62",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:26:15Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:01Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_no_pml_curl_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_no_pml_curl_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "41bf20abbbed59ec1d1ffd1513a66ae00823080b86914f8d656eb3a05b3798b9"
+      }
+    }
   },
   "cuda_no_pml_fused_polarization_pair_2026-09-01": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_no_pml_fused_polarization_pair_2026-09-01"
     },
-    "artifact_sha256": "a85fe5b0493c691a5cfee464a4cf7b9ec80c5eba3363203a3687eeead74f70ee",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/fused_polarization_pair.py": "bfbb008c4485a8c579fc7062e66f39725fe40e5f4a9874debff8b8d1d265e6b4",
@@ -1694,8 +1902,6 @@
       "parity/meep_gpu/gate_cuda_fused_polarization_pair.py": "048fd2fc55b620f4d1bc25805ff021d10d9c412d9adecb7bd2ce7f51e00cda5c",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:00:59Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/fused_polarization_pair.py"
     ],
@@ -1707,8 +1913,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_no_pml_fused_polarization_pair_2026-09-01.",
-    "recorded_utc": "2026-09-26T00:34:01Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_no_pml/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1718,23 +1922,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_no_pml/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "a85fe5b0493c691a5cfee464a4cf7b9ec80c5eba3363203a3687eeead74f70ee",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:00:59Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:01Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_no_pml/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_polarization_pair_2026-09-01_no_pml/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "92e9276168d9cb220216832cdae1f0a6537a03cc686425fa3ef92c4b33025ace"
+      }
+    }
   },
   "cuda_nonlinear_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_nonlinear_2026-08-21"
     },
-    "artifact_sha256": "3d7ffc1ddd62f853c2a73903fd448c6f83bf8baaa3acac7a846004eeea7980de",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/nonlinear_constitutive.py": "42c731f5d2191ee202d1b8ca9928d6fdaaed76f784fab3b23f7b56f8ffa1f4af",
       "parity/meep_gpu/gate_cuda_nonlinear.py": "b0347e46e5a9613e75b0255ed32cc9e003b8d705dd380418209c252486567695",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:39:33Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/nonlinear_constitutive.py"
     ],
@@ -1746,8 +1957,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_nonlinear_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:34:02Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_nonlinear_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1756,15 +1965,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_nonlinear_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "3d7ffc1ddd62f853c2a73903fd448c6f83bf8baaa3acac7a846004eeea7980de",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:39:33Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:02Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_nonlinear_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_nonlinear_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "3315120485ccda497226ce6c0c752ce457d90480209b81af0e45d1dd7d697dea"
+      }
+    }
   },
   "cuda_offdiag_stencil_welds_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_offdiag_stencil_welds_2026-09-02"
     },
-    "artifact_sha256": "eb27af6280f79cb094b655481380581e2e9af06558efdb4f1f1c02fdbd6060bc",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/folded_offdiag_fused_electric_pair.py": "e9cabf9d9f70099b859a3bb08678799a0e5f2ae8d64696cdbb77fb55f7ce418c",
@@ -1773,8 +1991,6 @@
       "parity/meep_gpu/gate_cuda_offdiag_stencil_welds.py": "429d004df94bb272f4026da3f5271ab24a753c4246a592ad39b5cb876472fb1a",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:47:14Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/folded_offdiag_fused_electric_pair.py",
       "meep_gpu/cuda_kernels/offdiag_fused_electric_pair.py",
@@ -1789,8 +2005,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_offdiag_stencil_welds_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:34:02Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_offdiag_stencil_welds_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1801,23 +2015,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_offdiag_stencil_welds_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "eb27af6280f79cb094b655481380581e2e9af06558efdb4f1f1c02fdbd6060bc",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:47:14Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:02Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_offdiag_stencil_welds_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_offdiag_stencil_welds_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "b39ac8215b3b76ed4748b702e3887b8be5edfeaffd9251644287f22123662c42"
+      }
+    }
   },
   "cuda_special_kz_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_special_kz_2026-08-21"
     },
-    "artifact_sha256": "397c1de0be7597dee867ff9e37d765f6cd126cae2211074fb0726fb838e82d12",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/special_kz_curl.py": "2f816fa793a9fac020934bd07665edef1d0718f21ee9f7cae68666e503bfa7d6",
       "parity/meep_gpu/gate_cuda_special_kz.py": "43dfe75916a44c72bfadf7b44a4364178bebf0f2443990e9f17753c945cd2b8c",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:00:28Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/special_kz_curl.py"
     ],
@@ -1830,8 +2051,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_special_kz_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:34:02Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_special_kz_2026-08-21_rename_r2/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1840,23 +2059,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_special_kz_2026-08-21_rename_r2/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "397c1de0be7597dee867ff9e37d765f6cd126cae2211074fb0726fb838e82d12",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:00:28Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:02Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_special_kz_2026-08-21_rename_r2/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_special_kz_2026-08-21_rename_r2/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "eda8b0046cf631661777cf98383a5629bf3280dab8b9ae720653907b7e02357b"
+      }
+    }
   },
   "cuda_special_kz_fused_electric_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_special_kz_fused_electric_pair_2026-09-02"
     },
-    "artifact_sha256": "8003f52040aebb4ff6c8b228d804ef193f97ee4c54af77b11d89156cf5bb3b91",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/special_kz_fused_electric_pair.py": "ea82c572c317ae572063e7bc8b3681c9645950426a18659a818d4f517f9a3415",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:57:39Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/special_kz_fused_electric_pair.py"
     ],
@@ -1868,8 +2094,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_special_kz_fused_electric_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:34:02Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_electric_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1878,23 +2102,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "8003f52040aebb4ff6c8b228d804ef193f97ee4c54af77b11d89156cf5bb3b91",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:57:39Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:02Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_electric_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_electric_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "54f15ec698a3b4b18eca439761163cf72208271d95b5ba1f9ad283d08feddfde"
+      }
+    }
   },
   "cuda_special_kz_fused_magnetic_pair_2026-09-02": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_special_kz_fused_magnetic_pair_2026-09-02"
     },
-    "artifact_sha256": "441c778cd5f5cec89cc548e4c5edad67f767411d1e5603cdcd3618e256d699ff",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py": "a7bf17c84a9b434d0c1ec2e7f42a274e6e14cc30fecfa71581df044d043ec72f",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:23:08Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py"
     ],
@@ -1906,8 +2137,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_special_kz_fused_magnetic_pair_2026-09-02.",
-    "recorded_utc": "2026-09-26T00:34:02Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_special_kz_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1916,23 +2145,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_special_kz_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "441c778cd5f5cec89cc548e4c5edad67f767411d1e5603cdcd3618e256d699ff",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:23:08Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:02Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_fused_residual_special_kz_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_fused_residual_special_kz_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "7b66ac0bcaa64a2787236ae729d4a044b0658eb81229994d05cc739e76a73730"
+      }
+    }
   },
   "cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry"
     },
-    "artifact_sha256": "f8e50b39851a2905da3217c5565243a9691a90ba7e7abecc8f8e1bc5d40bdc2d",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py": "a7bf17c84a9b434d0c1ec2e7f42a274e6e14cc30fecfa71581df044d043ec72f",
       "parity/meep_gpu/gate_cuda_fused_complex_pairs.py": "52b7d45207a72f932c6f3d9c69bb34a6080015238834c7400b82296371a69a82",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:59:03Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py"
     ],
@@ -1944,8 +2180,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_special_kz_fused_magnetic_pair_2026-09-02_fillcarry.",
-    "recorded_utc": "2026-09-26T00:34:03Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_fillcarry_2026-09-02/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -1954,15 +2188,24 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_fillcarry_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "f8e50b39851a2905da3217c5565243a9691a90ba7e7abecc8f8e1bc5d40bdc2d",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:59:03Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:03Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_fillcarry_2026-09-02/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_residue_special_kz_fillcarry_2026-09-02/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "7b66ac0bcaa64a2787236ae729d4a044b0658eb81229994d05cc739e76a73730"
+      }
+    }
   },
   "cuda_three_slot_dispersive_weld_2026-09-11_regate": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:cuda_three_slot_dispersive_weld_2026-09-11_regate"
     },
-    "artifact_sha256": "5417b961e07807e625310b39c38939f2576765874f279747973aad4fe39af018",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/no_pml_three_slot_dispersive_weld.py": "064576bb97fc04dc0456aaffc293acfcf6fe967784d8ea661fc0040b7ad13fc6",
@@ -1973,8 +2216,6 @@
       "parity/meep_gpu/gate_cuda_three_slot_weld.py": "310f9e70c3b0a08595fe1d0a1ade952d9ccb495b6afefeda299c7fc360e5ae12",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T17:04:06Z",
-    "host": "the GPU host (machine-stamped: flush_no_pml/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/no_pml_three_slot_dispersive_weld.py",
       "meep_gpu/cuda_kernels/three_slot_dispersive_weld.py"
@@ -1989,8 +2230,6 @@
       "keep_pml/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:cuda_three_slot_dispersive_weld_2026-09-11_regate.",
-    "recorded_utc": "2026-09-26T00:34:03Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_three_slot_weld_2026-09-11_regate/ - 4 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -2003,8 +2242,19 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_three_slot_weld_2026-09-11_regate/{flush_no_pml/gate.json,flush_pml/gate.json,keep_no_pml/gate.json,keep_pml/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5417b961e07807e625310b39c38939f2576765874f279747973aad4fe39af018",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T17:04:06Z",
+        "host": "the GPU host (machine-stamped: flush_no_pml/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:03Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_three_slot_weld_2026-09-11_regate/ - 4 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_three_slot_weld_2026-09-11_regate/{flush_no_pml/gate.json,flush_pml/gate.json,keep_no_pml/gate.json,keep_pml/gate.json}:canonical_verdict.released",
+        "bound_sha256": "c4c620b6d03c90626e807082579e7fcaff2e4bbe5fbc0c10ff04e703b6e218fa"
+      }
+    }
   },
   "driver_dispatch": {
     "_source_sha256_recut_log": [
@@ -2395,206 +2645,6 @@
         "why": "D1: this block, the artifact the release cites and the tree had THREE different digests for fastpath.py at once (record 06cdbf37, tree 87f740ee then d11454ba, and all four legs of the cited run 29ac1216), so the release authority had never executed the code citing it. Every source edit of this round landed before the campaign started, so the four legs recorded the shipping bytes and these digests are READ from that recording by parity/meep_gpu/recut_driver_dispatch_record.py, which refuses unless leg, leg and tree all agree."
       }
     ],
-    "arbitration": {
-      "legs": {
-        "cuda_default_precedence": "unset",
-        "cuda_shipped": "MEEP_GPU_BACKEND_PREFERENCE=cuda"
-      },
-      "measured": {
-        "absorber_1d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "bfast_1d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "bloch_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_1d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_3d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_3d_thinline": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_beta_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_no_pml_3d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "complex_nobloch_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "conductive_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical_m0_complex": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical_m1": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical_m2": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical_m3": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "cylindrical_mneg1": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "dispersive5_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "dispersive6_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "dispersive_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_3d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_beta_bloch_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_nobloch_offdiag_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_offdiag_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_complex_offdiag_hz_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_dispersive_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_offdiag_magnetic_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "folded_special_kz_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "magnetic_seam_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "offdiag_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "offdiag_magnetic_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "pml_1d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "pml_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "pml_3d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "pml_3d_diagonal": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ],
-        "special_kz_2d": [
-          "ARBITRATION-DEFAULT-HELD",
-          "INCUMBENT-YIELDED",
-          "PREFERENCE-REFUSED-BY-NAME"
-        ]
-      },
-      "precedence": [
-        "triton",
-        "cuda"
-      ],
-      "preference_switch": "MEEP_GPU_BACKEND_PREFERENCE",
-      "read_this_as": "every served_in_dispatch count this table publishes is a BY-PREFERENCE number: under the shipped precedence the release-gated Triton table composes first and holds every slot both admit, so the by-default count is what the cuda_default_precedence leg measured and is reported beside it",
-      "yield_pending_primary_slots": false
-    },
     "code_sha256": {
       "meep_gpu/cuda_kernels/arms.py": "10f27e58a664cccb6f531dc8662287aaf27698b4b032dc63a95685488a405634",
       "meep_gpu/cuda_kernels/complex_folded_fused_electric_pair.py": "e7f664624d02d18b71a822d5897d064d615068afee095680ef30f4fc652014ee",
@@ -3841,14 +3891,6 @@
       "meep_gpu/cuda_kernels/special_kz_fused_magnetic_pair.py",
       "meep_gpu/cuda_kernels/three_slot_dispersive_weld.py"
     ],
-    "legs": [
-      "cuda_default_precedence/gate.json",
-      "cuda_flush/gate.json",
-      "cuda_harness_keep/gate.json",
-      "cuda_shipped/gate.json",
-      "cuda_shipped_expansion_probe/gate.json"
-    ],
-    "records": "apps/api/parity/meep_gpu/results/dispatch_fused_route_cuda_2026-09-25_roundb",
     "runnable_slots": [
       "step_B",
       "fill_B",
@@ -3880,27 +3922,235 @@
       "meep_gpu/fields.py": "59c96cf7c398c0a59ec218bd5eb065ccd697bee01124bc76ea3c71e113e1ffa5",
       "parity/meep_gpu/gate_dispatch_fused_route.py": "31af5cdca9c29176834ccfa5afe482f4ce46d3e50993ae1c19ec42c6c9f9a8d4"
     },
-    "status": "PASS",
-    "subnormal_policy": "ieee_keep_ftz_stripped (cuda_shipped, cuda_default_precedence, cuda_harness_keep, cuda_shipped_expansion_probe \u2014 dispatching) + meep_x86_flush (cuda_flush \u2014 refused by name at rung 8b)",
     "table": "cuda",
     "unrunnable_slots": {},
-    "validated_compute_capabilities": [],
-    "verdict_read_from": "release.released"
+    "runs": {},
+    "_route_run_before_capability_records_2026_10_01": {
+      "status": "PASS",
+      "records": "apps/api/parity/meep_gpu/results/dispatch_fused_route_cuda_2026-09-25_roundb",
+      "legs": [
+        "cuda_default_precedence/gate.json",
+        "cuda_flush/gate.json",
+        "cuda_harness_keep/gate.json",
+        "cuda_shipped/gate.json",
+        "cuda_shipped_expansion_probe/gate.json"
+      ],
+      "verdict_read_from": "release.released",
+      "subnormal_policy": "ieee_keep_ftz_stripped (cuda_shipped, cuda_default_precedence, cuda_harness_keep, cuda_shipped_expansion_probe \u2014 dispatching) + meep_x86_flush (cuda_flush \u2014 refused by name at rung 8b)",
+      "arbitration": {
+        "legs": {
+          "cuda_default_precedence": "unset",
+          "cuda_shipped": "MEEP_GPU_BACKEND_PREFERENCE=cuda"
+        },
+        "measured": {
+          "absorber_1d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "bfast_1d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "bloch_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_1d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_3d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_3d_thinline": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_beta_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_no_pml_3d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "complex_nobloch_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "conductive_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical_m0_complex": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical_m1": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical_m2": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical_m3": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "cylindrical_mneg1": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "dispersive5_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "dispersive6_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "dispersive_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_3d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_beta_bloch_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_nobloch_offdiag_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_offdiag_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_complex_offdiag_hz_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_dispersive_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_offdiag_magnetic_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "folded_special_kz_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "magnetic_seam_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "offdiag_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "offdiag_magnetic_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "pml_1d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "pml_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "pml_3d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "pml_3d_diagonal": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ],
+          "special_kz_2d": [
+            "ARBITRATION-DEFAULT-HELD",
+            "INCUMBENT-YIELDED",
+            "PREFERENCE-REFUSED-BY-NAME"
+          ]
+        },
+        "precedence": [
+          "triton",
+          "cuda"
+        ],
+        "preference_switch": "MEEP_GPU_BACKEND_PREFERENCE",
+        "read_this_as": "every served_in_dispatch count this table publishes is a BY-PREFERENCE number: under the shipped precedence the release-gated Triton table composes first and holds every slot both admit, so the by-default count is what the cuda_default_precedence leg measured and is reported beside it",
+        "yield_pending_primary_slots": false
+      },
+      "validated_compute_capabilities": [],
+      "_why_this_is_history": "The route run this record described was cut before the ledger kept one record per compute capability, and no device could be read back from it: this table's route legs live under the gitignored results tree. The next route campaign writes runs[<capability>] from the run it reads, under the campaign 2026_10_01_cc<capability>. Kept because it is the provenance of the dispatch shape this record still states."
+    }
   },
   "folded_constitutive_2026-08-19": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:folded_constitutive_2026-08-19"
     },
-    "artifact_sha256": "5433f105078fde45d49c9e143c7346d3cea647ca861783e600d7e76e7b363627",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/constitutive_kernels.py": "d4f4cb844975fe024d883b3c0383bc1ca05644f038f0ed9e914d134e064c5533",
       "parity/meep_gpu/gate_cuda_folded_constitutive.py": "346922db7958ac791248a4405a4a3d2574ad52204409170417b78c10f9b1a1d6",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:49:28Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/constitutive_kernels.py"
     ],
@@ -3913,8 +4163,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:folded_constitutive_2026-08-19.",
-    "recorded_utc": "2026-09-26T00:34:03Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-19/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -3923,23 +4171,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-19/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "5433f105078fde45d49c9e143c7346d3cea647ca861783e600d7e76e7b363627",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:49:28Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:03Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-19/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-19/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "bdb0d3fe5fc4094b0c91987ea229e6f67a1a614e9a7df6aa3b3a3d5554bc1909"
+      }
+    }
   },
   "folded_constitutive_2026-08-20_threeplane": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:folded_constitutive_2026-08-20_threeplane"
     },
-    "artifact_sha256": "8d72d755ef6f3255919450b3ac5ae0d9fcceedc9b57b4b676f4cb3ba93ce5cfd",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/constitutive_kernels.py": "d4f4cb844975fe024d883b3c0383bc1ca05644f038f0ed9e914d134e064c5533",
       "parity/meep_gpu/gate_cuda_folded_constitutive.py": "346922db7958ac791248a4405a4a3d2574ad52204409170417b78c10f9b1a1d6",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T13:51:42Z",
-    "host": "the GPU host (machine-stamped: flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/constitutive_kernels.py"
     ],
@@ -3952,8 +4207,6 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:folded_constitutive_2026-08-20_threeplane.",
-    "recorded_utc": "2026-09-26T00:34:03Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -3962,23 +4215,30 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "8d72d755ef6f3255919450b3ac5ae0d9fcceedc9b57b4b676f4cb3ba93ce5cfd",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T13:51:42Z",
+        "host": "the GPU host (machine-stamped: flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:03Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_folded_constitutive_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "bdb0d3fe5fc4094b0c91987ea229e6f67a1a614e9a7df6aa3b3a3d5554bc1909"
+      }
+    }
   },
   "in_seam_2026-08-21": {
     "_notes": {
       "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:in_seam_2026-08-21"
     },
-    "artifact_sha256": "e79c61a87953c68ea56924b2b89c59db86570ee95b3cfbbd009bba9cfd75224f",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/in_seam_passes.py": "81bf1cbf13032513f3eb220944b8747d0f82974226c1e2f81336ef5fbf58f029",
       "parity/meep_gpu/gate_cuda_in_seam_passes.py": "cfc120e4c18198601568731839d562ef0dd63620a7adf3bf8f33964526bb4050",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:23:59Z",
-    "host": "the GPU host (machine-stamped: fill_folded_far/flush/gate.json:host)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/in_seam_passes.py"
     ],
@@ -3999,8 +4259,6 @@
       "zero_metal/keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:in_seam_2026-08-21.",
-    "recorded_utc": "2026-09-26T00:34:03Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_in_seam_2026-08-21_final/ - 6 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
@@ -4009,23 +4267,33 @@
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_in_seam_2026-08-21_final/{fill_folded_far/flush/gate.json,fill_folded_far/keep/gate.json,fill_symmetry/flush/gate.json,fill_symmetry/keep/gate.json,zero_metal/flush/gate.json,zero_metal/keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "e79c61a87953c68ea56924b2b89c59db86570ee95b3cfbbd009bba9cfd75224f",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:23:59Z",
+        "host": "the GPU host (machine-stamped: fill_folded_far/flush/gate.json:host)",
+        "recorded_utc": "2026-09-26T00:34:03Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_in_seam_2026-08-21_final/ - 6 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_in_seam_2026-08-21_final/{fill_folded_far/flush/gate.json,fill_folded_far/keep/gate.json,fill_symmetry/flush/gate.json,fill_symmetry/keep/gate.json,zero_metal/flush/gate.json,zero_metal/keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "c8391e74f5254f44ebbabbff46a2a3c6ad16fc2e2246a5e6f44b5b99df3f8988"
+      }
+    }
   },
   "offdiag_2026-08-16": {
     "_notes": {
-      "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:offdiag_2026-08-16"
+      "_narrative_lives_in": "meep_gpu/cuda_kernels/certification.json:offdiag_2026-08-16",
+      "_why_two_digests_start_unbound": "Widened for 0.9.1 by a reviewed edit (2026-09-29), because rebind_cuda_welds.py never widens a curated key set. The single now launches offdiag_emitter.offdiag_launch_source, the certified text through own_cell_hoist.hoisted_kernel_code, so those two files decide the compiled bytes together with coverage.py, whose effect on the texts the certification block's emitter_corpus_digest and launch_corpus_digest both see. The four new digests were 64 zeroes, which no file hashes to, as of this edit; the rebind fills source_sha256 from the legs' agreed imported_source_sha256 and recomputes code_sha256 from the live file where it still matches."
     },
-    "artifact_sha256": "1278eb077c673060b823bf8df144d8c219e697f013b3b4688db5b8fd2f5ee761",
-    "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
     "code_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "bd4b7eb546f89513fc77dfaf837b4d84874fc41c06c99140b4fa640d2295ee4c",
       "meep_gpu/cuda_kernels/offdiag_constitutive_kernels.py": "7a7ac27ea572f867def3d94f41e9ca8ff0e22f83b75ed30362cf70ae49322992",
+      "meep_gpu/cuda_kernels/offdiag_emitter.py": "0000000000000000000000000000000000000000000000000000000000000000",
+      "meep_gpu/cuda_kernels/own_cell_hoist.py": "0000000000000000000000000000000000000000000000000000000000000000",
       "parity/meep_gpu/gate_cuda_offdiag.py": "cd53db0c6382d314232f23e5266d3c5e28c8ffd1196c0bc65a1dd7f1da0c2b20",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "fdb404f1af94b56acaf520f60f91681618cbb024cc6d8ecbe5a677ba315adc63"
     },
-    "gate_started_utc": "2026-09-25T16:42:56Z",
-    "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:offdiag_2026-08-16)",
     "kernel_module": [
       "meep_gpu/cuda_kernels/offdiag_constitutive_kernels.py"
     ],
@@ -4037,17 +4305,39 @@
       "keep/gate.json"
     ],
     "purpose": "Device byte gate welded to certification.json:offdiag_2026-08-16.",
-    "recorded_utc": "2026-09-26T00:34:04Z",
-    "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_offdiag_2026-08-21_rename/ - 2 canonical policy legs, all released",
     "source_drift": [],
     "source_sha256": {
       "meep_gpu/cuda_kernels/compile_cache.py": "a7ada7577df1e2d8c07d88289292736f165e037c01c7b88b0dab7cef798658da",
       "meep_gpu/cuda_kernels/offdiag_constitutive_kernels.py": "bb1c6de0d51268fcb9d16a6344d2e355fc908100c9f5ebfcb162de3299ed1de9",
+      "meep_gpu/cuda_kernels/offdiag_emitter.py": "0000000000000000000000000000000000000000000000000000000000000000",
+      "meep_gpu/cuda_kernels/own_cell_hoist.py": "0000000000000000000000000000000000000000000000000000000000000000",
       "parity/meep_gpu/gate_cuda_offdiag.py": "494bac52f36344a5d7d4de0011b8ca59f0cfe327eb258ad7e12964aa4f800fd1",
       "parity/meep_gpu/probe_fused_kernel_bit_identity.py": "8c7356e5fa6f558e4edc0fd2e02aa0d2bb71b8e54be0d9acccfe6a06866eb848"
     },
     "status": "PASS",
-    "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
-    "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_offdiag_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released"
+    "runs": {
+      "8.6": {
+        "artifact_sha256": "1278eb077c673060b823bf8df144d8c219e697f013b3b4688db5b8fd2f5ee761",
+        "campaign": "certification.json:cuda_regate_2026-09-25_roundb \u2014 the re-gate that cut this verdict. The block's own dated artifacts and digest are unchanged; this weld is bound to the re-gate tree, which that block records.",
+        "gate_started_utc": "2026-09-25T16:42:56Z",
+        "host": "the GPU host (NOT machine-stamped by this gate; from certification.json:offdiag_2026-08-16)",
+        "recorded_utc": "2026-09-26T00:34:04Z",
+        "records": "apps/api/parity/meep_gpu/results/cuda_regate_2026-09-25_roundb/cuda_offdiag_2026-08-21_rename/ - 2 canonical policy legs, all released",
+        "subnormal_policy": "meep_x86_flush; ieee_keep_ftz_stripped",
+        "verdict_read_from": "cuda_regate_2026-09-25_roundb/cuda_offdiag_2026-08-21_rename/{flush/gate.json,keep/gate.json}:canonical_verdict.released",
+        "bound_sha256": "b8c671ef07f52bc8cf850a96f63627c7760c98f6ee919c6bff5dcdc536b12c28"
+      }
+    }
+  },
+  "_capability_runs_migration": {
+    "tool": "parity/meep_gpu/migrate_capability_records.py",
+    "when": "2026_10_01",
+    "what": "Each weld's run fields moved under runs[<compute capability>] with the digest of the bytes that run certified (fastpath.bound_digest), so a second architecture is certified BESIDE this one instead of replacing it.",
+    "capability_was_read_from": "the certification.json block the entry names",
+    "entries": 54,
+    "capabilities": [
+      "8.6"
+    ],
+    "admitted_before": []
   }
 }

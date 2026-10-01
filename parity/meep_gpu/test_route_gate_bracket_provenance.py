@@ -97,3 +97,27 @@ def test_a_record_binding_the_bracket_would_find_the_recorded_key(backend):
     """Either spelling a ledger might bind resolves to the key the gates record."""
     for bound in ("meep_gpu/deposit_repair.py", "deposit_repair.py"):
         assert recut._leg_key(backend, bound) == "deposit_repair.py"  # noqa: SLF001
+
+
+def test_the_recut_reads_each_legs_compute_capability_from_provenance_device():
+    """The key the route gate writes is ``provenance.device``; the recut must read it.
+
+    Before 0.9.1 it read ``device_identity``, which no gate writes, so the CUDA
+    record's capability list came out empty and its two-device refusal never fired.
+    """
+    artifacts = {
+        "shipped": {"provenance": {"device": {"name": "NVIDIA RTX A6000",
+                                              "compute_capability": "8.6"}}},
+        "harness_keep": {"provenance": {"device": {"compute_capability": "86"}}},
+        "legacy": {"provenance": {"device_identity": {"compute_capability": "8.6"}}},
+        "bare": {},
+    }
+    assert recut.stamped_capabilities(artifacts) == {
+        "shipped": "8.6", "harness_keep": "8.6", "legacy": None, "bare": None}
+
+
+def test_the_recut_sees_a_campaign_whose_legs_ran_on_two_architectures():
+    artifacts = {"a": {"provenance": {"device": {"compute_capability": "8.6"}}},
+                 "b": {"provenance": {"device": {"compute_capability": "9.0"}}}}
+    values = {value for value in recut.stamped_capabilities(artifacts).values() if value}
+    assert values == {"8.6", "9.0"}

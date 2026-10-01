@@ -20,7 +20,6 @@ from meep_gpu.triton_kernels.coverage import fused_pair_coverage
 
 HERE = pathlib.Path(__file__).resolve()
 PROBE = HERE.parents[1] / "parity" / "meep_gpu" / "probe_triton_source_seams.py"
-SLURM = HERE.parents[1] / "parity" / "meep_gpu" / "run_triton_source_seams.slurm"
 
 
 def _driver(*sources):
@@ -227,14 +226,10 @@ def test_the_source_seam_record_is_welded_to_the_injection_and_plan_bytes():
         (package / "triton_kernels" / "fingerprints.json").read_text(
             encoding="utf-8"))
     gate = record["source_seam_gate"]
-    # RE-CUT 2026-08-27 AND NO LONGER A SLURM JOB. probe_triton_source_seams.py is the
-    # gate that measures the in-seam deposit repair, so it moved when that repair went
-    # live in triton_kernels/coverage.py (CARRIES_DEPOSIT_REPAIR False -> True) and the
-    # record was owed a fresh run. That run was launched directly on the GPU host rather
-    # than through Slurm, so the job fields describe HISTORY and are spelled that way
-    # instead of being left to read as though 2318 had produced today's bytes.
-    assert gate["_historical_slurm_job_id"] == 2318
-    assert gate["_historical_slurm_state"] == "COMPLETED 0:0"
+    # RE-CUT 2026-08-27. probe_triton_source_seams.py is the gate that measures the
+    # in-seam deposit repair, so it moved when that repair went live in
+    # triton_kernels/coverage.py (CARRIES_DEPOSIT_REPAIR False -> True) and the record
+    # was owed a fresh run; the superseded run is kept as history.
     assert "RE-RUN on 2026-08-27" in gate["_superseded_2026-08-27"]
     assert gate["real_engine_route"]["complete_steps_exact"] == "62/62"
     assert gate["real_engine_route"]["nonvacuous_source_cases"].startswith("5/5")
@@ -264,5 +259,3 @@ def test_the_source_seam_record_is_welded_to_the_injection_and_plan_bytes():
     for name in sources:
         assert len(gate["source_sha256"][name]) == 64, name
     assert gate["probe_sha256"] == hashlib.sha256(PROBE.read_bytes()).hexdigest()
-    assert gate["slurm_launcher_sha256"] == hashlib.sha256(
-        SLURM.read_bytes()).hexdigest()

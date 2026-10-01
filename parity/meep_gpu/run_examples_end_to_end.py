@@ -22,7 +22,7 @@ objects, unedited, through the survey's capture in a subprocess, and reports the
 57 rows nobody transcribed. Neither subsumes the other: this file is deep and
 annotated, the sweep is broad and automatic.
 
-Rule 7: one flushed line per case, and each result is appended to the JSONL as it
+Progress reporting: one flushed line per case, and each result is appended to the JSONL as it
 lands.
 
 Usage (from ``the repository root``)::

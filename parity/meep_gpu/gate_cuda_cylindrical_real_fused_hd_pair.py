@@ -34,7 +34,7 @@ composer as shipped (this product absent; the two released cylindrical pairs hol
 slots) and with the wiring rows patched in-process (this product refused BY NAME on its
 own ``INSTALLABLE = False``), then removes them.
 
-LEGS: see ``cylindrical_hd_gate_common.LEG_GROUPS``. Rule 7: a flushed line per case.
+LEGS: see ``cylindrical_hd_gate_common.LEG_GROUPS``. Progress reporting: a flushed line per case.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

@@ -41,6 +41,12 @@ from .cuda_kernels import arms, fused_pairs
 from .cuda_kernels.test_fused_pairs import build, magnetic_source, xp  # noqa: F401
 from .triton_kernels.launch import NoopPlan
 
+#: The architecture the shipped CUDA ledger has live run records for. Each weld keeps
+#: one record per compute capability, so a lookup that names none quotes no host, no
+#: ``recorded_utc`` and no policy — the point being that one card's run is not
+#: evidence about another. Every run fact below is therefore asked on this one.
+CERTIFIED_CAPABILITY = "8.6"
+
 
 # ---------------------------------------------------------------------------
 # 1. The typed tables against the composer
@@ -310,15 +316,23 @@ def test_every_cuda_certification_points_at_a_readable_record():
     the shipping tree BEFORE the run that cuts it, so the run the tree asked for is
     the run that is measured, and this test is what keeps the promise from being
     mistaken for evidence in the meantime.
+
+    RESOLVING IS NOW PER ARCHITECTURE: the run facts live in ``runs[<cc>]``, so a row
+    "resolves" only if the gate it names has a live record for the card the arm would
+    dispatch on. A weld carrying a run for some OTHER architecture is counted here as
+    not resolving, which is the honest reading — it is evidence about a different
+    device.
     """
     missing = []
     for arm in sorted(fastpath_cuda.CUDA_ARM_CERTIFICATION):
-        entry = fastpath_cuda.certification_for(arm)
+        entry = fastpath_cuda.certification_for(
+            arm, capability=CERTIFIED_CAPABILITY)
         assert entry["family"] != "unmapped", arm
         if "recorded_utc" not in entry:
             missing.append((arm, entry["gate"]))
     assert not missing, (
-        "CUDA_ARM_CERTIFICATION rows whose ledger key does not resolve: "
+        "CUDA_ARM_CERTIFICATION rows whose ledger key does not resolve on compute "
+        f"capability {CERTIFIED_CAPABILITY}: "
         + "; ".join(f"{arm} -> {gate}" for arm, gate in missing))
 
 
@@ -333,16 +347,40 @@ def test_the_certification_policy_is_the_tables_own_and_the_two_maps_agree():
     assert fastpath.TABLE_SUBNORMAL_POLICY["cuda"] == fastpath_cuda.SUBNORMAL_POLICY
     assert (tuple(fastpath.TABLE_GOVERNED_EXECUTORS["cuda"])
             == tuple(fastpath_cuda.GOVERNED_EXECUTORS))
-    entry = fastpath_cuda.certification_for("cuda:fused magnetic pair")
+    entry = fastpath_cuda.certification_for("cuda:fused magnetic pair",
+                                            capability=CERTIFIED_CAPABILITY)
     assert entry["certification_policy"] == "keep"
     # And the weld it cites records BOTH canonical legs, the keep one being the
-    # dispatching leg.
+    # dispatching leg. THE POLICY IS THE RUN'S, so it is asked on the architecture
+    # the run was cut on: two cards certified from one tree can be driven under
+    # different policies, and a table-wide answer could not say which.
     assert "ieee_keep_ftz_stripped" in entry["subnormal_policy"]
 
 
 def test_the_validated_capabilities_are_derived_from_the_cited_blocks():
-    """DERIVED, never typed: the list is what the welds' own campaigns recorded."""
-    assert fastpath_cuda.validated_compute_capabilities() == ("8.6",)
+    """DERIVED, never typed: the list is what the welds' own campaigns recorded.
+
+    Re-derived here rather than compared against a literal, so a round that certifies
+    a second architecture widens both the function and this expectation by writing
+    records. The intersection is taken over the gates the arms cite, off the ledger
+    on disk, because a capability one cited family never ran on is one the table
+    cannot claim.
+    """
+    import json  # noqa: PLC0415
+
+    ledger = json.loads(
+        (pathlib.Path(fastpath_cuda.__file__).parent / "cuda_kernels"
+         / "fingerprints.json").read_text(encoding="utf-8"))
+    derived = None
+    for _family, gate in fastpath_cuda.CUDA_ARM_CERTIFICATION.values():
+        live = set(fastpath.live_capabilities(ledger.get(gate)))
+        derived = live if derived is None else (derived & live)
+    assert derived, (
+        "every cited CUDA weld must carry a run that still binds the shipped bytes")
+    assert fastpath_cuda.validated_compute_capabilities() == tuple(sorted(derived))
+    assert CERTIFIED_CAPABILITY in derived, (
+        f"this file reads run facts on {CERTIFIED_CAPABILITY} and the ledger now "
+        f"derives {sorted(derived)}")
 
 
 # ---------------------------------------------------------------------------

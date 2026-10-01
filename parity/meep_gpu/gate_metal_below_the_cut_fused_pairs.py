@@ -65,7 +65,7 @@ rather than leaving it as prose: on MPS the float32 flush is native and has no l
 ``keep`` is a REFUSAL (metal_kernels/subnormal.py), so "both policies" here means one
 delivered and one refused BY NAME. That is checked.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 
 Usage (from the repository root)::
 

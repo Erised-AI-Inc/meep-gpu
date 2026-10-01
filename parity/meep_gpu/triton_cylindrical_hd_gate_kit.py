@@ -43,7 +43,7 @@ release clause a keep-certified family could pass under flush by construction.
 
 THE EVIDENCE STANDARD is the template's: uint32 words per COMPLETE driver step over
 every stored volume, never ``allclose``; every zero beside a control that moves words;
-N of D with D named. Rule 7: one flushed line per case, every row appended and fsynced
+N of D with D named. Progress reporting: one flushed line per case, every row appended and fsynced
 as it lands, the lift leg writing one JSON per corpus row and a progress log the child
 appends to.
 """

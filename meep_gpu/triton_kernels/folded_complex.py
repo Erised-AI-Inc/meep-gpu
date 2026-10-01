@@ -33,13 +33,13 @@ C-contiguous float32 volume with a doubled last axis and complex cell ``w`` is
 words ``2*w`` and ``2*w + 1``); K3a steps real float32.
 
 * :func:`folded_bloch_pml_curl_step` (K1) — ``complex_fields.bloch_pml_curl_step``
-  (certified job 2330, recut 2343) with ``symmetry.py``'s THREE fold deltas and
+  (certified, then re-cut) with ``symmetry.py``'s THREE fold deltas and
   no arithmetic change at all;
 * :func:`folded_mirror_ghost_fill_complex` (K2) — ``stepping.fill_symmetry_bc_*``
   plus ``stepping.fill_folded_far_ghosts_*`` for ONE family on ONE axis. THE ONLY
   PLACE IN PHASE B WHERE THE TRANSCRIPTION CHANGES ARITHMETIC (see below);
 * :func:`folded_beta_pml_curl_step` (K3a) — ``special_kz.beta_pml_curl_step``
-  (certified job 2339 family) with K1's three deltas, REAL storage;
+  (certified) with K1's three deltas, REAL storage;
 * :func:`folded_beta_bloch_pml_curl_step` (K3b) — K1 plus ``special_kz``'s beta
   insert in the identical slot, COMPLEX storage.
 
@@ -272,7 +272,7 @@ except ImportError as _exc:  # pragma: no cover - exercised by the absence test
     triton = _MissingTriton()  # type: ignore[assignment]
     tl = _MissingLanguage()  # type: ignore[assignment]
 
-from .complex_fields import (  # noqa: E402 - this session's own module
+from .complex_fields import (  # noqa: E402 - this package's own module
     PROBE_PATTERNS,
     ComplexConstitutivePlan,
     _complex_layout_reasons,
@@ -301,7 +301,7 @@ from .coverage import (  # READ-ONLY imports; nothing here mutates coverage.py
     _susceptibility_reasons,
 )
 from .launch import SUB_STEPS, ConstitutivePlan, CupyPointer, _flat
-from .special_kz import (  # noqa: E402 - this session's own module
+from .special_kz import (  # noqa: E402 - this package's own module
     BETA_PROBE_PATTERNS,
     _mul_imag_coefficient_left,
     beta_curl_coefficients,
@@ -2780,7 +2780,7 @@ def plan_folded_complex_constitutive(fields: Any, pml: Any, side: str,
                                      ) -> Optional[ComplexConstitutivePlan]:
     """A CERTIFIED complex constitutive plan for a folded run, or None.
 
-    The kernel and plan class are ``complex_fields``' (job 2330, recut 2343),
+    The kernel and plan class are ``complex_fields``' (certified, then re-cut),
     untouched; only the ADMISSION is this module's.
     """
     if side not in CONSTITUTIVE_SIDES:

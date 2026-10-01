@@ -60,13 +60,13 @@ Legs, in order (``--legs`` selects a subset):
   reason and each still required to launch with PTX differing from every
   shipped specialization (a null served a stale shipped binary would measure
   nothing): the commuted row sum (f32 addition is bitwise commutative);
-  m4 0.25 distributed before the sum — job 2340 measured it NOT caught on the
+  m4 0.25 distributed before the sum — the first cut measured it NOT caught on the
   cancellation class, and the derivation agrees: 0.25 is an exact power of
   two, scaling by it commutes with round-to-nearest (the rounding grid scales
   exactly), so ``0.25*(A+B) == 0.25*A + 0.25*B`` bitwise wherever nothing is
   subnormal (laptop: 0/2M mismatches on normal AND cancellation classes;
   565k/2M once 0.25*x underflows — the subnormal leg's territory, not this
-  one); and m8 metallic near ghost left as the periodic wrap — job 2340
+  one); and m8 metallic near ghost left as the periodic wrap — the first cut
   measured it NOT caught on the all-metallic sweep with PTX-verified-different
   binary, and the derivation agrees: the wrap differs from the zero ghost only
   on the partner-axis face-0 plane, and a metallic partner axis is always a
@@ -82,10 +82,10 @@ Legs, in order (``--legs`` selects a subset):
   commutes with rounding, so the byte mismatches survive — holds any
   cancellation-tail absolute delta below atol=1e-8; it must pass allclose
   while failing bytes. The measured wrong turns are recorded: m4 cannot
-  serve (a true null, job 2340), and m1 on VARYING rows cannot either — a
+  serve (a true null), and m1 on VARYING rows cannot either — a
   first-order registration defect (O(1) relative) that allclose correctly
-  catches at any amplitude, measured at unit (job 2341) and 2**-16 (job
-  2342) alike, because rtol is scale-free. Blindness is a statement about
+  catches at any amplitude, measured at unit and 2**-16 amplitude
+  alike, because rtol is scale-free. Blindness is a statement about
   rounding-scale defects, and the control now embodies it.
 * ``engine``     — ``plan_offdiagonal_constitutive`` from the engine's own
   objects (``Fields.set_epsilon_volumes``-installed tensors) against
@@ -102,8 +102,8 @@ artifact with the policy plus the in-run strip counters. Never pass
 
 Every case prints one flushed line as it lands; the JSON artifact is rewritten
 atomically after every case (the progress-reporting rule); the gate writes its own
-provenance record (``fingerprints.json`` is another session's file and is only
-hashed). Correctness only: no throughput or timing claims.
+provenance record (``fingerprints.json`` is a shared ledger this gate does not
+write; it is only hashed). Correctness only: no throughput or timing claims.
 
 Usage (the GPU host, one clear device; the cache dir MUST carry the policy token)::
 
@@ -1251,8 +1251,8 @@ def mutate_m3_mispaired_coefficients(source: str) -> Tuple[str, int]:
 
 
 def mutate_m4_distribute_quarter(source: str) -> Tuple[str, int]:
-    """m4: 0.25 distributed before the sum — a NULL control, measured (job
-    2340: launched, PTX-verified-different, bytes identical on the
+    """m4: 0.25 distributed before the sum — a NULL control, measured
+    (launched, PTX-verified-different, bytes identical on the
     cancellation class) and derivable: an exact power-of-two factor commutes
     with round-to-nearest away from underflow, so the distributed form is
     bitwise identical wherever nothing is subnormal. Contrast m1: an
@@ -1295,7 +1295,7 @@ def mutate_m8_metallic_near_ghost_wrapped(source: str) -> Tuple[str, int]:
     """m8: the metallic near (partner-axis down) ghost left as the periodic
     wrap — the down-guard replaced by the wrap, so the coupling reads the far
     plane's live values through the wall instead of zero. A NULL control,
-    measured (job 2340: launched, PTX-verified-different, bytes identical on
+    measured (launched, PTX-verified-different, bytes identical on
     the all-metallic sweep) and derivable: the wrap's entire support is the
     partner-axis face-0 plane, which ``_mask_metallic_wall_coupling``
     (stepping.py:1256-1283) zeroes before the row sum — a metallic partner
@@ -1372,7 +1372,7 @@ SOURCE_MUTATIONS: Dict[str, Tuple[Callable[[str], Tuple[str, int]], str,
 # recorded reason is indistinguishable from a mutation nobody could catch.
 NULL_REASONS: Dict[str, str] = {
     "m4_distribute_quarter":
-        "measured null (job 2340: launched, PTX-verified-different, bytes "
+        "measured null (launched, PTX-verified-different, bytes "
         "identical on the cancellation class) with the derivation: 0.25 is an "
         "exact power of two, scaling by it commutes with round-to-nearest "
         "(the rounding grid scales exactly), so 0.25*(A+B) == 0.25*A + 0.25*B "
@@ -1382,7 +1382,7 @@ NULL_REASONS: Dict[str, str] = {
         "uniform outcome: ARBITRARY-coefficient distribution is not bitwise "
         "neutral and is caught.",
     "m8_metallic_near_ghost_wrapped":
-        "measured null (job 2340: launched, PTX-verified-different on 3 "
+        "measured null (launched, PTX-verified-different on 3 "
         "sites, bytes identical on the all-metallic sweep) with the "
         "derivation: the wrap differs from the zero ghost only on the "
         "partner-axis face-0 plane; a metallic partner axis is always a "
@@ -1498,10 +1498,10 @@ def run_mutations(results: Dict[str, Any], out_path: str) -> Dict[str, Any]:
 
     # The allclose-blindness control: m1 (the coefficient hoist) on UNIFORM
     # rows at LOW amplitude. Three measured wrong turns shaped this leg, each
-    # recorded: m4 served in the first cut and is a TRUE bitwise null (job
-    # 2340) — a null cannot demonstrate blindness. m1 on VARYING rows was
-    # measured failing allclose at unit amplitude (job 2341) AND at 2**-16
-    # amplitude (job 2342) — on varying coefficients the hoist is a
+    # recorded: m4 served in the first cut and is a TRUE bitwise null — a
+    # null cannot demonstrate blindness. m1 on VARYING rows was
+    # measured failing allclose at unit amplitude AND at 2**-16
+    # amplitude — on varying coefficients the hoist is a
     # FIRST-ORDER registration defect (u[i] vs u[i+s] is O(1) relative), and
     # rtol is scale-free: a first-order defect is exactly what allclose CAN
     # see. Blindness needs a ROUNDING-SCALE defect, so the control rides the

@@ -240,6 +240,11 @@ Two machines have been measured. Other devices that report compute capability
 8.6, and other Apple silicon hosts with the certified PyTorch and Metal
 frontend, are admitted by the identity rule and have not been measured.
 
+The NVIDIA rows are not a hard-coded list: each is derived from the per-architecture
+records the kernel ledgers carry, so another compute capability becomes certified by
+running the gates on a card of that architecture and writing its records, with no change
+to the package ([Certifying another compute capability](docs/development/certification.md#certifying-another-compute-capability)).
+
 **What any other device gets by default.** A device or a library version
 outside the certified identities is refused by name and the run takes the array
 path: CuPy on the GPU on NVIDIA hardware, NumPy on the host CPU on Apple

@@ -30,9 +30,17 @@ or ``not_vetoed``, and both mean the same thing to the caller: install as today.
 THE RECORD
 =============================================================================
 
-One JSON document per kernel table, cut by ``parity/meep_gpu/cut_timing_record.py``
-from timing rows and never written by hand (it carries a digest of its own body, and
-a record whose digest does not match REFUSES). Its ``keys`` map is::
+One JSON document per kernel table PER COMPUTE CAPABILITY, cut by
+``parity/meep_gpu/cut_timing_record.py`` from timing rows and never written by hand
+(it carries a digest of its own body, and a record whose digest does not match
+REFUSES). :func:`record_path` spells where it lives --
+``<table>_kernels/timing_cc86.json``, with ``timing_cc86.report.txt`` beside it --
+because a kernel's cost is a property of the ARCHITECTURE that ran it: the same bytes
+on another architecture have another ratio, and that ratio is the whole veto. So the
+capability is in the file name (a reader sees from a directory listing which
+architectures have been timed and which have not), :func:`validate` refuses a record
+whose rows do not name exactly one of them, and :func:`consult` answers ``no_record``
+when the device it is asked about is not that one. Its ``keys`` map is::
 
     key   = product | storage | dimensions | susceptibilities | bracketed/clean | lo-hi
     value = measured fused ms/step, the same-table baseline ms/step, their ratio, the
@@ -126,6 +134,10 @@ ONCE, at the top of a run, inside a ``try`` that catches :class:`RecordRefused`,
 the refusal beside the ``selected`` map and carries ``None`` from there on, which every
 consult answers ``no_record`` (today's behaviour). One read, one place to fail, and a
 loud one. ``the development notes`` states the same rule beside the flag.
+
+WHICH file it loads is decided the same way: :func:`record_path` for the LIVE device's
+capability. A host whose architecture has never been timed therefore reads no record at
+all -- today's behaviour -- instead of reading another architecture's.
 """
 
 from __future__ import annotations
@@ -513,6 +525,69 @@ def repair_route_sha256(path: Optional[str] = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# One record per table per compute capability
+# ---------------------------------------------------------------------------
+
+#: The one spelling of a compute capability, the one every ledger entry and every run
+#: record writes: ``8.6``. CuPy hands the same number out three ways (``"86"``, a
+#: major/minor pair, the string), and ``fastpath`` is the single place those are
+#: normalised. This module reads FILES and imports no kernel table (the
+#: environment-variable contract above), so it accepts the normal spelling and refuses
+#: the others BY NAME rather than keeping a second normaliser that could disagree with
+#: that one and decide a comparison by which reader answered first.
+CAPABILITY = re.compile(r"^[1-9][0-9]*\.[0-9]$")
+
+
+def record_capabilities(record: Any) -> Tuple[str, ...]:
+    """The compute capabilities a record's admitted rows were timed on, sorted.
+
+    Read off ``host``, which is what the ROWS stamped from the device they ran on, so
+    the answer is the card's and never the cutter's. Values come back AS RECORDED: a
+    malformed one is reported rather than dropped, because dropping it would let a
+    record carrying one good capability beside one unreadable one read as a record
+    about a single architecture. :func:`validate` is where that is refused.
+    """
+    hosts = record.get("host") if isinstance(record, Mapping) else None
+    if not isinstance(hosts, (list, tuple)):
+        return ()
+    # AN UNREADABLE ROW IS KEPT, NOT DROPPED. Dropping it would let a record carrying
+    # one good capability beside one unstamped host read as a single-architecture
+    # record, which is exactly the case :func:`validate` exists to refuse: it counts
+    # these, so the sentinel is what makes the count wrong and the refusal fire.
+    seen = set()
+    for host in hosts:
+        value = host.get("compute_capability") if isinstance(host, Mapping) else None
+        text = "" if value is None else str(value).strip()
+        seen.add(text or "<no compute capability stamped>")
+    return tuple(sorted(seen))
+
+
+def record_path(table: str, capability: str, root: Optional[str] = None) -> str:
+    """Where ``table``'s record for ONE compute capability lives. The one spelling.
+
+    The cutter writes this path and the consult looks it up, so a record cannot be
+    cut under a name nothing reads -- or, worse, under a name that is read for another
+    architecture. The report lands beside it, ``.json`` replaced by ``.report.txt``.
+
+    ``root`` defaults to the package directory, beside the kernel tables, which is
+    where the shipped records are. A capability outside :data:`CAPABILITY`'s spelling
+    is refused by name: Metal's environment is a toolchain pair rather than a
+    capability, and naming its record is a rule this function does not have.
+    """
+    if table not in TABLES:
+        raise ConsultRefused("unknown_table", f"{table!r} is not one of {TABLES}")
+    if not CAPABILITY.match(str(capability)):
+        raise ConsultRefused(
+            "unreadable_capability",
+            f"{capability!r} is not a compute capability spelled major.minor, which "
+            f"is how every record names the device its rows ran on")
+    if root is None:
+        root = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(root, f"{table}_kernels",
+                        f"timing_cc{str(capability).replace('.', '')}.json")
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
@@ -610,6 +685,15 @@ def validate(record: Any, expect_table: Optional[str] = None) -> None:
     if not isinstance(record.get("recorded_utc"), str) or not _UTC.match(
             record["recorded_utc"]):
         raise _malformed(f"recorded_utc is {record.get('recorded_utc')!r}")
+    capabilities = record_capabilities(record)
+    if len(capabilities) != 1 or not CAPABILITY.match(capabilities[0]):
+        raise RecordRefused(
+            "host_names_no_single_capability",
+            f"the admitted rows name {list(capabilities)} as the compute capability "
+            f"they ran on, and ONE RECORD PRICES ONE ARCHITECTURE: a record naming "
+            f"none cannot say which architecture its ratios describe, and one naming "
+            f"two pooled two architectures' kernels into a single number -- the number "
+            f"a veto is read off")
     route = record.get("route")
     missing = route_facts_missing(route)
     if missing:
@@ -735,7 +819,8 @@ def _entry_evidence(record: Mapping[str, Any], entry: Mapping[str, Any],
     return evidence
 
 
-def consult(record: Optional[Mapping[str, Any]], *, table: str, candidate: str,
+def consult(record: Optional[Mapping[str, Any]], *, table: str,
+            capability: Optional[str], candidate: str,
             displaces: Sequence[str], run_shape: Mapping[str, Any], bracketed: bool,
             mode: str, repair_route: Optional[Mapping[str, Any]],
             subject_sha256: Optional[Mapping[str, str]],
@@ -748,6 +833,13 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str, candidate: str,
     product knows both labels (``_superseded_by_a_longer_span``'s candidates). The
     run shape is ``fastpath._run_shape``'s dict and ``bracketed`` is whether the
     candidate's seam carries the deposit-repair bracket on this run.
+
+    ``capability`` is the compute capability of the device this plan will run on, in
+    the one spelling a record names (``8.6``). It is REQUIRED and it is COMPARED, not
+    normalised: a record prices the architecture its rows ran on and no other, so a
+    capability that is not the record's answers ``no_record``, and so does a device
+    whose capability could not be read (``None``) -- a run that cannot say which
+    architecture it is on may not be priced from a card it may not be.
 
     ``repair_route`` is the LIVE route the bracket will take, as
     :data:`ROUTE_FACTS` spells it, and ``subject_sha256`` the live emitter digests
@@ -784,6 +876,20 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str, candidate: str,
     if record["table"] != table:
         return answer("no_record", "record_is_for_another_table",
                       evidence={"record_table": record["table"]})
+    # THE ARCHITECTURE IS A BARRIER, like the repair route and the emitters below it:
+    # the ratio a record carries was measured on one card's instruction set and
+    # occupancy, and applying it to another is a false veto waiting to happen. An
+    # unread device is treated as the mismatch it might be.
+    recorded_capabilities = record_capabilities(record)
+    if capability is None:
+        return answer("no_record", "capability_unread",
+                      evidence={"record_capability": list(recorded_capabilities),
+                                "record_sha256": record.get(DIGEST_FIELD)})
+    if list(recorded_capabilities) != [str(capability)]:
+        return answer("no_record", "record_is_for_another_capability",
+                      evidence={"record_capability": list(recorded_capabilities),
+                                "live_capability": str(capability),
+                                "record_sha256": record.get(DIGEST_FIELD)})
     recorded = record["route"]
     # A BRACKETED KEY IS ASKED FOR THE WHOLE PROGRAM, A CLEAN ONE FOR THE DIGEST.
     # Most of a bracketed number IS the bracket, and one digest runs more than one
@@ -855,7 +961,10 @@ def consult(record: Optional[Mapping[str, Any]], *, table: str, candidate: str,
 
 
 def consult_path(path: Optional[str], **question: Any) -> Verdict:
-    """:func:`consult` against the record at ``path``.
+    """:func:`consult` against the record at ``path``, which is :func:`record_path`'s.
+
+    The question (``capability`` among it) travels through untouched, so the file this
+    opens and the device the record is compared against are stated by the same caller.
 
     In mode ``span`` the path is never opened. In mode ``measured`` a path that does
     not exist is ``no_record`` -- a table with no record yet is today's behaviour --

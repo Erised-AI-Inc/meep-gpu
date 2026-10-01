@@ -102,7 +102,7 @@ does not time.
 Usage::
 
     # laptop, no CUDA, no Triton — the legs that do not need a device
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/probe_triton_folded_fused_magnetic_pair.py --no-device \\
         --out parity/meep_gpu/results/<fresh-dir>/no_device.json
 

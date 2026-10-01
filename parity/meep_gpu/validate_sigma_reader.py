@@ -11,7 +11,7 @@ Usage (the patched env's own python)::
       python -u \
       parity/meep_gpu/validate_sigma_reader.py
 
-Rule 7: one flushed line per check, exit nonzero on any failure.
+Progress reporting: one flushed line per check, exit nonzero on any failure.
 """
 
 from __future__ import annotations

@@ -57,7 +57,7 @@ SOURCE_MANIFEST_ENV = "MEEP_GPU_GATE_SOURCE_MANIFEST"
 # The Metal driver-route gate is the second entry, for a different reason: its
 # ``--out`` is a CAMPAIGN LEG directory holding ``gate.json`` beside
 # ``cases.jsonl``, ``controls.jsonl``, ``summary.json`` and ``progress.log``, because
-# rule 7 requires each row on disk as it lands and a single artifact file cannot
+# progress reporting requires each row on disk as it lands and a single artifact file cannot
 # carry that.
 DIRECTORY_OUTPUT_ARTIFACTS = {"gate_metal_whole_step.py": "whole_step.json",
                               "gate_dispatch_metal_route.py": "gate.json"}

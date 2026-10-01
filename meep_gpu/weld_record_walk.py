@@ -65,6 +65,13 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
 
+#: The per-capability run container, spelled here rather than imported: this module is
+#: a pure classifier over a loaded record and imports nothing from the package, so a
+#: ledger can be walked in a checkout where the engine will not import.
+#: ``test_weld_record_walk.py`` asserts this equals ``fastpath.RUNS``, so the two
+#: cannot drift apart.
+RUNS = "runs"
+
 __all__ = [
     "Found", "discover", "census", "dotted", "rules_that_fired",
     "TIER_RAW", "TIER_CODE", "TIER_DEVICE", "UNCLASSIFIED", "RULE_REASONS",
@@ -225,6 +232,15 @@ RULE_REASONS: Dict[str, str] = {
         "THE PREMISE IS ASSERTED: the block names its path, and premise_violations "
         "requires that path to be absent from this checkout, so the day the file is "
         "committed the exclusion expires loudly instead of covering a live digest.",
+    "run_bound_digest":
+        "a bound_sha256 inside runs[<capability>]: the digest of the digests that run "
+        "certified, which is what decides whether that capability's evidence still "
+        "describes the shipped bytes. It names no file, so there is nothing to "
+        "recompute from a checkout; it is compared against the ENTRY by "
+        "fastpath.live_capabilities, and the weld contracts assert that every cited "
+        "entry has at least one live capability. A run whose bound no longer matches is "
+        "history by design — the capability stops being admitted — so this is not "
+        "delegated coverage waiting on a re-cut.",
     "artifact_or_log_digest":
         "an artifact_sha256 or log_sha256: the digest of a run artifact or log under the "
         "gitignored parity/meep_gpu/results/ tree. It cannot be recomputed from a clean "
@@ -431,6 +447,15 @@ def _classify(trail: Tuple[Any, ...], parent: Any) -> Tuple[str, Optional[str],
     nearest = _nearest_sha_key(trail)
     if nearest in ("artifact_sha256", "log_sha256"):
         return "artifact_or_log_digest", None, None, None
+
+    # --- the per-capability run's bound: a digest OF DIGESTS, naming no file ---
+    # It is what decides whether that run's evidence still describes the bytes the
+    # entry pins, so it is compared against the entry rather than against a file, and
+    # a run whose bound no longer matches is history BY DESIGN — the capability simply
+    # stops being live. Checked by ``fastpath.live_capabilities`` and by the weld
+    # contracts' liveness clause, not by this walk, and not delegated for that reason.
+    if len(trail) >= 3 and trail[-1] == "bound_sha256" and trail[-3] == RUNS:
+        return "run_bound_digest", None, None, None
 
     # --- the checked maps: <map key> IS the path ---
     if len(trail) >= 2 and isinstance(trail[-2], str) and isinstance(leaf, str):

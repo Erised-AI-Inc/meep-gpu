@@ -25,7 +25,7 @@ IDENTICAL. Only which pointer is bound changes, and the binding is
 callable and never reaches for a field itself; ``PolarizationState.update``
 (dispersion.py:658) takes it the same way.
 
-``coverage.py`` is another session's file this round, so the clause is RESTATED
+``coverage.py`` is a shared module this file does not edit, so the clause is RESTATED
 here with that one clause inverted rather than weakened there — the house
 pattern ``folded_constitutive_coverage`` and ``nonlinear_update_e``'s
 ``_nonlinear_grid_reasons`` established. The incumbent's refusals all stay true.
@@ -81,7 +81,7 @@ from typing import Any, List, Optional
 from . import coverage as _coverage
 
 #: The shared clause builders this predicate composes from, named as data so the
-#: laptop test can assert every one still exists in the other session's file. A
+#: laptop test can assert every one still exists in the shared ``coverage.py``. A
 #: rename in ``coverage.py`` then fails at the merge bar instead of silently
 #: dropping a clause here.
 SHARED_CLAUSES = (

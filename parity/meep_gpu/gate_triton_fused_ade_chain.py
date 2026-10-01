@@ -59,13 +59,13 @@ CuPy computes its kernel cache key ABOVE the seam where the ``-ftz=true`` strip
 installs, so a cache shared between the two policies serves flushed binaries under
 the keeping record's name.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands, and
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands, and
 the artifact re-written (provenance-stamped) after every leg.
 
 Usage::
 
     # laptop, no CUDA and no Triton — the legs that need no device
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/gate_triton_fused_ade_chain.py --no-device \\
         --out parity/meep_gpu/results/<fresh-dir>/no_device.json
 

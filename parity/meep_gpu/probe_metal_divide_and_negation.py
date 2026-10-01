@@ -56,7 +56,7 @@ THE FOUR LEGS:
    the loop runs in float32; this leg MEASURES it, because a remembered fact about
    a dependency is a hypothesis.
 
-Artifacts: one JSON plus a JSONL row per case, written after every case (rule 7).
+Artifacts: one JSON plus a JSONL row per case, written after every case (progress reporting).
 """
 
 from __future__ import annotations

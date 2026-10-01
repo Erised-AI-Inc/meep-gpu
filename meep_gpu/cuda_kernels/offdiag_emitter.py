@@ -447,3 +447,58 @@ def shipped_kernel_names(source: str) -> Any:
     import re  # noqa: PLC0415 - stdlib, imported at the one call site
 
     return set(re.findall(r'extern "C" __global__ void (\w+)\(', source))
+
+
+def offdiag_launch_source(row_mask: Sequence[int]) -> str:
+    """The text NVRTC compiles for the single: :func:`offdiag_source` in the register view.
+
+    TWO TEXTS PER ROW MASK, ONE CERTIFIED. :func:`offdiag_source` is the certified
+    statement form: the text the fused products lift, the NumPy evaluator executes and
+    :func:`corpus_digest` hashes. This is the same text through the port rule,
+    ``own_cell_hoist.hoisted_kernel_code``: every own-cell word loaded into a register
+    before the first store, the certified ``constitutive_apply`` stepping the registers,
+    the write-back in the certified store order. The rule issues it only when its inverse
+    returns :func:`offdiag_source` byte for byte. ``offdiag_source`` is looked up when
+    this is called, so a harness that rewrites the certified text reaches this one too.
+
+    Measured on one RTX A6000 before it landed (a kernel screen, 2026-09-28), all six
+    rows live on ``pml_3d``: 0 differing words at 512,000, 2,097,152 and 7,077,888
+    cells, 1.91x-2.06x per launch, 40 registers before and after.
+    """
+    from . import own_cell_hoist  # noqa: PLC0415 - stdlib-only sibling, one call site
+
+    mask = normalized_row_mask(row_mask)
+    certified = offdiag_source(mask)
+    # ONE DERIVATION PER CERTIFIED TEXT, NOT PER LAUNCH. The forward, its inverse and the
+    # hazard check cost about 0.9 ms of host time a call, and ``_get_kernel`` asks for this
+    # text on every launch (it rebuilds its key per call). Keyed on the certified text
+    # itself, so a harness that rewrites that text is never served another text's hoist;
+    # bounded by the distinct certified texts one process emits.
+    issued = _LAUNCH_TEXTS.get(certified)
+    if issued is None:
+        issued = own_cell_hoist.hoisted_kernel_code(
+            certified, KERNEL_NAME, f"offdiag_source({mask!r})")
+        _LAUNCH_TEXTS[certified] = issued
+    return issued
+
+
+#: The launch texts already issued by :func:`offdiag_launch_source`, keyed on the certified
+#: text each was derived from.
+_LAUNCH_TEXTS: Dict[str, str] = {}
+
+
+def launch_corpus_digest() -> str:
+    """One sha256 over every text NVRTC can be asked to compile for the single.
+
+    :func:`corpus_digest` hashes the CERTIFIED texts, which the hoist leaves unchanged,
+    so it cannot see an edit to the port rule that moves the compiled bytes. The gate
+    compiles four of the 63 launch texts; this digest, recorded beside
+    ``emitter_corpus_digest`` when the gate runs, is what the other 59 rest on.
+    """
+    import hashlib  # noqa: PLC0415 - stdlib, imported at the one call site
+
+    digest = hashlib.sha256()
+    for mask in LIVE_ROW_MASKS:
+        digest.update(repr(mask).encode("ascii"))
+        digest.update(offdiag_launch_source(mask).encode("utf-8"))
+    return digest.hexdigest()

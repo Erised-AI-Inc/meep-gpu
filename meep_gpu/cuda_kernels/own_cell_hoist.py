@@ -23,6 +23,21 @@ THE INVERSE IS ANCHORED, NOT A POST-PASS: one load block right after the decode 
 statements are exactly the expected ones in order, one write-back block right before the
 closing brace, one call line per component, each exactly once, each refusing by name.
 
+AN EMITTED SINGLE: THE OFF-DIAGONAL ``update_E`` (``update_E_pml_real_offdiag``,
+'cuda:off-diagonal'). Its text is not a constant to spell by hand: ``offdiag_emitter``
+emits one certified statement-form text per row mask, and the lifters, the NumPy
+evaluator and the emitter's corpus digest all read that text. :func:`hoisted_kernel_code`
+is the forward of the inverse -- the same three anchors, the spelling of the two singles
+Round B shipped -- and ``offdiag_emitter.offdiag_launch_source`` hands its result to
+NVRTC. It returns nothing the inverse does not map back to the certified text byte for
+byte, so the off-diagonal single keeps the singles' contract: what every lifter reads is
+the inverse of what compiles. Its table row is ``update_E_pml_real``'s: the same helper
+(``offdiag_emitter.PRELUDE``'s ``constitutive_apply`` is welded to the certified one), the
+same prefixes, registers and call form. The folded and dispersive off-diagonal singles are
+NOT in the table: they have emitters of their own (``folded_offdiag_kernels``,
+``dispersive_offdiag_update_e``) and entry points of their own, and the rule refuses them
+by name.
+
 CUPY-FREE BY CONSTRUCTION: ``conductive_bfast_fused_hd_pair`` reads the certified text by
 parsing ``constitutive_kernels.py`` rather than importing it, so the inverse lives where
 both kinds of lifter can reach it.
@@ -33,7 +48,7 @@ import re
 from typing import Dict, List, Tuple
 
 __all__ = ["KERNELS", "load_block", "writeback_block", "unhoisted_kernel_code",
-           "assert_helper_reads_before_it_stores"]
+           "hoisted_kernel_code", "assert_helper_reads_before_it_stores"]
 
 _DECODE_END = "    int i = idx / (ny * nz);\n"
 _AXES = ("x", "y", "z")
@@ -46,7 +61,26 @@ KERNELS: Dict[str, Tuple] = {
     "update_E_pml_real": ("constitutive_apply", "E", "f_w_E", "e", "w", None, "    "),
     "step_B_pml_real": ("pml_apply", "B", "fu_B", "b", "fu", None, "        "),
     "step_D_pml_real": ("pml_apply", "D", "fu_D", "d", "fu", None, "        "),
+    # Emitted per row mask and hoisted at the launch door by hoisted_kernel_code: the row
+    # of update_E_pml_real, whose helper, prefixes and call form it shares.
+    "update_E_pml_real_offdiag": ("constitutive_apply", "E", "f_w_E", "e", "w", None, "    "),
 }
+
+#: The comments the forward spelling writes, per helper -- the spelling of the two
+#: register-view singles in ``constitutive_kernels.py``. Comments only: the inverse skips
+#: comment lines in both blocks.
+_LOAD_COMMENT = {
+    "constitutive_apply": (
+        "    // THE OWN-CELL HOIST (register view): every word this thread reads at idx,\n"
+        "    // loaded before the first store. The certified constitutive_apply steps the\n"
+        "    // registers (f = &field, fw = &aux, idx = 0); the write-back stores them.\n"),
+    "pml_apply": (
+        "    // THE OWN-CELL HOIST (register view): the two words this thread's pml_apply\n"
+        "    // reads at idx, loaded before the first store. The certified pml_apply steps\n"
+        "    // the registers (f = &field, fu = &fu, idx = 0); the write-back stores them.\n"),
+}
+_WRITEBACK_COMMENT = ("    // The write-back, in the certified store order "
+                      "(auxiliary, then field).\n")
 
 
 def load_block(kernel: str) -> List[str]:
@@ -175,3 +209,58 @@ def unhoisted_kernel_code(code: str, kernel: str, name: str) -> str:
                 raise AssertionError(
                     f"{name} still names the hoisted register {r}{a} after the inverse")
     return head + marker + tail
+
+
+def hoisted_kernel_code(code: str, kernel: str, name: str) -> str:
+    """The register view of a certified statement-form text: the forward of the inverse.
+
+    For a single whose certified text is EMITTED rather than spelt as a constant (the
+    off-diagonal ``update_E``, one text per row mask) this is how the hoisted text is
+    issued. Three anchored edits and nothing else, each exactly once and each refusing by
+    name: the load block after the decode, one register-view call per component, the
+    write-back before the closing brace. The result is returned only if
+    :func:`unhoisted_kernel_code` -- which runs the hazard check on the helper first --
+    maps it back to ``code`` byte for byte.
+    """
+    if kernel not in KERNELS:
+        raise ValueError(f"kernel must be one of {sorted(KERNELS)}, got {kernel!r}")
+    helper, field, aux, freg, areg, source, indent = KERNELS[kernel]
+    marker = f'extern "C" __global__ void {kernel}('
+    if code.count(marker) != 1:
+        raise AssertionError(f"{name} does not declare {kernel} exactly once")
+    head, tail = code.split(marker, 1)
+    if not tail.endswith("\n}\n"):
+        raise AssertionError(f"{name}: {kernel} is not the last thing in its text; the "
+                             f"write-back has no anchor")
+    if tail.count(_DECODE_END) != 1:
+        raise AssertionError(f"{name} decodes i {tail.count(_DECODE_END)} times, not once; "
+                             f"the load block has no anchor")
+    # 1. the load block, right after the decode
+    tail = tail.replace(_DECODE_END, _DECODE_END + "\n" + _LOAD_COMMENT[helper]
+                        + "".join(line + "\n" for line in load_block(kernel)), 1)
+    # 2. one certified call per component, rewritten to the register view
+    for a in _AXES:
+        certified = f"{indent}{helper}({field}{a}, {aux}{a}, idx, "
+        lines = [line for line in tail.splitlines() if line.startswith(certified)]
+        if len(lines) != 1 or tail.count(lines[0] + "\n") != 1:
+            raise AssertionError(
+                f"{name} carries {len(lines)} lines starting {certified!r}, not one; the "
+                f"hoist rewrites exactly one statement per component")
+        hoisted = lines[0].replace(certified, f"{indent}{helper}(&{freg}_{a}, &{areg}_{a}, 0, ", 1)
+        if source is not None:
+            read = f"0, {source[1]}{a}[idx], "
+            if hoisted.count(read) != 1:
+                raise AssertionError(
+                    f"{name}'s {field}{a} statement does not read its source as "
+                    f"{source[1]}{a}[idx]: {lines[0]!r}")
+            hoisted = hoisted.replace(read, f"0, {source[0]}_{a}, ", 1)
+        tail = tail.replace(lines[0] + "\n", hoisted + "\n", 1)
+    # 3. the write-back, before the closing brace
+    tail = (tail[:-len("}\n")] + "\n" + _WRITEBACK_COMMENT
+            + "".join(line + "\n" for line in writeback_block(kernel)) + "}\n")
+    issued = head + marker + tail
+    if unhoisted_kernel_code(issued, kernel, name) != code:
+        raise AssertionError(
+            f"{name}: the inverse does not map the hoisted text back to the certified text "
+            f"byte for byte, so the lifters would not read what compiles; nothing is issued")
+    return issued

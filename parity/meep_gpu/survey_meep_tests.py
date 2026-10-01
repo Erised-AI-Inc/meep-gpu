@@ -45,7 +45,7 @@ Reused verbatim from the examples harness so the two corpora stay comparable:
 long enough for the source to radiate" and one definition of "how are two field
 volumes compared" in this directory, not several.
 
-Rule 7: every stage prints one flushed line per case and appends its row to the JSONL
+Progress reporting: every stage prints one flushed line per case and appends its row to the JSONL
 as it lands; children append phase markers to a shared progress log, so a run sitting
 inside a slow lift is distinguishable from a hung one by ``tail`` alone.
 

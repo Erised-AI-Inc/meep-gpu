@@ -52,7 +52,7 @@ PATH's arithmetic and is backend-independent. Three things are this probe's own:
    ``covers_folded_offdiag_composition``), asked through the census's own CuPy-backend
    proxy, so no case measures a configuration the shipped product would refuse.
 
-Host-only: NumPy, no CuPy. Rule 7: one flushed line per case, one fsynced JSONL row.
+Host-only: NumPy, no CuPy. Progress reporting: one flushed line per case, one fsynced JSONL row.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

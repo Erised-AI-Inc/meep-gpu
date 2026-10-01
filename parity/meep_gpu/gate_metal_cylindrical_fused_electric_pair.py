@@ -63,7 +63,7 @@ clear dropped, the seam reading the pre-post-add word) are scored on the m = 0 c
 the two arm swaps are scored on both, the in-kernel ``4.0f * dtdx`` spelling is a
 CONFIRMED null, and the deposit leg runs on the m = 0 row as well as the |m| = 1 one.
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

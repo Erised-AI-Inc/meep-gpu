@@ -34,7 +34,7 @@ to the two-launch reference AT EVERY BLOCK SIZE, which is precisely where the
 failure modes distinguishable: a device disagreement with these legs green is a
 kernel defect, and with these legs red is a design defect.
 
-Rule 7: one flushed line per leg, and the JSON is written and fsynced at the end
+Progress reporting: one flushed line per leg, and the JSON is written and fsynced at the end
 of every leg group rather than once at exit.
 
     PYTHONPATH=. python -u \

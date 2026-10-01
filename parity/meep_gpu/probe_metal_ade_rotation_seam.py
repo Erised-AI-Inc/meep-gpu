@@ -53,7 +53,7 @@ LEG 4  binding_fitness
     SIX (``stochastic_emitter*.py``), and 6 + 4x6 = 30 pointers is a different
     question from 5.
 
-Rule 7: one flushed line per leg-case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per leg-case, every row appended and fsynced as it lands.
 
 Usage (from the repository root)::
 

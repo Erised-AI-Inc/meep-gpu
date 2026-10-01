@@ -892,7 +892,7 @@ def test_the_fill_addresses_word_pairs_and_the_near_source_is_cell_two(fc):
                                   "folded_beta_bloch_pml_curl_step"])
 def test_the_complex_curls_never_spell_a_negated_addend_with_unary_minus(fc, name):
     """Triton 3.1.0 lowers ``-x`` as ``0.0 - x``, which canonicalizes ±0 addends
-    to +0 — MEASURED REACHABLE at the driver level (jobs 2343/2345). The helpers
+    to +0 — MEASURED REACHABLE at the driver level. The helpers
     carry the ``(a*b) * -1.0`` spelling; the kernels must not reintroduce one."""
     source = kernel_source(name)
     for line in source.splitlines():
@@ -2424,7 +2424,7 @@ def test_the_extreme_fill_needle_stays_FINITE_through_the_whole_path():
     assert magnitude == float(gate.FILL_NEEDLE_MAGNITUDE)
     assert magnitude > 1e20, "the extreme-magnitude needle class is gone"
 
-    # (3) the signed-zero and subnormal classes are untouched — job 2343 proved
+    # (3) the signed-zero and subnormal classes are untouched — a device run proved
     # the signed-zero class reachable at driver level, so they are load-bearing.
     words = [np.float32(value) for pair in gate.FILL_NEEDLE_PAIRS
              for value in pair]

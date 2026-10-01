@@ -83,7 +83,7 @@ imported rather than copied: this gate widens that gate's subject to a configura
 did not drive, and a second copy of the mutation table would be a second place for the
 same needles to go stale.
 
-Rule 7: one flushed line per case; every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case; every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

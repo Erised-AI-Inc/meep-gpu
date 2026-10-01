@@ -253,7 +253,7 @@ def _get_kernel(row_mask):
     code map per call: it is part of the key, so it has to exist before there is a
     key to miss on.
     """
-    code = offdiag_emitter.offdiag_source(row_mask)
+    code = offdiag_emitter.offdiag_launch_source(row_mask)
     key = compile_cache.kernel_cache_key(KERNEL_NAME, False, _COMPILE_OPTIONS, code)
     return compile_cache.get_or_compile(
         key, lambda: cp.RawKernel(code, KERNEL_NAME, options=_COMPILE_OPTIONS))

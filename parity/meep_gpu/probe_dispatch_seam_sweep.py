@@ -33,7 +33,7 @@ ON against the kill switch, exactly as ``probe_dispatch_corpus_byteparity.py``
 does — so a mutation the pass instrument might miss still has to survive a
 word-for-word comparison.
 
-Rule 7: one flushed line per configuration, one JSONL row appended as it lands.
+Progress reporting: one flushed line per configuration, one JSONL row appended as it lands.
 
 Run::
 

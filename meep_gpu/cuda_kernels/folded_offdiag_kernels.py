@@ -88,7 +88,7 @@ claim: the sibling track records the same reading as an ARRAY-PATH FINDING
 (``triton_kernels/folded_offdiag_update_e.py``, "ARRAY-PATH FINDING"), because on
 a folded PERIODIC axis MEEP's ghost past the stored top is the parity-weighted
 image of ``_far_reflect_rows``' row and the coupling does not ask for it. That
-finding belongs to the sessions that own ``stepping.py`` and ``driver.py``. THIS
+finding belongs to ``stepping.py`` and ``driver.py``. THIS
 KERNEL REPRODUCES THE ARRAY PATH, byte for byte, either way.
 
 =============================================================================

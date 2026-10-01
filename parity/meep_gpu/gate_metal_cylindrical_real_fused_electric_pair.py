@@ -71,7 +71,7 @@ WHAT THE GATE REFUSES TO INFER
   way, into a neighbouring vector — are armed as must-catch, which is what stops the
   null reading as "offsets do not matter here".
 
-Rule 7: one flushed line per case, every row appended and fsynced as it lands.
+Progress reporting: one flushed line per case, every row appended and fsynced as it lands.
 """
 
 # Derived from MEEP (https://github.com/NanoComp/meep).

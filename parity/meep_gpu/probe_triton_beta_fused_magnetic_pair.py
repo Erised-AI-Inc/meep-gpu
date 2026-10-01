@@ -88,7 +88,7 @@ with ``strict=True`` before the first device compile.
 
 Usage::
 
-    KMP_DUPLICATE_LIB_OK=TRUE PYTHONPATH=. python -u \\
+    PYTHONPATH=. python -u \\
         parity/meep_gpu/probe_triton_beta_fused_magnetic_pair.py --no-device
 """
 

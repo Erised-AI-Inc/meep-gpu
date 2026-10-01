@@ -29,8 +29,13 @@ from __future__ import annotations
 import marshal
 import pathlib
 import struct
+import sys
 
 PACKAGE = pathlib.Path(__file__).parent
+#: Only this interpreter's caches can be served to it; another version's are not read.
+#: The trailing ``*`` keeps the optimisation-level caches (``.opt-1``, ``.opt-2``) that
+#: ``python -O`` serves.
+CACHES = f"__pycache__/*.{sys.implementation.cache_tag}*.pyc"
 
 
 def _strings(code, out):
@@ -42,11 +47,19 @@ def _strings(code, out):
     return out
 
 
+def _optimisation_level(pyc):
+    """0 for ``name.<tag>.pyc``, N for ``name.<tag>.opt-N.pyc``."""
+    return int(pyc.name.split(".opt-")[1].split(".")[0]) if ".opt-" in pyc.name else 0
+
+
+def _caches():
+    """This interpreter's caches, less pytest's assertion-rewritten ones."""
+    return {pyc for pyc in PACKAGE.rglob(CACHES) if "-pytest-" not in pyc.name}
+
+
 def _served_caches():
     """Every (pyc, source) CPython would serve without recompiling."""
-    for pyc in sorted(PACKAGE.rglob("__pycache__/*.pyc")):
-        if "-pytest-" in pyc.name:
-            continue                      # assertion-rewritten by pytest, by design
+    for pyc in sorted(_caches()):
         source = pyc.parent.parent / (pyc.name.split(".")[0] + ".py")
         if not source.exists():
             continue                      # a cache for a deleted module is not served
@@ -65,7 +78,6 @@ def _served_caches():
 
 def test_no_served_bytecode_cache_disagrees_with_its_source():
     wrong = []
-    checked = 0
     for pyc, source in _served_caches():
         try:
             cached = marshal.loads(pyc.read_bytes()[16:])
@@ -76,22 +88,30 @@ def test_no_served_bytecode_cache_disagrees_with_its_source():
             # so five CUDA kernel modules reported a mismatch that did not exist --
             # a false positive that took longer to clear than the defect this test
             # was written for. Compile the source as PYTHON would at import.
+            # AT THE CACHE'S OWN OPTIMISATION LEVEL: an ``.opt-1`` cache has no asserts
+            # and an ``.opt-2`` one no docstrings, so a level-0 compile would differ.
             fresh = compile(source.read_text(encoding="utf-8"), str(source), "exec",
-                            dont_inherit=True)
+                            dont_inherit=True, optimize=_optimisation_level(pyc))
         except Exception as exc:          # noqa: BLE001
             wrong.append(f"{pyc.relative_to(PACKAGE)}: unreadable ({exc!r})")
             continue
-        checked += 1
         if sorted(_strings(cached, [])) != sorted(_strings(fresh, [])):
             wrong.append(
                 f"{pyc.relative_to(PACKAGE)} is SERVED but its string constants differ "
                 f"from a fresh compile of {source.name}. `touch {source}` to force a "
                 f"recompile; the source itself is fine.")
     assert not wrong, wrong
-    # A run with no caches at all (a fresh clone, or PYTHONDONTWRITEBYTECODE) checks
-    # nothing and must not read as a pass over the whole package. Zero is legitimate, so
-    # this records rather than asserts a floor -- but a scan that silently found nothing
-    # while caches exist on disk is a broken scan.
-    if any(PACKAGE.rglob("__pycache__/*.pyc")):
-        assert checked or not list(_served_caches()), (
-            "caches exist on disk but the scan checked none of them")
+
+
+def test_the_scan_reaches_every_cache_this_interpreter_wrote():
+    """The pattern above is the scan's whole reach, so it is checked against a listing.
+
+    A run with no caches at all (a fresh clone, or PYTHONDONTWRITEBYTECODE) checks
+    nothing, which is legitimate. A pattern that misses caches this interpreter wrote is
+    not: the scan above would pass while serving caches it never read.
+    """
+    tag = sys.implementation.cache_tag
+    on_disk = {pyc for pyc in PACKAGE.rglob("*.pyc")
+               if pyc.parent.name == "__pycache__" and pyc.name.split(".")[1] == tag}
+    assert on_disk == _caches(), sorted(
+        str(pyc.relative_to(PACKAGE)) for pyc in on_disk ^ _caches())

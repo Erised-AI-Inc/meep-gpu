@@ -80,7 +80,7 @@ legs plus this gate are the only arbiters.
 
 Usage::
 
-    KMP_DUPLICATE_LIB_OK=TRUE MEEP_GPU_SUBNORMAL_POLICY=flush python -u \\
+    MEEP_GPU_SUBNORMAL_POLICY=flush python -u \\
       parity/meep_gpu/gate_metal_offdiag.py \\
       --out parity/meep_gpu/results/metal_offdiag_2026-08-15/gate.json
 """

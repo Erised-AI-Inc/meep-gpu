@@ -290,7 +290,7 @@ def drive_rows(name: str) -> Dict[str, Dict[str, Any]]:
 
 
 def say(message: str) -> None:
-    """Rule 7: a flushed line per unit of work, on the machine that owns the run."""
+    """Progress reporting: a flushed line per unit of work, on the machine that owns the run."""
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
 
 
@@ -2385,7 +2385,7 @@ def _campaign(args: Any, cases: Sequence[str], module: Any,
                            args.memory_budget_bytes,
                            monitors_mode=args.monitors)
         except Exception as error:  # noqa: BLE001
-            # A CASE THAT DIES DOES NOT TAKE THE CAMPAIGN WITH IT. Rule 7's other
+            # A CASE THAT DIES DOES NOT TAKE THE CAMPAIGN WITH IT. Progress reporting's other
             # half: every row lands as it is measured, so a failure eight cases in
             # keeps the seven before it.
             row = {"case": case, "drive_table": args.drive_table,

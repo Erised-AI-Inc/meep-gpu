@@ -1782,7 +1782,7 @@ def covers_real_pml_offdiag_constitutive(fields: Any, pml: Any, grid: Any) -> tu
             # axis at install, and ``_validated_offdiagonal_rows`` (fields.py:
             # 1262-1310) demonstrably installs rows unchanged on folded grids with
             # fold-equivalence measured 8.3e-13..4.7e-12. The stale docstring
-            # belongs to the sessions that own those files; the refusal here is
+            # belongs in those files; the refusal here is
             # about the stored extent and the wall mask's mirror abstention.
             #
             # THE SECOND OF THE TWO FOLD REFUSALS, and it is not redundant with

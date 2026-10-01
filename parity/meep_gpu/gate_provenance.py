@@ -16,10 +16,34 @@ from a path, a cwd, a directory name, or a run's mtime.
 
 WHAT IT DOES NOT DO. It does not prove the kernel LAUNCHED — that is the launch
 counters' job, and the vacuous pass they catch is a different failure. It records
-which source produced the artifact, nothing more.
+which source produced the artifact, and — since 2026-09-30 — WHICH DEVICE ran it
+(:data:`DEVICE_KEY`), nothing more.
+
+WHY THE DEVICE IS STAMPED HERE, in the one place every track's save() already
+passes through, rather than in each gate. A weld's claim is about generated code
+for an ARCHITECTURE, so a per-capability certification record can only be keyed
+off a device the RUN recorded. Measured over the cited CUDA welds: 14 of them are
+bound to ``gate_cuda_fused_complex_pairs.py``, which writes no device of any kind
+(nor do ``gate_cuda_complex_offdiag_update_e.py`` and
+``gate_cuda_folded_offdiag_rowmask.py``), so their capability was not readable
+from their own artifacts and was being pooled out of OTHER families' legs by the
+campaign recorder's directory-wide survey — a weld inheriting a device it never
+named. One stamping point closes every such gate at once, whether or not it grows
+an ``environment`` block of its own, and ``rebind_cuda_welds.py`` reads it.
+
+WHAT THAT EDIT COSTS. This file is pinned by 2 Triton welds
+(``triton_dispersive_fused_pair_device_gate``, ``triton_fused_ade_state_device_gate``)
+and 3 Metal ones (``metal_complex_conductive_fused_pair_device_gate``,
+``metal_complex_no_pml_conductive_device_gate``,
+``metal_cylindrical_real_fused_magnetic_pair_device_gate``), so every edit here
+moves those five welds' bytes and owes them a re-gate. That is why the earlier
+Triton-only need went into ``triton_device_identity.py`` instead; this one is
+owed a re-gate on all three tracks anyway, which is what makes the shared home
+affordable now.
 
 Stdlib only, no NumPy, no CuPy, no Triton: it must answer inside a gate that has
-already refused, and on the laptop that is the merge bar.
+already refused, and on the laptop that is the merge bar. The device read keeps
+that rule by going through ``sys.modules`` — see :func:`device`.
 
 Usage, one line before the artifact is written::
 
@@ -42,6 +66,23 @@ DEFAULT_ROOTS: Sequence[str] = ("meep_gpu", "parity/meep_gpu")
 #: Where the imported-module digests land. Deliberately NOT "source_sha256":
 #: gates that curate their own binding list already own that name.
 IMPORTED_KEY = "imported_source_sha256"
+
+#: Where the live device lands. A THIRD DISTINCT KEY, and both of the names it is
+#: not are names a gate already owns:
+#:
+#: * NOT ``environment``. Most CUDA gates write ``probe.device_info()`` there, and
+#:   ``record_cuda_regate._stamps`` pools an eight-key signature of that block over
+#:   every payload in a campaign and REFUSES the campaign when two signatures
+#:   appear. A partial block written here would be a second signature, so stamping
+#:   into ``environment`` would make exactly the mixed campaigns this stamp exists
+#:   to serve unrecordable.
+#: * NOT ``provenance``. Two tracks already use that name for a curated source
+#:   digest map (``metal_gate_kit.provenance``), and the Triton folded gates write
+#:   a PATH STRING there, so there is no shape to merge a device into.
+#:
+#: The leaf names match ``probe_fused_kernel_bit_identity.device_info()`` so that a
+#: reader of either home reads the same keys.
+DEVICE_KEY = "stamped_device"
 
 #: the repository root — the directory the weld's repo-relative keys are measured from, so
 #: the keys here are byte-identical to the ones already in fingerprints.json.
@@ -96,9 +137,51 @@ def provenance(roots: Sequence[str] = DEFAULT_ROOTS) -> Dict[str, str]:
     return out
 
 
+def device() -> Dict[str, Any]:
+    """WHICH GPU this process has open: its name, compute capability and index.
+
+    ``sys.modules.get("cupy")`` RATHER THAN ``import cupy``, for this file's
+    standing reason: it is called from inside a gate that may already have refused,
+    and on the laptop that is the merge bar. The lookup returns the very module the
+    gate has been launching through — so the answer describes the device the run
+    actually used — and on a host with no CuPy it returns ``None`` without importing
+    anything, allocating anything or touching a device's state.
+
+    BOTH THE INDEX AND THE MASK are recorded because they are different facts:
+    ``CUDA_VISIBLE_DEVICES`` names which devices the process can see, and
+    ``getDevice()`` is the ordinal INSIDE that mask, so neither alone says which
+    card ran. Same pair, same reason, as ``triton_device_identity.device_identity``.
+
+    NEVER RAISES. An unreadable device is recorded under ``unreadable`` and the
+    artifact is still written: losing a completed device run to an identity read
+    would be the expensive failure, and a tool that cannot read a capability here
+    refuses by name (``rebind_cuda_welds``) rather than guessing one.
+    """
+    cupy = sys.modules.get("cupy")
+    if cupy is None:
+        return {"unreadable": "cupy is not imported in this process, so no CUDA "
+                              "device was open when this payload was written"}
+    try:
+        index = int(cupy.cuda.runtime.getDevice())
+        properties = cupy.cuda.runtime.getDeviceProperties(index)
+        name = properties["name"]
+        return {
+            "device_name": name.decode() if isinstance(name, bytes) else str(name),
+            "compute_capability": f"{properties['major']}.{properties['minor']}",
+            "device_index": index,
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        }
+    except Exception as exc:  # noqa: BLE001 - an unreadable device is recorded, not raised
+        return {"unreadable": repr(exc)}
+
+
 def stamp(payload: Dict[str, Any], roots: Sequence[str] = DEFAULT_ROOTS
           ) -> Dict[str, Any]:
-    """Record the imported bytes under :data:`IMPORTED_KEY`, and hand back payload.
+    """Record the imported bytes, the live device and the verdict; hand back payload.
+
+    Three facts, three keys: :data:`IMPORTED_KEY`, :data:`DEVICE_KEY` and
+    :data:`VERDICT_KEY`. Each is written where nothing else writes, and each has its
+    own merge rule below, because what "re-stamping" means differs per fact.
 
     A DISTINCT KEY, not ``source_sha256``. Several gates already build a
     ``source_sha256`` of their own — a curated list of the files that gate means
@@ -140,6 +223,28 @@ def stamp(payload: Dict[str, Any], roots: Sequence[str] = DEFAULT_ROOTS
     merged = dict(existing)
     merged.update(fresh)
     payload[IMPORTED_KEY] = merged
+
+    # THE DEVICE, read live. The FIRST READABLE answer is kept: a gate saves more
+    # than once, and a later save inside a gate that has since refused can fail a
+    # read the first one made — so an unreadable record is retried and a readable
+    # one is never replaced. A CHANGED device raises for the same reason a changed
+    # digest does: the measurements on either side of the move were taken on
+    # different hardware, and a weld is a claim about generated code for ONE
+    # architecture. Only the card and the capability are compared; the ordinal
+    # inside the mask is not a different device.
+    recorded = payload.get(DEVICE_KEY)
+    fresh_device = device()
+    if not isinstance(recorded, dict) or not recorded.get("compute_capability"):
+        payload[DEVICE_KEY] = fresh_device
+    else:
+        moved = {key: (recorded.get(key), fresh_device[key])
+                 for key in ("device_name", "compute_capability")
+                 if key in fresh_device and fresh_device[key] != recorded.get(key)}
+        if moved:
+            raise RuntimeError(
+                f"the device changed DURING this run ({moved}): every measurement "
+                f"taken on either side of the move describes a different "
+                f"architecture, and this payload can only be a claim about one.")
 
     # THE VERDICT, normalised beside the gate's own spelling. Overwritten freely
     # rather than merged: a payload legitimately moves from unreadable to

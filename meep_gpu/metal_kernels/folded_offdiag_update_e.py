@@ -243,8 +243,8 @@ immediately unless ``fields.has_nonlinearity``, so an off-diagonal folded run wi
 live far face is NOT refused; nor is it pinned
 (``test_tensor_epsilon.py::test_tensor_fold_equivalence_is_exact`` trims the far row
 with ``[:-1]``, test_tensor_epsilon.py:554). THIS KERNEL REPRODUCES THE ARRAY PATH,
-byte for byte, either way. The finding belongs to the sessions that own
-``stepping.py`` and ``driver.py``, and the Triton twin records it at
+byte for byte, either way. The finding belongs to ``stepping.py`` and
+``driver.py``, and the Triton twin records it at
 ``triton_kernels/folded_offdiag_update_e.py:276-299``.
 
 It is UNREACHABLE ON EVERY MEASURED CORPUS ROW — a fact INHERITED from the

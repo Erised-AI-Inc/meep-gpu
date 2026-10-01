@@ -130,7 +130,7 @@ claim's shape is the same and the artifact says so.
 
 Usage (this host is both target and oracle; no device is needed at all)::
 
-    KMP_DUPLICATE_LIB_OK=TRUE python -u gate_metal_no_pml_constitutive.py \\
+    python -u gate_metal_no_pml_constitutive.py \\
         --out parity/meep_gpu/results/metal_no_pml_constitutive_<date>/gate.json
 """
 
@@ -193,7 +193,7 @@ def log(message: str) -> None:
 
 
 def save(payload: Dict[str, Any], path: str) -> None:
-    """Atomic rewrite: tmp + fsync + os.replace, after EVERY case (rule 7)."""
+    """Atomic rewrite: tmp + fsync + os.replace, after EVERY case (progress reporting)."""
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     temporary = path + ".tmp"
     with open(temporary, "w", encoding="utf-8") as handle:

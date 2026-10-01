@@ -407,3 +407,35 @@ def test_no_module_binds_one_name_to_two_competing_definitions():
         "a module binds one name to two competing definitions — the later one "
         "wins at import and the earlier one is unreachable by name:\n  "
         + "\n  ".join(violations))
+
+
+def test_no_shipped_record_says_how_a_gate_was_launched():
+    """The records pin what a gate EXECUTED -- package code, gate script, artifact --
+    and never the site it ran on: no batch-scheduler job id, job state or launch-script
+    digest. Those name one cluster's queue and a script this repository does not ship,
+    so a reader could not check them and a re-cut could not reproduce them."""
+    import json  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    forbidden_key = re.compile(r"^_?(?:historical_)?slurm_")
+    job_number = re.compile(r"\b[Jj]obs? \d{4}\b")
+    found = []
+
+    def walk(node, trail, ledger):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if forbidden_key.match(key):
+                    found.append(f"{ledger}: {trail}{key}")
+                walk(value, f"{trail}{key}.", ledger)
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{trail}{index}.", ledger)
+        elif isinstance(node, str) and job_number.search(node):
+            found.append(f"{ledger}: {trail} names {job_number.search(node).group(0)!r}")
+
+    ledgers = sorted(PACKAGE_ROOT.glob("*_kernels/*.json"))
+    assert len(ledgers) >= 7, [str(path) for path in ledgers]
+    for path in ledgers:
+        walk(json.loads(path.read_text(encoding="utf-8")), "",
+             str(path.relative_to(PACKAGE_ROOT)))
+    assert not found, found

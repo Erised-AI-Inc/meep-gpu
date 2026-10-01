@@ -10,7 +10,7 @@ NOT WIRED. Production dispatch is untouched: ``plan_fast_path`` still returns
 is DEFERRED (``coverage._grid_reasons`` clause 10 — coverage.py:195-196 — already
 refuses every chi2/chi3 run at every sub-step, so this predicate cannot create an
 admitted-overlap ambiguity until a later coordinated change narrows that clause),
-``coverage.py`` itself is another session's file and is imported, never edited,
+``coverage.py`` itself is a shared module and is imported, never edited,
 and ``fingerprints.json`` carries no entry for this module — the byte gate binds
 its own provenance record inside its results directory. Callers are the gate
 (``parity/meep_gpu/gate_triton_nonlinear.py``), the composition probe
@@ -71,16 +71,16 @@ THE THINGS THAT DECIDE BIT-IDENTITY, each held by the gate rather than assumed:
    1054-1056 and :1107-1109. The division is spelled ``tl.math.div_rn``, NOT
    the plain ``/`` — a MEASURED platform fact, not style: Triton 3.1.0's
    ``semantic.truediv`` emits a bare LLVM ``fdiv``, which the NVPTX backend
-   lowers to ``div.full.f32`` (~2 ulp), and job 2336 measured every nonlinear
+   lowers to ``div.full.f32`` (~2 ulp), and a sweep measured every nonlinear
    sweep case divergent while the linear arm stayed byte-identical;
    ``div_rn`` compiles to ``div.rn.ftz.f32`` and matched IEEE round-to-nearest
-   division on 3 x 2^20 operand-class vectors, 0 differing words (divprobe job
-   2338). The ``.ftz`` suffix is inert here: both quotient operands are sums
+   division on 3 x 2^20 operand-class vectors, 0 differing words (the
+   divprobe). The ``.ftz`` suffix is inert here: both quotient operands are sums
    anchored at 1.0 of f32-grid addends (smallest nonzero magnitude ~2^-25)
    and u is bounded by the pole guard's admitted domain, so no subnormal can
    reach the divide. No certified kernel in this package divides; the gate's
    NEAR-POLE amplitude class (u far from 1) is the leg that makes any
-   divergence in the quotient byte-visible in f32 — job 2329's
+   divergence in the quotient byte-visible in f32 — the complex gate's
    assertion-layer lesson applied to division.
 5. **A LINEAR COMPONENT IN A PARTLY NONLINEAR RUN COMPILES TO THE CERTIFIED
    PLAIN BODY.** ``NL0``/``NL1``/``NL2`` are ``tl.constexpr``; the 0 arm is
@@ -160,7 +160,7 @@ HALF_INTEGER = True
 DEFAULT_BLOCK = 256
 
 #: The shared clause builders the predicate composes from, named as data so the
-#: laptop test can assert every one still exists in the other session's file.
+#: laptop test can assert every one still exists in the shared ``coverage.py``.
 SHARED_CLAUSES: Tuple[str, ...] = (
     "_boundary_kinds", "_layout_reasons", "_inverse_epsilon_reasons",
     "_coefficient_reasons", "_volume_reasons", "_call")
@@ -232,8 +232,8 @@ if triton is not None:
 
         The division is the transcription's only quotient, and it is spelled
         ``tl.math.div_rn(num, den)`` because the plain ``/`` is NOT IEEE
-        division on this platform (``div.full.f32``, ~2 ulp — measured, jobs
-        2336/2338; docstring point 4). The near-pole gate class is what
+        division on this platform (``div.full.f32``, ~2 ulp — measured;
+        docstring point 4). The near-pole gate class is what
         certifies it.
         """
         c2 = (gs * chi2) * us_sq
@@ -1037,7 +1037,7 @@ def _nonlinear_run_grid_reasons(fields: Any, pml: Any, grid: Any) -> List[str]:
 
     Restated and not called, and not shared with :func:`_nonlinear_grid_reasons`
     either. The shared file's clause 10 refuses every nonlinear run and that file
-    is another session's to narrow; ``_nonlinear_grid_reasons`` inverts the same
+    is not this module's to narrow; ``_nonlinear_grid_reasons`` inverts the same
     clause but spells its absorber and storage refusals in ``update_E``'s words
     ("without one the nonlinear update_E is field[...] = constitutive"), which
     would be a TRUE VERDICT WITH A FALSE REASON on a curl. ``no_pml.py``'s clause

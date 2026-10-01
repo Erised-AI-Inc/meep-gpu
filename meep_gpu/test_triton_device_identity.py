@@ -132,5 +132,11 @@ def test_the_module_imports_nothing_that_needs_a_device():
     assert not forbidden, (
         f"{MODULE_PATH.name} imports {forbidden}; it must read sys.modules instead, "
         f"so it can answer inside a gate that has already refused")
-    assert found <= {"__future__", "os", "socket", "sys", "typing"}, (
+    # ``json``, ``time`` and ``importlib`` arrived with the per-capability device
+    # stamp this module writes and reads (``device.json``, and finding a module
+    # without importing it). All three are stdlib and none can reach a device, which
+    # is what this clause is for; FORBIDDEN_IMPORT_ROOTS above is what holds the
+    # device line, and it is checked first.
+    assert found <= {"__future__", "importlib", "json", "os", "socket", "sys", "time",
+                     "typing"}, (
         f"unexpected imports {sorted(found)}: this module is stdlib only")
