@@ -56,6 +56,12 @@ record is honest. :func:`census` classifies; the contract tests compare. That sp
 deliberate: the classifier consults no digest and no file, so it cannot be steered toward
 a shape that happens to pass.
 
+ONE RECORD IN EACH LEDGER IS NOT A WELD: a table's ``driver_dispatch`` record, whose
+verdict belongs to the route runs filed under ``runs[<key>]``. :func:`route_record_problems`
+states the one rule all three weld contracts hold it to. Like :func:`compare`, it decides
+only from what the caller passes in: liveness, drift and shape are measured by the
+contract and handed over, so this module still reads no file.
+
 Stdlib plus two in-package identity helpers. No device, no third-party imports: this runs
 at the laptop merge bar.
 """
@@ -63,7 +69,8 @@ at the laptop merge bar.
 from __future__ import annotations
 
 import re
-from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import (Any, Callable, Dict, Iterator, List, Mapping, NamedTuple, Optional,
+                    Sequence, Tuple)
 
 #: The per-capability run container, spelled here rather than imported: this module is
 #: a pure classifier over a loaded record and imports nothing from the package, so a
@@ -76,7 +83,7 @@ __all__ = [
     "Found", "discover", "census", "dotted", "rules_that_fired",
     "TIER_RAW", "TIER_CODE", "TIER_DEVICE", "UNCLASSIFIED", "RULE_REASONS",
     "PREMISE_ABSENT_FROM_TREE", "GITIGNORED_PREFIX", "premise_violations",
-    "DELEGATED_COVERAGE",
+    "DELEGATED_COVERAGE", "ROUTE_RUN_PASS", "route_run_problems", "route_record_problems",
 ]
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -566,4 +573,74 @@ def compare(found: List[Found], resolve: Callable[[str], Any],
         if live != f.value:
             problems.append((where, f.subject,
                              f"recorded {f.value[:12]} live {live[:12]}"))
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# THE ROUTE RECORD: a table's driver_dispatch entry, which is not a weld
+# ---------------------------------------------------------------------------
+
+#: The one verdict a route run may record and still license what it released.
+ROUTE_RUN_PASS = "PASS"
+
+
+def route_run_problems(record: Any, live: Sequence[str]) -> List[str]:
+    """Why a ``driver_dispatch`` record's route runs do not carry it. Empty means they do.
+
+    THE RECORD IS NOT A WELD. It pins the dispatch wiring's bytes, and its verdict is the
+    route campaign's, filed per environment under ``runs[<key>]`` (a compute capability
+    on the NVIDIA tables, a GPU architecture on Metal) by
+    ``recut_driver_dispatch_record.py``. So it is asked two things about those runs:
+
+      (a) at least one run is LIVE, so an empty ``runs`` or one whose every run binds
+          bytes that have since moved fails rather than passing a loop over nothing;
+      (b) every live run reads ``status`` PASS. A run that is not live is history and
+          is not read: what it says certifies bytes that no longer ship.
+
+    ``live`` is ``fastpath.live_capabilities(record)``, the one liveness rule, passed in
+    so this module imports nothing from the package. The tree and the record's shape are
+    :func:`route_record_problems`'s other two clauses; this half is exposed alone for the
+    dispatch contract, which compares the tree its own way.
+    """
+    runs = record.get(RUNS) if isinstance(record, Mapping) else None
+    problems: List[str] = []
+    if not live:
+        recorded = sorted(runs, key=str) if isinstance(runs, Mapping) else runs
+        problems.append(f"no live run under {RUNS} (recorded: {recorded!r}): no route "
+                        f"campaign has released on the bytes this record binds")
+    for key in live:
+        run = runs.get(key) if isinstance(runs, Mapping) else None
+        status = run.get("status") if isinstance(run, Mapping) else None
+        if status != ROUTE_RUN_PASS:
+            problems.append(f"{RUNS}[{key!r}] reads status {status!r}, not "
+                            f"{ROUTE_RUN_PASS}: a route run that did not release "
+                            f"licenses nothing")
+    return problems
+
+
+def route_record_problems(record: Any, live: Sequence[str], moved: Sequence[str],
+                          stranded: Sequence[str]) -> List[str]:
+    """Why a ``driver_dispatch`` record is not supported by its route runs and the tree.
+
+    Empty means it is. The rule all three weld contracts apply to their table's record,
+    in place of the weld status rule, which asks an entry-level ``status`` of a weld:
+
+      (a), (b)  :func:`route_run_problems`;
+      (c)       ``moved``: the pinned paths the contract's raw-tier drift measurement
+                reports. A live run certifies the record's digests, not the tree, so a
+                file that moved since the cut is reported here even while the run
+                stays live;
+      (d)       ``stranded``: the contract's shape reasons over the route-run fields
+                (``fastpath.DISPATCH_RUN_FIELDS``, ``metal_runs.DISPATCH_RUN_FIELDS``).
+                ``status`` is one of them, so an entry-level status is refused: the
+                verdict has one home, the run that measured it.
+
+    ``moved`` and ``stranded`` are required: a default of nothing would let a caller
+    skip a clause and still read as having checked it.
+    """
+    problems = route_run_problems(record, live)
+    if moved:
+        problems.append(f"{len(moved)} pinned file(s) moved since the record was cut: "
+                        f"{sorted(moved)}")
+    problems.extend(stranded)
     return problems

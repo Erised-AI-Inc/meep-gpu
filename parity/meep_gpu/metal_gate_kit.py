@@ -314,11 +314,15 @@ def environment_stamp() -> Dict[str, Any]:
     """Everything about this host that could change the answer."""
     from meep_gpu.metal_kernels import launch as metal_launch  # noqa: PLC0415
 
+    from meep_gpu.metal_kernels import device as metal_device  # noqa: PLC0415
+
     record: Dict[str, Any] = {
         "numpy": np.__version__,
         "platform": platform.platform(),
         "machine": platform.machine(),
         "metal_frontend": metal_launch.metal_frontend_version(),
+        "apple_gpu": metal_device.apple_gpu_identity(),
+        "PYTORCH_MPS_FAST_MATH": os.environ.get("PYTORCH_MPS_FAST_MATH"),
         "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
     try:

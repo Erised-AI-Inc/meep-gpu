@@ -295,17 +295,31 @@ FUSE_ARMS_VETO = "0"
 #: Unset keeps the last record in memory, served by ``driver.fast_path_report()``.
 DISPATCH_LOG = "MEEP_GPU_DISPATCH_LOG"
 
-#: THE OPT-IN FOR A DEVICE OR TOOLCHAIN NO RECORDED GATE RAN ON. ``1`` lets the
-#: kernels dispatch on an identity that was READ and is not in the certified set: an
-#: NVIDIA compute capability or a Triton version (rungs 4 and 4b), a torch version
-#: or a Metal frontend (rung 4M). ``0`` and unset keep the refusal to the array
-#: path, and every other value is refused by name (:data:`UNCERTIFIED_VALUES`).
+#: THE SWITCH FOR A DEVICE OR TOOLCHAIN NO RECORDED GATE RAN ON. Every kernel table
+#: runs by default on an identity it SUPPORTS but that is not certified, and says so;
+#: ``0`` restricts the kernels to certified identities and refuses one it cannot
+#: judge. On the NVIDIA tables (rungs 4, 4b and 4e) supported is a range, the Triton
+#: versions :data:`TRITON_SUPPORTED_VERSIONS` and the compute capabilities
+#: :data:`SUPPORTED_COMPUTE_CAPABILITIES` (the hand-CUDA table's are its own,
+#: ``fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES``); an identity READ outside it is
+#: refused by name unless the switch is ``1``, which runs it too, recorded
+#: ``supported: False``. The Metal table supports every Apple GPU
+#: (``metal_dispatch``, rung 4M). Every other value is refused by name on every table
+#: (:data:`UNCERTIFIED_VALUES`).
+#:
+#: * unset: a certified identity runs; a supported, uncertified one runs with a NOTE,
+#:   unless another candidate NVIDIA table is certified here (rung 4e drops it by
+#:   name); an unsupported one is refused by name; an unreadable one runs with
+#:   ``certified: None``.
+#: * ``1``: every identity runs; an unsupported one is recorded ``supported: False``.
+#: * ``0``: only a certified identity runs; the rest, unreadable included, are
+#:   refused by name.
 #:
 #: IT ADMITS AN IDENTITY AND NOTHING ELSE. Every rung below the identity rungs
-#: still runs, in order, and an identity that could not be READ is untouched by it:
-#: that one was never refused. A run it admits carries NO CERTIFICATION: the record
-#: says ``certified: False`` with the identity read under ``uncertified.served``,
-#: and one line per process names what is certified.
+#: still runs, in order. A run on an uncertified identity carries NO CERTIFICATION:
+#: the record says ``certified: False`` with the identity read under
+#: ``uncertified.served``, and one line per process names what is certified and why
+#: the kernels ran.
 UNCERTIFIED_SWITCH = "MEEP_GPU_ALLOW_UNCERTIFIED"
 
 # ---------------------------------------------------------------------------
@@ -712,13 +726,16 @@ def arm_is_fused(label: Any) -> bool:
 #:   gate does not drive it. On the Metal table the analogous evidence is the Metal
 #:   route campaign's legs, run under held residency (that table's default), not this
 #:   gate.
-#: * THE CERTIFIED SURFACE ONLY. Triton or hand-CUDA on the compute capability their
-#:   ledgers name, and Metal on the torch and frontend pair its ledger names. Every
-#:   other device and toolchain is refused by name at rung 4 and takes the array
-#:   path, unless the run sets :data:`UNCERTIFIED_SWITCH` to ``1``, which dispatches
-#:   on it with ``certified: False`` in the record. A device identity that cannot be
-#:   READ is not a refusal (rung 4b), so such a host dispatches on an architecture
-#:   nothing verified.
+#: * THE CERTIFIED SURFACE ONLY. Triton or hand-CUDA on the compute capability
+#:   their ledgers name is what the licence covers. A SUPPORTED device or toolchain
+#:   outside it (:data:`UNCERTIFIED_SWITCH`) dispatches by default with ``certified:
+#:   False`` in the record and a NOTE line, unless another candidate table is
+#:   certified there (rung 4e); an unsupported one is refused by name at rung 4 or 4b
+#:   unless the switch is ``1``. A device identity that cannot be READ is not a
+#:   refusal (rung 4b) unless the switch is ``0``, so such a host dispatches on an
+#:   architecture nothing verified. The Metal table runs on any Apple GPU
+#:   environment and records whether it is the certified one (``metal_dispatch``,
+#:   rung 4M). ``0`` restricts every table to certified identities.
 #: * COMPLEX STORAGE WITHOUT THE EXPANSION LICENCE, which is a statement about
 #:   SLOTS and not about runs. On the NVIDIA tables the complex families refuse by
 #:   name unless :data:`COMPLEX_PROBE_ENV` supplies an expansion licence, and the
@@ -824,66 +841,350 @@ def _enable_value_refusal(raw: Optional[str]) -> Optional[str]:
             "refused rather than interpreted, so this run takes the array path")
 
 
-#: The uncertified opt-in's accepted values. EXACT MATCH, as
+#: :data:`UNCERTIFIED_SWITCH`'s accepted values. EXACT MATCH, as
 #: :data:`DISPATCH_ENABLE_VALUES` is: a value that is neither is refused BY NAME at
 #: rung 3b and the run takes the array path, on a certified host as well, because a
 #: value that was typed and not understood must not be read as either answer.
 UNCERTIFIED_VALUES: Mapping[str, bool] = {"1": True, "0": False}
 
-#: What an identity refusal says about the way past it. APPENDED to the refusal,
-#: never put in front of it: the readers of these messages match their heads.
-UNCERTIFIED_HINT = (f"; set {UNCERTIFIED_SWITCH}=1 to dispatch the kernels on it "
-                    "without certification")
+#: What the refusal of an UNSUPPORTED identity says about the way past it. APPENDED
+#: to the refusal, never put in front of it: the readers of these messages match
+#: their heads.
+UNSUPPORTED_HINT = (f"; set {UNCERTIFIED_SWITCH}=1 to dispatch the kernels on it "
+                    "anyway, without certification or support")
+
+#: What a refusal under ``UNCERTIFIED_SWITCH=0`` says, APPENDED as the hint is: the
+#: identity is not refused for being unsupported, it is refused because the run asked
+#: for certified identities only.
+CERTIFIED_ONLY_TAIL = (f"; {UNCERTIFIED_SWITCH}=0 restricts the NVIDIA kernels to "
+                       "certified devices and toolchains")
+
+#: THE TRITON VERSIONS THE TRITON TABLE SUPPORTS, half-open on (major, minor):
+#: ``>=3.1,<3.2``. SUPPORTED IS NOT CERTIFIED: the certified versions are the ones
+#: the cited gates ran (:func:`validated_triton_versions`); a supported one is one
+#: the table's code generation was written against and is expected to run on. The
+#: release line is the bound because Triton's code generation changes between
+#: minor releases, and the kernels were written against 3.1.
+TRITON_SUPPORTED_VERSIONS: Tuple[Tuple[int, int], Tuple[int, int]] = ((3, 1), (3, 2))
+
+#: THE COMPUTE CAPABILITIES THE TRITON TABLE SUPPORTS, inclusive on (major, minor).
+#: The floor is the one Triton 3.1 documents (7.0 and later); the ceiling is the
+#: newest target of the ptxas Triton 3.1 bundles (12.4: nothing beyond sm_90a). The
+#: hand-CUDA table states its own range,
+#: ``fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES``.
+SUPPORTED_COMPUTE_CAPABILITIES: Tuple[Tuple[int, int], Tuple[int, int]] = ((7, 0), (9, 0))
+
+#: WHY A SUPPORTED, UNCERTIFIED NVIDIA IDENTITY RAN, in the words the run's NOTE line
+#: uses; the twin of ``metal_dispatch.SUPPORTED_BECAUSE``. ``{subject}`` names what
+#: was judged supported (:func:`_nvidia_note_reasons`): ``NVIDIA GPU and toolchain
+#: are``, ``NVIDIA GPU is`` or ``Triton version is``; ``{where}`` names the table
+#: when another table certifies this GPU; ``{supported}`` is
+#: :func:`nvidia_supported_text`, which names the Triton range and both CuPy builds'
+#: NVRTC.
+NVIDIA_SUPPORTED_BECAUSE = (
+    "this {subject} supported but not certified bit-identical{where} "
+    "(the supported range is {supported}), and {switch}=0 would restrict the "
+    "kernels to certified ones")
+
+#: WHY AN UNSUPPORTED NVIDIA IDENTITY RAN: only the switch set to ``1`` runs one.
+#: ``{subject}`` names what was read outside the range (``NVIDIA GPU``, ``Triton
+#: version`` or both); ``{range}`` states the range, and is empty when the supported
+#: clause of the same line has already stated it.
+NVIDIA_UNSUPPORTED_BECAUSE = (
+    "{switch}=1, which also runs this {subject} outside the supported range{range}")
+
+#: The words a compute-capability entry is recorded under (rung 4b), which the NOTE
+#: reads as the GPU; every other NVIDIA entry is the Triton version (rung 4).
+_CAPABILITY_WHAT = "GPU compute capability"
+
+
+def certified_only() -> bool:
+    """Does this run restrict the NVIDIA kernels to certified identities? Never raises.
+
+    ``True`` for ``UNCERTIFIED_SWITCH=0`` only. Unset and ``1`` both run a supported
+    identity that is not certified, recorded as such; any other value is refused by
+    name at rung 3b before this is asked.
+    """
+    return os.environ.get(UNCERTIFIED_SWITCH) == "0"
+
+
+def unsupported_allowed() -> bool:
+    """Does this run admit an NVIDIA identity outside the supported range? Never raises.
+
+    ``True`` for ``UNCERTIFIED_SWITCH=1`` only, which also lifts rung 4e: with it a
+    supported-uncertified table composes beside a certified one.
+    """
+    return os.environ.get(UNCERTIFIED_SWITCH) == "1"
+
+
+def _major_minor(text: Any) -> Optional[Tuple[int, int]]:
+    """The leading ``major.minor`` of a version or capability spelling, or ``None``.
+
+    ``3.1.0``, ``3.1.0+git1234`` and ``3.1`` all read ``(3, 1)``; a spelling with no
+    leading ``digits.digits`` reads ``None``.
+    """
+    match = re.match(r"^\s*(\d+)\.(\d+)", str(text))
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def triton_version_supported(version: Any) -> bool:
+    """Is this Triton version in :data:`TRITON_SUPPORTED_VERSIONS`? Never raises.
+
+    A version string with no leading ``major.minor`` is not one this package can
+    place in the range, so it is NOT supported (refused by name, unless the switch is
+    ``1``) rather than unknown: the version WAS read.
+    """
+    parsed = _major_minor(version)
+    low, high = TRITON_SUPPORTED_VERSIONS
+    return parsed is not None and low <= parsed < high
+
+
+def supported_compute_capabilities(table: str = "triton") -> Tuple[Tuple[int, int],
+                                                                    Tuple[int, int]]:
+    """The inclusive range of compute capabilities ``table`` supports."""
+    if table == CUDA_TABLE:
+        from . import fastpath_cuda  # noqa: PLC0415
+
+        return fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES
+    return SUPPORTED_COMPUTE_CAPABILITIES
+
+
+def capability_supported(capability: Any, table: str = "triton") -> Optional[bool]:
+    """Is this compute capability in the range ``table`` supports? THREE-VALUED.
+
+    ``None`` when no capability was read, which is rung 4b's unknown; ``False`` for a
+    spelling that does not normalise to ``major.minor`` (it was read and cannot be
+    placed in the range).
+    """
+    if capability is None:
+        return None
+    spelled = _normalized_capability(capability)
+    parsed = _major_minor(spelled) if re.fullmatch(r"\d+\.\d+", spelled) else None
+    if parsed is None:
+        return False
+    low, high = supported_compute_capabilities(table)
+    return low <= parsed <= high
+
+
+def _spelled_range(bounds: Tuple[Tuple[int, int], Tuple[int, int]]) -> str:
+    """An inclusive (major, minor) range as ``7.0 to 9.0``."""
+    return f"{bounds[0][0]}.{bounds[0][1]} to {bounds[1][0]}.{bounds[1][1]}"
+
+
+def _triton_supported_range() -> str:
+    """:data:`TRITON_SUPPORTED_VERSIONS` as a requirement, ``>=3.1,<3.2``."""
+    (low_major, low_minor), (high_major, high_minor) = TRITON_SUPPORTED_VERSIONS
+    return f">={low_major}.{low_minor},<{high_major}.{high_minor}"
+
+
+def nvidia_supported_text() -> str:
+    """What the NVIDIA tables support, in the words the NOTE and the refusals use."""
+    from . import fastpath_cuda  # noqa: PLC0415
+
+    triton = _spelled_range(SUPPORTED_COMPUTE_CAPABILITIES)
+    cuda = _spelled_range(fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES)
+    devices = (f"compute capability {triton}" if triton == cuda else
+               f"compute capability {triton} on the Triton table and {cuda} on the "
+               "hand-CUDA table")
+    builds = " or ".join(f"{nvrtc} for {build}" for build, nvrtc
+                         in fastpath_cuda.SUPPORTED_NVRTC_BUILDS.items())
+    return (f"{devices}, with Triton {_triton_supported_range()} or with the NVRTC of "
+            f"either CuPy build, {builds}")
 
 
 def _uncertified_value_refusal(raw: Optional[str]) -> Optional[str]:
-    """The named refusal for an unrecognised opt-in value; ``None`` when unset or accepted."""
+    """The named refusal for an unrecognised switch value; ``None`` when unset or accepted."""
     if raw is None or raw in UNCERTIFIED_VALUES:
         return None
     return (f"{UNCERTIFIED_SWITCH}={raw!r} is not an accepted value: set "
             f"{UNCERTIFIED_SWITCH}=1 to dispatch the kernels on a device or "
-            f"toolchain that is not certified, or {UNCERTIFIED_SWITCH}=0 or leave "
-            "it unset to refuse one to the array path. The value is refused rather "
-            "than interpreted, so this run takes the array path")
-
-
-def uncertified_allowed() -> bool:
-    """The uncertified opt-in, read fresh on every plan build. Never raises.
-
-    ``True`` for ``1`` only. An unrecognised value reads ``False`` here, which is
-    what the run gets: rung 3b refuses it by name.
-    """
-    raw = os.environ.get(UNCERTIFIED_SWITCH)
-    if raw is None:
-        return False
-    return UNCERTIFIED_VALUES.get(raw, False)
+            f"toolchain that is not certified, {UNCERTIFIED_SWITCH}=0 to run them "
+            "only where they are certified, or leave it unset for each kernel "
+            "table's default. The value is refused rather than interpreted, so this "
+            "run takes the array path")
 
 
 def _admit_uncertified(record: Dict[str, Any], table: str, what: str, read: Any,
-                       certified: Sequence[Any]) -> None:
-    """Record one identity the opt-in admitted: which table, what was read, what is certified."""
-    record.setdefault("uncertified", {}).setdefault("admitted", []).append(
-        {"table": table, "what": what, "read": read, "certified": list(certified)})
+                       certified: Sequence[Any], because: Optional[str] = None,
+                       supported: Optional[bool] = None,
+                       **facts: Any) -> None:
+    """Record one identity admitted uncertified: which table, what was read, what is certified.
+
+    ``because`` is why it was admitted, in the words the NOTE line prints, and is
+    recorded only when a table gives one (the Metal and NVIDIA tables admit a
+    supported identity by default); an entry without it was admitted by
+    ``UNCERTIFIED_SWITCH=1``. ``supported`` is recorded when the table judged it, and
+    ``facts`` (for a compute capability, the welds with no live run on it) beside it.
+    """
+    entry = {"table": table, "what": what, "read": read, "certified": list(certified)}
+    if because is not None:
+        entry["because"] = because
+    if supported is not None:
+        entry["supported"] = supported
+    entry.update(facts)
+    record.setdefault("uncertified", {}).setdefault("admitted", []).append(entry)
+
+
+def _judge_uncertified(record: Dict[str, Any], table: str, what: str, read: Any,
+                       certified: Sequence[Any], supported: bool, head: str,
+                       outside: str, scope: str, **facts: Any) -> Optional[str]:
+    """Rungs 4 and 4b on one identity that was READ and is not certified.
+
+    Returns ``None`` when the identity is ADMITTED, recorded under
+    ``uncertified.admitted``, and otherwise the refusal, which keeps ``head``, the
+    text every reader of these refusals matches, at its front:
+
+    * ``UNCERTIFIED_SWITCH=0`` refuses it, supported or not;
+    * a SUPPORTED identity is admitted, unset or ``1``;
+    * an unsupported one is admitted under ``1`` only, recorded ``supported:
+      False``, and refused by name otherwise with the way past it appended.
+
+    An admitted entry's ``because`` is about THAT identity and THAT table's range
+    (``scope``, e.g. ``compute capability 7.0 to 9.0``); the NOTE line states the
+    host's reasons from the entries' facts instead (:func:`_nvidia_note_reasons`).
+    """
+    switch = UNCERTIFIED_SWITCH
+    if certified_only():
+        return head + CERTIFIED_ONLY_TAIL
+    if supported:
+        _admit_uncertified(record, table, what, read, certified,
+                           because=(f"{what} {read} is supported by the {table} table "
+                                    f"({scope}) but not certified bit-identical"),
+                           supported=True, **facts)
+        return None
+    if unsupported_allowed():
+        _admit_uncertified(record, table, what, read, certified,
+                           because=(f"{switch}=1 runs {what} {read}, outside what the "
+                                    f"{table} table supports ({scope})"),
+                           supported=False, **facts)
+        return None
+    return f"{head}, and is outside {outside}" + UNSUPPORTED_HINT
+
+
+def _settle_uncertified(record: Dict[str, Any], candidates: Sequence[str],
+                        tables_block: Mapping[str, Mapping[str, Any]]) -> None:
+    """Move the admitted identities of a table that is no longer a candidate to ``dropped``.
+
+    A table admitted on one identity can still be refused on another (a supported
+    Triton version, then an unsupported device) or dropped at rung 4e; its admitted
+    entries would otherwise name, in the NOTE line, an identity that never ran.
+    """
+    block = record.setdefault("uncertified", {})
+    kept: List[Dict[str, Any]] = []
+    for entry in block.get("admitted") or ():
+        if entry.get("table") in candidates or entry.get("table") == METAL_TABLE:
+            kept.append(entry)
+            continue
+        dropped = dict(entry)
+        dropped["dropped_because"] = (tables_block.get(entry.get("table")) or {}).get(
+            "refused_because")
+        block.setdefault("dropped", []).append(dropped)
+    block["admitted"] = kept
+
+
+def _certified_here(environment: Mapping[str, Any], table: str) -> bool:
+    """Is ``table`` certified for this device AND toolchain? ``None`` is not certified.
+
+    The Triton table's toolchain is the Triton version; the hand-CUDA table's
+    admission reads no toolchain version (its kernels compile through the NVRTC of
+    whichever CuPy is installed), so its device verdict is the whole answer.
+    """
+    by_table = environment.get("device_certified_by_table") or {}
+    if table == "triton":
+        return (by_table.get("triton") is True
+                and environment.get("triton_certified") is True)
+    return by_table.get(table) is True
+
+
+def _nvidia_note_reasons(entries: Sequence[Mapping[str, Any]],
+                         environment: Mapping[str, Any]) -> List[str]:
+    """Why the judged NVIDIA identities in ``entries`` ran: one clause per verdict.
+
+    STATED FROM THE ENTRIES' FACTS, not joined from their ``because``: two tables that
+    admit one GPU give one reason, and the clause names only what was judged. A
+    compute capability is the GPU; a Triton version is the toolchain; a Triton-table
+    compute capability judged beside a supported Triton version (certified or not)
+    speaks for both, because the Triton table's identity is that pair. The hand-CUDA
+    table reads no toolchain version (its kernels compile through the installed
+    CuPy's NVRTC), so its entry never claims one. Where another table certifies this
+    GPU, the supported clause names the table it is about. The supported range is
+    stated once.
+    """
+    gpu_tables: List[str] = []
+    toolchain = False
+    outside: List[str] = []
+    for entry in entries:
+        gpu = entry.get("what") == _CAPABILITY_WHAT
+        if entry.get("supported") is True:
+            if gpu:
+                if entry.get("table") not in gpu_tables:
+                    gpu_tables.append(entry.get("table"))
+                if (entry.get("table") == "triton"
+                        and environment.get("triton_supported") is True):
+                    toolchain = True
+            else:
+                toolchain = True
+        else:
+            word = "NVIDIA GPU" if gpu else "Triton version"
+            if word not in outside:
+                outside.append(word)
+    reasons: List[str] = []
+    text = nvidia_supported_text()
+    if gpu_tables or toolchain:
+        subject = ("NVIDIA GPU and toolchain are" if gpu_tables and toolchain else
+                   "NVIDIA GPU is" if gpu_tables else "Triton version is")
+        by_table = environment.get("device_certified_by_table") or {}
+        others = [name for name in ("triton", CUDA_TABLE)
+                  if name not in gpu_tables and by_table.get(name) is True]
+        where = (f" on the {' and '.join(gpu_tables)} table"
+                 if gpu_tables and others else "")
+        reasons.append(NVIDIA_SUPPORTED_BECAUSE.format(
+            subject=subject, where=where, supported=text, switch=UNCERTIFIED_SWITCH))
+    if outside:
+        reasons.append(NVIDIA_UNSUPPORTED_BECAUSE.format(
+            switch=UNCERTIFIED_SWITCH, subject=" and ".join(sorted(outside)),
+            range="" if reasons else f" ({text})"))
+    return reasons
 
 
 def _uncertified_note(record: Mapping[str, Any]) -> str:
-    """The one line an opted-in process prints: what was read and what is certified.
+    """The one line an uncertified process prints: what was read and what is certified.
 
-    Built from every identity the opt-in ADMITTED and not from the tables that
+    Built from every identity ADMITTED uncertified and not from the tables that
     served this freeze, and an identity two tables share is named once: the line is
     a statement about the host, so every freeze of the process repeats it and
-    :func:`_announce_line` prints it once.
+    :func:`_announce_line` prints it once. The NVIDIA tables' judged entries (those
+    carrying ``supported``) give their reasons through :func:`_nvidia_note_reasons`;
+    any other entry gives its own ``because``. Where an admitted compute capability
+    names the welds with no live run on it, the line says where they are recorded.
     """
     named: List[str] = []
-    for entry in (record.get("uncertified") or {}).get("admitted") or ():
+    reasons: List[str] = []
+    welds = False
+    entries = list((record.get("uncertified") or {}).get("admitted") or ())
+    judged = [entry for entry in entries
+              if entry.get("table") in ("triton", CUDA_TABLE) and "supported" in entry]
+    nvidia = _nvidia_note_reasons(judged, record.get("environment") or {})
+    for entry in entries:
         certified = ", ".join(str(value) for value in entry["certified"]) or "none"
         text = f"{entry['what']} {entry['read']} (certified: {certified})"
         if text not in named:
             named.append(text)
+        if any(entry is other for other in judged):
+            because_all = nvidia
+        else:
+            because_all = [entry.get("because") or f"{UNCERTIFIED_SWITCH}=1"]
+        for because in because_all:
+            if because not in reasons:
+                reasons.append(because)
+        welds = welds or bool(entry.get("welds_without_a_live_run_here"))
+    where = ("; the gates with no run on this GPU are counted in the dispatch record "
+             "under uncertified.served[], which names the first five in "
+             "welds_without_a_live_run_here" if welds else "")
     return ("meep_gpu: NOTE the kernels are NOT CERTIFIED on this host: "
             + "; ".join(named)
-            + f". They were dispatched because {UNCERTIFIED_SWITCH}=1; compare the "
-            "results with a prefer_gpu=False run of the same simulation before "
+            + f". They were dispatched because {'; and '.join(reasons)}{where}; compare "
+            "the results with a prefer_gpu=False run of the same simulation before "
             "relying on them")
 
 
@@ -891,7 +1192,7 @@ def _certified_verdict(record: Mapping[str, Any],
                        tables: Sequence[str]) -> Optional[bool]:
     """Are the kernels certified on the identity that served? THREE-VALUED.
 
-    ``False`` when the opt-in admitted the identity of a table that SERVED, ``True``
+    ``False`` when an identity admitted uncertified is a SERVING table's, ``True``
     when every identity read of every table that served is a certified one, and
     ``None`` when one of them could not be read, which is not a refusal and not a
     certification either.
@@ -910,6 +1211,11 @@ def _certified_verdict(record: Mapping[str, Any],
         if table == METAL_TABLE:
             reads += [environment.get("torch_certified"),
                       environment.get("frontend_certified")]
+            # THE GPU, where the Metal half of the record names one: the
+            # architecture is to a Metal environment what the compute capability is
+            # to an NVIDIA one.
+            if "device_certified" in environment:
+                reads.append(environment.get("device_certified"))
             continue
         reads.append(by_table.get(table))
         if table == "triton":
@@ -2028,7 +2334,14 @@ PENDING_DEVICE_GATE_ARMS: Mapping[str, str] = {
 #: REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
 #: round re-runs every table's route on the released files; ``_2026-09-27_flip`` stays
 #: the record of the 0.9.0 route.
-DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_2026-09-30_091"
+#:
+#: REPOINTED 2026-10-05 to ``_2026-10-05_092`` for release 0.9.2, before its
+#: campaigns run: this file moved (a supported NVIDIA identity that is not certified
+#: runs by default, and a table certified here outranks one that is only supported),
+#: so the route is re-run on it. One stamp for the release, shared by every compute
+#: capability that drives it (``<stamp>_cc86``, ``<stamp>_cc90``).
+#: ``_2026-09-30_091`` stays the record of the 0.9.1 route.
+DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_2026-10-05_092"
 
 #: THE FUSED ARMS THAT HAVE BEEN DRIVEN THROUGH THE DRIVER SEAM, and the gate
 #: cases each one was driven on. This is the per-arm allow-list clause (8) reads,
@@ -4406,7 +4719,7 @@ def _certification_for(arm: str, table: str = "triton", *,
             entry["run_record"] = (
                 f"this gate has no live run on compute capability {capability}: its "
                 f"live capabilities are {list(live)}. A plan that dispatched here was "
-                f"admitted by the opt-in, not by a record")
+                f"admitted uncertified (uncertified.served says why), not by a record")
         for key in ("recorded_utc", "host", "purpose", "records", "step_budget",
                     "status", "subnormal_policy"):
             if key in run:
@@ -5379,9 +5692,11 @@ def _environment_block(grid: Any, probe: Any, probe_error: Optional[str],
         version = str(getattr(triton, "__version__", "unknown"))
         block["triton"] = version
         block["triton_certified"] = version in validated_triton_versions()
+        block["triton_supported"] = triton_version_supported(version)
     except Exception as exc:  # noqa: BLE001
         block["triton"] = None
         block["triton_certified"] = False
+        block["triton_supported"] = None
         block["triton_import_error"] = repr(exc)
     xp = getattr(grid, "xp", None)
     block["backend"] = getattr(xp, "__name__", None)
@@ -5411,6 +5726,28 @@ def _environment_block(grid: Any, probe: Any, probe_error: Optional[str],
         "triton": block["device_certified"],
         CUDA_TABLE: _device_is_validated(device, cuda_admitted),
     }
+    # SUPPORTED IS NOT CERTIFIED, and it is per table for the same reason: each table
+    # states the range it supports (:func:`capability_supported`, THREE-VALUED, None
+    # where no capability was read). ``device_supported`` stays the Triton answer, as
+    # ``device_certified`` does.
+    capability = device.get("compute_capability")
+    block["device_supported_by_table"] = {
+        "triton": capability_supported(capability, "triton"),
+        CUDA_TABLE: capability_supported(capability, CUDA_TABLE),
+    }
+    block["device_supported"] = block["device_supported_by_table"]["triton"]
+    block["supported_ranges"] = {
+        "triton": {
+            "triton_versions": _triton_supported_range(),
+            "compute_capabilities": _spelled_range(SUPPORTED_COMPUTE_CAPABILITIES),
+        },
+        CUDA_TABLE: {
+            "compute_capabilities": _spelled_range(
+                fastpath_cuda.SUPPORTED_COMPUTE_CAPABILITIES),
+            "nvrtc": dict(fastpath_cuda.SUPPORTED_NVRTC_BUILDS),
+        },
+    }
+    block["certified_only"] = certified_only()
     mismatch = _probe_environment_mismatch(probe, block)
     if mismatch:
         block["complex_expansion_probe_environment_mismatch"] = mismatch
@@ -5640,14 +5977,23 @@ def _base_record() -> Dict[str, Any]:
         },
         # WHETHER THE KERNELS ARE CERTIFIED ON THE IDENTITY THAT SERVED. ``None``
         # until a plan dispatches, and after it when an identity could not be read;
-        # ``False`` only for a run the uncertified opt-in admitted, whose identity
-        # is then under ``uncertified.served`` (:func:`_certified_verdict`).
+        # ``False`` only for a run on an identity admitted uncertified, which is then
+        # under ``uncertified.served`` (:func:`_certified_verdict`).
         "certified": None,
+        # ``allowed``: may a SUPPORTED identity that is not certified compose (unset
+        # and ``1``; the Metal ladder writes its own answer, the same rule).
+        # ``unsupported_allowed``: may an NVIDIA identity outside the supported range
+        # (``1``); the Metal table runs a GPU that is not Apple's by default and does
+        # not read it. An admitted identity whose table did not compose after all,
+        # refused on another identity or dropped at rung 4e, moves to ``dropped``
+        # with the reason.
         "uncertified": {
             "variable": UNCERTIFIED_SWITCH,
             "value": os.environ.get(UNCERTIFIED_SWITCH),
-            "allowed": uncertified_allowed(),
+            "allowed": os.environ.get(UNCERTIFIED_SWITCH) in (None, "1"),
+            "unsupported_allowed": unsupported_allowed(),
             "admitted": [],
+            "dropped": [],
         },
         # THE FUSION OPT-IN, on EVERY record and not only the ones that used it.
         # A reader comparing two runs has to be able to tell "this run asked for
@@ -5728,6 +6074,25 @@ def _certified_mark(value: Any) -> str:
     return {True: "certified", False: "UNCERTIFIED"}.get(value, "uncertified-unknown")
 
 
+def _all_of(values: Any) -> Optional[bool]:
+    """THREE-VALUED conjunction: False if any is False, True if all are True, else None."""
+    values = list(values)
+    if any(value is False for value in values):
+        return False
+    if values and all(value is True for value in values):
+        return True
+    return None
+
+
+def _triton_mark(environment: Mapping[str, Any]) -> str:
+    """The Triton version's mark: certified, supported and UNCERTIFIED, or UNCERTIFIED."""
+    mark = _certified_mark(environment.get("triton_certified"))
+    if (environment.get("triton_supported") is True
+            and environment.get("triton_certified") is not True):
+        mark = f"supported, {mark}"
+    return mark
+
+
 def _announce(record: Mapping[str, Any]) -> None:
     """One line to stderr, so a user who never opens the artifact still knows."""
     if record.get("reference_driver"):
@@ -5806,13 +6171,32 @@ def _announce(record: Mapping[str, Any]) -> None:
             toolchain = (f"cupy {environment.get('backend_version')}")
             if "triton" in dispatched_tables:
                 toolchain += (f", triton {environment.get('triton')} "
-                              f"{_certified_mark(environment.get('triton_certified'))}")
+                              f"{_triton_mark(environment)}")
         else:
             toolchain = (f"triton {environment.get('triton')} "
-                         f"{_certified_mark(environment.get('triton_certified'))}")
+                         f"{_triton_mark(environment)}")
         device = environment.get("device") or {}
         device_text = device.get("name") or f"device {device.get('unreadable', 'unknown')}"
-        device_mark = _certified_mark(environment.get("device_certified"))
+        if device.get("architecture"):
+            device_text += f" ({device['architecture']})"
+        device_certified = environment.get("device_certified")
+        device_supported = environment.get("device_supported")
+        by_table = environment.get("device_certified_by_table") or {}
+        if table != METAL_TABLE and by_table:
+            # THE DEVICE VERDICT OF THE TABLES THAT SERVED, not the Triton answer
+            # ``device_certified`` keeps: a hand-CUDA step on a device only the
+            # hand-CUDA ledger certifies is certified, and the line says so. Where
+            # every table that served reads the same, this is the Triton answer.
+            device_certified = _all_of(by_table.get(name) for name in dispatched_tables)
+            device_supported = _all_of(
+                (environment.get("device_supported_by_table") or {}).get(name)
+                for name in dispatched_tables)
+        device_mark = _certified_mark(device_certified)
+        # SUPPORTED IS NOT CERTIFIED: a table that supports a device it has not
+        # measured (the Metal table, every Apple GPU; an NVIDIA table, its range) says
+        # both.
+        if device_supported is True and device_certified is not True:
+            device_mark = f"supported, {device_mark}"
         line = (f"meep_gpu: step path fused; {len(running)}/{len(slots)} slots "
                 f"({','.join(running)}) via {','.join(arms)}; "
                 f"{table_text}; "
@@ -5820,7 +6204,7 @@ def _announce(record: Mapping[str, Any]) -> None:
                 f"{toolchain}; "
                 f"{device_text} {device_mark}")
         if record.get("certified") is False:
-            # THE OPT-IN'S OWN LINE, after the run's own and once per process.
+            # THE UNCERTIFIED RUN'S OWN LINE, after the run's own and once per process.
             _announce_line(line)
             line = _uncertified_note(record)
     else:
@@ -6022,23 +6406,35 @@ def plan_fast_path(fields: Any, pml: Any, grid: Any,
        reader never has to guess which half failed. This stopped being a whole-plan
        refusal the moment there were two candidates: an unvalidated Triton
        invalidates the Triton certifications wholesale and says nothing whatever
-       about the hand-CUDA table.
+       about the hand-CUDA table. A Triton version no gate ran on is judged by
+       :func:`_judge_uncertified`: inside :data:`TRITON_SUPPORTED_VERSIONS` it is
+       admitted, recorded ``certified: False``; outside it, it is refused by name
+       unless :data:`UNCERTIFIED_SWITCH` is ``1``; under ``0`` it is refused either way.
     4b. AN UNCERTIFIED GPU ARCHITECTURE, also per table. Same argument as 4 on the
-       other half of the codegen input: a readable compute capability no recorded
-       gate ran on is refused by name. The two validated lists come from different
-       campaigns and neither implies the other, so a device one table was certified
-       on and the other was not is a real state rather than a contradiction. An
-       UNREADABLE capability is recorded as unknown and refuses neither — see
-       :func:`_device_is_validated`. :data:`UNCERTIFIED_SWITCH` set to ``1`` admits
-       what rungs 4 and 4b would refuse on identity, recorded ``certified: False``;
-       any value of it but ``1`` and ``0`` is refused by name at rung 3b.
+       other half of the codegen input, and the same judgement against the table's
+       supported range (:func:`capability_supported`). The two validated lists come
+       from different campaigns and neither implies the other, so a device one table
+       was certified on and the other was not is a real state rather than a
+       contradiction. An UNREADABLE capability (or an unreadable ledger) is recorded
+       as unknown and refuses neither — see :func:`_device_is_validated` — unless
+       :data:`UNCERTIFIED_SWITCH` is ``0``, which refuses what it cannot judge. Any
+       value of the switch but ``1`` and ``0`` is refused by name at rung 3b.
+    4e. A CERTIFIED TABLE OUTRANKS AN UNCERTIFIED ONE. Where a candidate table is
+       certified for this device and toolchain (:func:`_certified_here`), every
+       candidate admitted at rung 4 or 4b only because it is supported is DROPPED BY
+       NAME, so the default never makes a certified run uncertified: such a host runs
+       the certified table alone. A table whose identity or ledger could not be read
+       is not certified here, so it outranks nothing: beside it a supported table
+       composes, and a run that read ``certified: None`` before can read ``False``.
+       ``UNCERTIFIED_SWITCH=1`` keeps both.
     4d. PRECEDENCE, which is to say WHICH CANDIDATE COMPOSES FIRST and therefore
        holds every slot both of them admit. :data:`BACKEND_PRECEDENCE` is the
        ruling — Triton first as the release-gated incumbent, hand-CUDA filling its
        refusals — and :data:`BACKEND_PREFERENCE_SWITCH` reorders within the
        candidate set. A preference naming a table that is not a candidate here is a
        NAMED refusal, never a silent fallback to the other one, for the same reason
-       rung 3's is.
+       rung 3's is; for a table rung 4e dropped, the refusal carries the drop's
+       reason.
     5. EVERY CANDIDATE COMPOSES, IN EFFECTIVE ORDER, AND THE RESULTS MERGE BY WHOLE
        UNITS (:func:`meep_gpu.fastpath_cuda.merge_tables`): a secondary table's
        fused unit is adopted only if EVERY slot it spans is free in the primary's
@@ -6304,19 +6700,20 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
             triton_version = str(getattr(triton, "__version__", "unknown"))
             validated = validated_triton_versions()
             if triton_version not in validated:
+                supported = triton_version_supported(triton_version)
                 record["environment"].update(
                     {"triton": triton_version, "triton_certified": False,
+                     "triton_supported": supported,
                      "validated_triton_versions": list(validated)})
-                if uncertified_allowed():
-                    # ADMITTED BY THE OPT-IN, and recorded as read: the table stays
-                    # a candidate and ``triton_certified`` stays False.
-                    _admit_uncertified(record, "triton", "Triton", triton_version,
-                                       validated)
-                else:
-                    triton_reason = (
-                        f"Triton {triton_version} is not in the recorded "
-                        f"validated_triton_versions {list(validated)}"
-                        + UNCERTIFIED_HINT)
+                # ADMITTED when supported (or under ``1``), and recorded as read: the
+                # table stays a candidate and ``triton_certified`` stays False.
+                triton_reason = _judge_uncertified(
+                    record, "triton", "Triton", triton_version, validated, supported,
+                    head=(f"Triton {triton_version} is not in the recorded "
+                          f"validated_triton_versions {list(validated)}"),
+                    outside=("the Triton versions the triton table supports "
+                             f"({_triton_supported_range()})"),
+                    scope=f"Triton {_triton_supported_range()}")
     tables_block["triton"] = {"candidate": triton_reason is None,
                               "refused_because": triton_reason}
     if CUDA_TABLE not in candidates:
@@ -6423,44 +6820,108 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # (4b) The DEVICE, ASKED PER TABLE. Both NVIDIA tables generate or assemble code
     # FOR AN ARCHITECTURE — Triton's PTX and the hand-written kernels' NVRTC compile
     # alike — so a compute capability no gate ran on invalidates a bit-identity claim
-    # the same way an unvalidated Triton does. Refused only when the identity was
+    # the same way an unvalidated Triton does. Judged only when the identity was
     # actually READ: the per-table answer is None on a host whose device will not
-    # identify itself, and refusing on an unread fact would be asserting one.
+    # identify itself (or whose ledger will not read), and refusing on an unread fact
+    # would be asserting one — except under ``UNCERTIFIED_SWITCH=0``, which runs the
+    # kernels only where they are certified and so refuses what it cannot judge.
     #
-    # A FALSE DROPS THAT TABLE, NOT THE PLAN. The two lists come from different
+    # A READ, UNCERTIFIED CAPABILITY IS JUDGED AGAINST THE TABLE'S SUPPORTED RANGE
+    # (:func:`_judge_uncertified`): admitted when supported, refused by name when not
+    # (unless the switch is ``1``), refused either way under ``0``.
+    #
+    # A REFUSAL DROPS THAT TABLE, NOT THE PLAN. The two lists come from different
     # campaigns and neither implies the other, so a device one table was certified on
     # and the other was not is a real state rather than a contradiction; the whole
     # plan is refused only when the drop empties the candidate set.
     certified_by_table = record["environment"].get("device_certified_by_table") or {}
-    capability = (record["environment"].get("device") or {}).get("compute_capability")
+    supported_by_table = record["environment"].get("device_supported_by_table") or {}
+    device = record["environment"].get("device") or {}
+    capability = device.get("compute_capability")
     for name in list(candidates):
-        if certified_by_table.get(name) is False:
-            recorded = (record["environment"]
-                        .get("validated_compute_capabilities_by_table", {})
-                        .get(name, []))
-            if uncertified_allowed():
-                # ADMITTED BY THE OPT-IN: the table stays a candidate, and its
-                # ``device_certified_by_table`` answer stays False.
-                _admit_uncertified(record, name, "GPU compute capability",
-                                   capability, recorded)
+        verdict = certified_by_table.get(name)
+        if verdict is True:
+            continue
+        recorded = (record["environment"]
+                    .get("validated_compute_capabilities_by_table", {})
+                    .get(name, []))
+        if verdict is None:
+            if not certified_only():
                 continue
-            # NAME WHAT WOULD HAVE TO BE RE-RUN. The table's list is the intersection
-            # of its cited welds' live capabilities, so "not certified here" is always
-            # some set of welds with no live run on this architecture; a reader who is
-            # certifying a new card needs those names, not just the verdict.
-            blocking = [key for key, state in sorted(
-                capability_admission(name)["by_key"].items())
-                if capability is None
-                or _normalized_capability(capability) not in state["live"]]
+            cause = (f"the GPU compute capability could not be read on this host "
+                     f"({device.get('unreadable', 'unknown')})" if capability is None
+                     else f"the {name} table's certification record could not be "
+                          f"read, so GPU compute capability {capability} cannot be "
+                          "judged")
+            tables_block[name] = {
+                "candidate": False,
+                "refused_because": (cause + CERTIFIED_ONLY_TAIL
+                                    + ", and an identity that cannot be judged is "
+                                      "not one")}
+            candidates.remove(name)
+            continue
+        # NAME WHAT WOULD HAVE TO BE RE-RUN. The table's list is the intersection
+        # of its cited welds' live capabilities, so "not certified here" is always
+        # some set of welds with no live run on this architecture; a reader who is
+        # certifying a new card needs those names, not just the verdict. Admitted or
+        # refused, the names are recorded.
+        blocking = [key for key, state in sorted(
+            capability_admission(name)["by_key"].items())
+            if _normalized_capability(capability) not in state["live"]]
+        welds = {"welds_without_a_live_run_here": blocking[:5],
+                 "welds_without_a_live_run_here_count": len(blocking)}
+        spelled_range = _spelled_range(supported_compute_capabilities(name))
+        reason = _judge_uncertified(
+            record, name, _CAPABILITY_WHAT, capability, recorded,
+            supported_by_table.get(name) is True,
+            head=(f"GPU compute capability {capability} is not in the recorded "
+                  f"validated_compute_capabilities {list(recorded)} for the "
+                  f"{name} table"),
+            outside=f"the compute capabilities that table supports ({spelled_range})",
+            scope=f"compute capability {spelled_range}",
+            **welds)
+        if reason is None:
+            # ADMITTED: the table stays a candidate, and its
+            # ``device_certified_by_table`` answer stays False.
+            continue
+        tables_block[name] = {"candidate": False, "refused_because": reason, **welds}
+        candidates.remove(name)
+
+    # (4e) A CERTIFIED TABLE OUTRANKS AN UNCERTIFIED ONE. Where a candidate table is
+    # certified for this device and toolchain, a candidate admitted above only
+    # because it is SUPPORTED is dropped by name: composing it first (Triton holds
+    # every slot both tables admit) would make the default run LESS certified than
+    # the certified table alone, on exactly the hosts that have one. A table whose
+    # identity could not be read was admitted by nothing and is not dropped, as
+    # before; nor is it certified here, so it does not make a supported table drop.
+    # ``UNCERTIFIED_SWITCH=1`` composes both.
+    if not unsupported_allowed():
+        environment = record["environment"]
+        certified_here = [name for name in candidates
+                          if _certified_here(environment, name)]
+        admitted_tables = {entry.get("table") for entry in
+                           (record.get("uncertified") or {}).get("admitted") or ()}
+        for name in list(candidates):
+            if not certified_here or name in certified_here \
+                    or name not in admitted_tables:
+                continue
+            entries = [entry for entry in record["uncertified"]["admitted"]
+                       if entry.get("table") == name]
+            identities = "; ".join(f"{entry['what']} {entry['read']}"
+                                   for entry in entries)
+            welds = {key: entry[key] for entry in entries for key in (
+                "welds_without_a_live_run_here", "welds_without_a_live_run_here_count")
+                if key in entry}
             tables_block[name] = {
                 "candidate": False,
                 "refused_because": (
-                    f"GPU compute capability {capability} is not in the recorded "
-                    f"validated_compute_capabilities {list(recorded)} for the "
-                    f"{name} table" + UNCERTIFIED_HINT),
-                "welds_without_a_live_run_here": blocking[:5],
-                "welds_without_a_live_run_here_count": len(blocking)}
+                    f"the {name} table is supported but not certified here "
+                    f"({identities}), and the {', '.join(certified_here)} table is "
+                    f"certified for this device and toolchain; set "
+                    f"{UNCERTIFIED_SWITCH}=1 to compose it too"),
+                "dropped_for_a_certified_table": list(certified_here), **welds}
             candidates.remove(name)
+    _settle_uncertified(record, candidates, tables_block)
     if not candidates:
         _refuse(record, "no kernel table is a candidate on this host: "
                         + "; ".join(
@@ -6472,9 +6933,15 @@ def _decide(record: Dict[str, Any], fields: Any, pml: Any,
     # holds every slot both of them admit. The ruling is a constant
     # (:data:`BACKEND_PRECEDENCE`) and the switch orders within it; a switch naming a
     # table that is not a candidate here is a NAMED refusal rather than a silent
-    # fallback, for the same reason rung 3's is.
+    # fallback, for the same reason rung 3's is. A switch naming the table rung 4e
+    # dropped is refused with the drop's reason appended: the run asked for a table
+    # that is supported here, and has to be told why it did not get it.
     order = backend_precedence(candidates)
     if isinstance(order, str):
+        wanted_backend = (os.environ.get(BACKEND_PREFERENCE_SWITCH) or "").strip()
+        dropped_row = tables_block.get(wanted_backend) or {}
+        if dropped_row.get("dropped_for_a_certified_table"):
+            order += f"; {wanted_backend}: {dropped_row['refused_because']}"
         record["arbitration"] = {
             "precedence": list(BACKEND_PRECEDENCE),
             "preference_switch": BACKEND_PREFERENCE_SWITCH,

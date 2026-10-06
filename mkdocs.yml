@@ -102,6 +102,7 @@ nav:
       - The three kernel tables: development/kernel-tables.md
       - Running the tests: development/testing.md
       - Running the certification harness: development/certification.md
+      - Running the timing ladder: development/timing.md
       - Capability coverage checklist: guides/capability-coverage.md
   - How to cite: citing.md
   - License: license.md

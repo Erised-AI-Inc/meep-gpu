@@ -30,7 +30,7 @@ The four legs are the same simulation stepped four ways:
 
 | Leg | Call | What steps it |
 |---|---|---|
-| `gpu` | `run_on_gpu(sim, until=...)` | this host's GPU: compiled kernels where a certified one covers the configuration, the array path elsewhere |
+| `gpu` | `run_on_gpu(sim, until=...)` | this host's GPU: compiled kernels where one covers the configuration on a supported GPU (an uncertified GPU says so), the array path elsewhere |
 | `array` | the same call with `MEEP_GPU_DISPATCH=0` | the array path of the same GPU route: CuPy on the device on NVIDIA hardware, NumPy on the host on Apple hardware |
 | `reference` | `run_on_gpu(sim, until=..., prefer_gpu=False)` | the NumPy reference, on any host |
 | `meep` | `sim.run(until=...)` | MEEP |
@@ -63,12 +63,17 @@ under the host's own default policy.
 ## The recorded output
 
 `expected/` holds the output of `run_examples.py --record` on one Apple M1 Max
-with MEEP 1.33.0 built in single precision, PyTorch 2.10.0 and Metal frontend
-32023.850.10, on 2026-09-28. It has not been recorded on NVIDIA hardware. On one
-NVIDIA RTX A6000 (conda-forge MEEP 1.33.0, the Triton table), the 3 examples that
-compare with MEEP matched the recorded output with 0 mismatches on 2026-09-28, the
-`gpu` leg identical to the `array` leg in 3 of 3; their comparison with MEEP (a
-double-precision build) was reported, not judged. On the CuPy route the `array` leg points
+(GPU architecture `applegpu_g13s`) with MEEP 1.33.0 built in single precision,
+PyTorch 2.10.0 and Metal frontend 32023.850.10, on 2026-09-28. Its
+`[host] meep_gpu:` status lines, which `--check` does not compare, predate the
+status line of this release, which ends with the GPU's name, architecture and
+mark (`Apple M1 Max (applegpu_g13s) certified` on that Mac) where they end
+`device unknown uncertified-unknown`. It has not been
+recorded on NVIDIA hardware. On one NVIDIA RTX A6000 (conda-forge MEEP 1.33.0,
+the Triton table), the 3 examples that compare with MEEP matched the recorded
+output with 0 mismatches on 2026-09-28, the `gpu` leg identical to the `array`
+leg in 3 of 3; their comparison with MEEP (a double-precision build) was
+reported, not judged. On the CuPy route the `array` leg points
 `CUPY_CACHE_DIR` at the package's keep-policy cache before it installs the policy
 by hand, as dispatch does for the `gpu` leg; without that, CuPy refuses the `keep`
 policy. What the recorded output shows, for 3 of 3 examples:
@@ -101,5 +106,12 @@ result.
 
 `[host]` lines state which path served each run. `step path: fused` means
 compiled kernels served the step; `step path: array` means the array path did. A
-host outside the certified identities is refused by name and steps on the array
-path, which is a correct run.
+supported NVIDIA GPU outside the certified identities (compute capability 7.0 to
+9.0) runs the kernels, uncertified, and says so; one outside the supported range
+is refused by name and steps on the array path, which is a correct run. Every
+Apple GPU is supported, so on a Mac
+outside the certified environment the Metal kernels serve the step, the status
+line marks another Apple GPU `supported, UNCERTIFIED`, and a
+`meep_gpu: NOTE the kernels are NOT CERTIFIED` line names each fact of the
+environment that is not certified; the `gpu` against `array` comparison is judged
+there as on any host.

@@ -13,67 +13,131 @@
 # its ledgers are committed; a listed test that passes is reported so that the
 # list can only shrink.
 #
-# The first 36 entries were derived 2026-09-28 from a measured run: the failures
-# whose own message states that pinned bytes moved (a digest, a weld, a
-# fingerprint or a record that no longer matches the files, or a record that
-# states a default the code no longer ships).
-meep_gpu.cuda_kernels.test_ade_update_p::test_the_record_block_pins_the_device_strings_that_ship_today
-meep_gpu.cuda_kernels.test_certification_record::test_the_record_matches_the_shipped_kernel_module
-meep_gpu.cuda_kernels.test_constitutive_pml_real::test_the_fold_admission_names_a_record_block_that_reports_a_pass
-meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_emitter_that_ships_today
-meep_gpu.test_cuda_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest
-meep_gpu.test_cuda_weld_contract::test_the_cuda_code_tier_recomputes_against_the_tree
-meep_gpu.test_cuda_weld_contract::test_the_cuda_welds_are_bound_to_the_live_sources
-meep_gpu.test_cuda_weld_contract::test_the_declared_source_drift_is_the_measured_source_drift
-meep_gpu.test_cuda_weld_contract::test_the_status_is_the_one_the_tree_supports
-meep_gpu.test_dispatch_contract::test_the_cited_cuda_route_gate_ran_the_bytes_the_record_binds
-meep_gpu.test_dispatch_contract::test_the_cuda_record_states_the_default_the_code_ships
-meep_gpu.test_dispatch_contract::test_the_dispatch_by_default_licence_is_the_artifact_it_names
-meep_gpu.test_dispatch_contract::test_the_no_absorber_gate_records_are_welded_to_the_live_sources
-meep_gpu.test_metal_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest
-meep_gpu.test_metal_weld_contract::test_the_metal_code_tier_recomputes_against_the_tree
-meep_gpu.test_metal_weld_contract::test_the_metal_welds_are_bound_to_the_live_sources
-meep_gpu.test_triton_complex_conductive_fused_pair::test_the_module_is_welded_to_the_bytes_its_gate_executed
-meep_gpu.test_triton_complex_fused_magnetic_pair::test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes
-meep_gpu.test_triton_conductivity::test_the_conductivity_composition_fingerprint_names_the_exact_gated_bytes
-meep_gpu.test_triton_cylindrical_composition::test_cylindrical_composition_provenance_welds_the_live_central_seam
-meep_gpu.test_triton_cylindrical_real_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it
-meep_gpu.test_triton_folded_complex_fused_magnetic_pair::test_the_module_has_a_fingerprints_weld_that_pins_these_bytes
-meep_gpu.test_triton_folded_fused_magnetic_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it
-meep_gpu.test_triton_folded_fused_pair::test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it
-meep_gpu.test_triton_kernels::test_the_fingerprint_record_matches_the_shipped_host_side
-meep_gpu.test_triton_kernels::test_the_fused_electric_record_is_welded_to_both_oracles_and_the_route
-meep_gpu.test_triton_no_pml::test_the_no_pml_composition_fingerprint_names_the_exact_gated_bytes
-meep_gpu.test_triton_planner_composition::test_every_drifted_host_file_is_named_in_the_pending_recut_record
-meep_gpu.test_triton_planner_composition::test_the_pending_recut_record_says_what_bounds_dispatch_now
-meep_gpu.test_triton_weld_contract::test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest
-meep_gpu.test_triton_weld_contract::test_the_triton_code_tier_recomputes_against_the_tree
-meep_gpu.test_triton_weld_contract::test_the_triton_welds_are_bound_to_the_live_sources
+# Removed 2026-10-06: the five Metal entries (the three Metal weld-contract tests, the
+# Metal dispatch-record test and the Metal route-record entry), which the Apple M1 Max
+# round 2026-10-05_092_g13s (run on the release commit fa59c2f) turned green. The three
+# cited Metal welds that pin meep_gpu/fastpath.py (metal_complex_conductive_fused_pair,
+# metal_complex_no_pml_conductive and metal_cylindrical_real_fused_magnetic_pair) were
+# re-run on these bytes and rebind_metal_welds.py rebound them (3 rebound, 0 skipped);
+# the held route campaign dispatch_metal_route_2026-10-05_perarch_applegpu_g13s released
+# its five legs, and recut_driver_dispatch_record.py --backend metal wrote
+# runs["applegpu_g13s"]. The Metal fusion board was re-cut on that ledger as
+# fusion_matrix_metal_2026-10-05_092_g13s (served in dispatch 327, served by predicate
+# 531, of 597, as on the board it replaces), and the nonlinear-cell test reads it.
 #
-# Added 2026-09-28 from the integration run, same class: the message states that
+# Removed 2026-10-06: fourteen entries that the binding of the RTX A6000 round
+# 2026-10-05_092_cc86 (run on the release commit fa59c2f) turned green. The Triton
+# bit-identity gate released on these bytes and rebind_triton_welds.py
+# --bind-bit-identity bound it. The fleet re-ran unified_expansion, fused_ade_chain and
+# probe_triton_folded_deposit_closure, and complex_fused_ade_chain under that run's
+# expansion record, and rebind_triton_welds.py rebound the three welds they gate (3
+# rebound, 0 skipped). dispatch_fused_route_2026-10-05_092_cc86 released its four legs,
+# the end-to-end licence dispatch_end_to_end_2026-10-05_092_cc86 read GO (8 of 9 cases
+# dispatched, null control clean), and recut_driver_dispatch_record.py --end-to-end filed
+# runs["8.6"] into the Triton record. dispatch_fused_route_cuda_2026-10-05_092_cc86
+# released its five required legs and cuda_alone, and recut_driver_dispatch_record.py
+# --backend cuda filed runs["8.6"] into the CUDA record. They are the last 8 of the 36
+# entries derived 2026-09-28 from a measured run (failures whose own message states that
+# pinned bytes moved): the 4 CUDA and 3 Triton weld-contract tests and the no-absorber
+# test; the 4 entries of the uncertified-default block (the cited CUDA and Triton
+# route-gate tests and both dispatch-shape tests; the Triton route-gate test is an
+# [evidence_archive] test, measured with the archive and its marker); and the CUDA and
+# Triton route-record entries.
+#
+# Removed 2026-10-06: three entries that the binding of the RTX A6000 residue round
+# 2026-10-05_cc86_residue (run on the release commit d9b8d97) turned green with no new
+# device run. The ADE record test: SHIPPING_RECORD_BLOCK names
+# cuda_ade_recut_2026-10-05_cc86_residue, which record_cuda_ade_recut.py recorded with
+# the test file declared. The CUDA weld status rule: record_cuda_regate.py recorded
+# cuda_regate_2026-10-05_cc86_residue (23 families, 46 legs, all released) and
+# rebind_cuda_welds.py rebound the 23 welds it re-gates. The Triton conductivity
+# composition test: rebind_triton_welds.py rebound triton_conductivity_device_gate and
+# five other residue welds, and record_specialized_kernel_sources.py then recorded
+# conductivity.py and cylindrical_triton.py, whose standalone and composition welds
+# both pin the live bytes. The first block's entries that stay listed now carry, above
+# each group, what they still wait on.
+#
+# Removed 2026-10-05: two Triton record tests (the fused D/E record's NumPy
+# reference weld and the no-PML composition's specialization digest). Two new
+# writers in parity/meep_gpu/ moved the two digests with no device run:
+# record_numpy_reference_weld.py ran the NumPy validator on these bytes (308 of
+# 308 cases bit-identical, 44 skipped, as the record states) and recorded its
+# sha256, and record_specialized_kernel_sources.py recorded the sha256 of
+# no_pml.py, which its standalone device weld and its composition weld both pin
+# with a live record. The conductivity composition test stays listed: the
+# standalone weld of conductivity.py still pins earlier bytes, and the writer
+# refuses until that weld is re-run and rebound. 46 raw digests across 12 entries
+# of the Triton ledger still drift.
+#
+# Removed 2026-10-05: the Triton clean-seam timing test
+# (test_the_clean_seam_one_pair_rows_are_not_vetoed[triton]). It expected the 5
+# clean-seam one-pair rows at DRIVE sizes of the cut from the 2026-09-19 rows; the
+# shipped record, cut from the 2026-09-20 rows, holds 3, because that round's DRIVE
+# offdiag_2d row and its licensed folded_complex_offdiag_2d row failed
+# spread_within_gate and are in the record's excluded list. CLEAN_DRIVE_ROWS['triton']
+# is now 3 with that reason beside it; the record is unchanged.
+#
+# Removed 2026-10-05: two Triton module-weld tests (the complex fused magnetic pair's
+# and the folded fused pair's). They read run fields that 0.9.1 moved into the
+# per-architecture records; they now read them from each record that still binds the
+# weld's bytes. Both welds pin their own test file, so they were rebound on compute
+# capability 8.6 from their 2026-10-03_cc86 artifacts, with no new device run, and
+# triton_no_pml_device_gate was rebound from the 2026-10-03_cc86 composition run.
+# test_the_triton_welds_are_bound_to_the_live_sources stays listed: its sibling-pin
+# floor went from 22 to 14 (0.9.1 removed eight slurm launcher pins), and 48 raw
+# digests of 13 uncited records still drift.
+#
+# Removed 2026-10-05: four CUDA record entries (the step_curl_kernels.py revision, the
+# fold admission's coverage.py revision, and the emitter and launch-text tests of the
+# off-diagonal block), which certification.json turned green with no new device run:
+# offdiag_2026-08-16 re-cut from the off-diagonal legs of the RTX A6000 round
+# 2026-10-03_cc86, and two post-certification edits declared, each measured as a
+# comment or host-name change only. The 0.9.1 block at the end of this list held only
+# the launch-text entry and is removed with it.
+#
+# Removed 2026-10-04: test_the_shipped_record_names_what_it_was_cut_from[cuda]. Its size
+# floors (20 admitted rows, 4 measured keys) are replaced, not relaxed, by checks both
+# timing records pass: one table, one architecture and one device; every row read
+# accounted for; every key answering the consult at its band edges on the program the
+# record names, with band edges of at least the cutter's minimum rows; every released
+# case timed on the table and every released product priced or excluded by name.
+#
+# Removed 2026-10-04: seven more (the Triton and CUDA dispatch records, the
+# dispatch-by-default licence, the CUDA route gate and default, the cylindrical
+# composition seam and the pending-recut record), which the route campaigns and the
+# end-to-end licence run on the RTX A6000 turned green.
+#
+# Removed 2026-10-04: six Triton entries (four module-weld tests, the host-side fingerprint
+# record and the drifted-host-file record), which the binding of the RTX A6000 round
+# 2026-10-03_cc86 turned green.
+#
+# Removed 2026-10-03: the five Metal entries (the three Metal weld contract
+# tests, the Metal host fingerprints and the Metal dispatch record), which the
+# Metal round 2026-10-02_arch3 turned green on the committed bytes; the first
+# block below keeps 33 of its 36 entries and the 2026-09-28 integration block 2
+# of its 4.
+#
+# Added 2026-09-28 from the integration run, of the class the first 36 entries held
+# (the failure's own message states that pinned bytes moved): the message states that
 # a pinned host module moved (the release scrub edited a provenance string in
 # meep_gpu/metal_kernels/coverage.py), that the code ships dispatch by default
 # while the dispatch records state otherwise, or that a record names an earlier
 # route campaign than the one the code cites.
-meep_gpu.test_metal_kernels::test_the_checked_in_fingerprints_match_the_tree
-meep_gpu.test_dispatch_contract::test_the_recorded_dispatch_shape_matches_the_wiring_it_describes
-meep_gpu.test_dispatch_contract::test_the_metal_record_is_welded_to_the_live_sources_when_it_exists
-meep_gpu.test_dispatch_contract::test_the_recorded_cuda_dispatch_shape_matches_the_wiring_it_describes
 #
-# Record contracts of the two timing records (meep_gpu/*/timing_cc86.json, one per
-# compute capability since 0.9.1). They are
-# red in the development tree as well: the records were re-cut on 2026-09-20
-# from a sweep with one row per size, and these tests still describe the
-# earlier cut (two rows per size at the top of the sweep; at least 20 admitted
-# rows in the CUDA record, which admits 14). They stay red until the timing
-# records are cut again (parity/meep_gpu/cut_timing_record.py, from timing rows
-# of the evidence archive) or the tests are brought to the records; neither is
-# done here, and the tests are not relaxed.
+# Record contracts of the two timing records (meep_gpu/*/timing_cc86.json). The
+# records were cut from the 2026-09-20 rows, which carry one row per product at
+# 2.4M and 5.4M cells; with the cutter's two-row minimum that key is unmeasured,
+# and a one-row cut still leaves fewer than two plans at the top of the sweep.
+# No cut of the archived rows passes these tests (the 2026-09-19 rows have the
+# same shape at the top), and none describes the shipped files: the rows ran
+# deposit-repair digest dffe30ab and the release ships dd73e10a. They stay red
+# until a timing campaign on the shipped bytes, with two passes at the top of the
+# sweep, re-cuts both records. These two tests are not relaxed.
 meep_gpu.test_dispatch_preference::test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster[cuda]
 meep_gpu.test_dispatch_preference::test_at_the_top_of_the_sweep_the_two_pair_plans_are_faster[triton]
-meep_gpu.test_dispatch_preference::test_the_clean_seam_one_pair_rows_are_not_vetoed[triton]
-parity.meep_gpu.test_cut_timing_record::test_the_shipped_record_names_what_it_was_cut_from[cuda]
 #
-# Added for 0.9.1 (the own-cell hoist of the off-diagonal single): the record block
-# gains the digest of the 63 launch texts when the gate runs on the hoisted bytes.
-meep_gpu.cuda_kernels.test_offdiag_constitutive_pml_real::test_the_record_block_was_cut_against_the_launch_texts_that_ship_today
+# Removed 2026-10-05: the four Metal entries of the probe hand-over (the three Metal
+# weld contract tests and the whole-step provenance case). The Metal fleet on the
+# Apple M1 Max under stamp 2026-10-04_g13s on these bytes released 62 of 62 gates (45
+# of 45 cited welds), rebind_metal_welds.py rebound 62, and CURRENT_EVIDENCE names
+# metal_whole_step_2026-10-04_g13s.

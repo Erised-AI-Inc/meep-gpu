@@ -74,6 +74,7 @@ import pathlib
 
 import pytest
 
+from . import fastpath, metal_runs
 from . import weld_record_walk as walk
 from .code_identity import code_digest
 from .device_identity import device_digests
@@ -85,15 +86,25 @@ REPO = PACKAGE.parent
 
 #: Entries that own NO checked digest, excluded BY NAME with the reason. There is
 #: no predicate that quietly drops an entry - see the rule below.
-#: EMPTY SINCE 2026-08-30 (fourth round), and empty on purpose rather than
-#: deleted. Its one member, `metal_kernels`, moved to NOT_A_DEVICE_GATE when its
-#: 56 host digests stopped being deferred and became checked here: every dict
-#: entry in this record now owns a checked digest, so nothing needs excusing from
-#: the byte check. The dict stays because the RULE stays - an entry that pins
+#: EMPTY FROM 2026-08-30 (fourth round) until the per-architecture migration, and
+#: kept rather than deleted. Its one member then, `metal_kernels`, moved to
+#: NOT_A_DEVICE_GATE when its 56 host digests stopped being deferred and became
+#: checked here. The dict stayed because the RULE stays - an entry that pins
 #: nothing must be named here with a reason, never dropped by a predicate - and
 #: `test_every_record_entry_is_checked_or_excluded_by_name` fails on the first
-#: entry that tries.
-NOT_A_GATE_RECORD = {}
+#: entry that tries. The migration note is the first block since that is no gate
+#: record.
+NOT_A_GATE_RECORD = {
+    # ARRIVED with the per-architecture run records, the first member since the
+    # list emptied. A BLOCK, so the rule above applies to it by name.
+    "_architecture_runs_migration":
+        "the migration's own stamp: which tool moved each weld's run fields under "
+        "`runs[<GPU architecture>]`, when, where each entry's architecture was read "
+        "from (its own host line), how many entries it touched and the environment "
+        "certified before. It records a COUNT and names, and no digest, so there is "
+        "nothing here to compare against the tree; "
+        "test_the_migration_note_states_no_digest asserts that absence",
+}
 
 #: Entries that own checked digests but are NOT device gate records, so the
 #: gate-script requirement below does not apply to them. Named, with the reason,
@@ -164,6 +175,13 @@ EXPECTED_RULES = {
     # would be wrong too, since the `missing` check above already requires the rule
     # to fire at all, and a recut that moved nothing should not have been cut.
     "historical_recut_log": 2,
+    # ARRIVED with the per-architecture run records: one `bound_sha256` per run,
+    # the digest of the digests that run certified (weld_record_walk.RULE_REASONS
+    # ["run_bound_digest"]). Excluded from the byte tiers because it names no file;
+    # what it decides -- whether the run is LIVE -- is asserted by
+    # test_every_metal_weld_has_a_live_run_in_the_per_architecture_shape. 62: one
+    # run per weld entry after the migration. A second architecture adds 62 more.
+    "run_bound_digest": 62,
 }
 
 
@@ -279,6 +297,18 @@ def _drifted(found, root=REPO):
         device_digests_of=_device_digests_of,
         rebind_tool="parity/meep_gpu/rebind_metal_welds.py",
     )
+
+
+def _measured_drift(name, entry, root=REPO):
+    """The set of paths this entry pins in the RAW tier that no longer match the tree.
+
+    Derived from the census over ``{name: entry}`` rather than from
+    ``entry["source_sha256"]``, so a raw pin the entry grows in some other shape is
+    measured here too. The same measurement, under the same name, as the CUDA
+    contract's, so the route-record rule below reads drift the same way in all three.
+    """
+    raw = _of_tier(_census({name: entry}), walk.TIER_RAW)
+    return {subject for _, subject, _ in _drifted(raw, root=root)}
 
 
 def _pinned(record=None):
@@ -729,6 +759,123 @@ def test_the_walker_finds_a_digest_planted_at_a_new_nesting_depth():
 
 
 # ---------------------------------------------------------------------------
+# THE ROUTE RECORD: checked through its runs, not as a weld
+# ---------------------------------------------------------------------------
+#
+# The same rule, in the same words, as the other two weld contracts. What differs
+# per suite is only where this suite declares the record a non-weld, how it spells a
+# run's key, and which route-run fields its shape check reads.
+
+#: This ledger's dispatch record, and the table that declares it a non-weld.
+DISPATCH_RECORD = "driver_dispatch"
+DISPATCH_RECORD_DECLARED_BY = metal_runs.NOT_WELDS
+
+#: The key the armed control files a planted route run under: a GPU architecture.
+PLANTED_RUN_KEY = "applegpu_g13s"
+
+
+def _dispatch_shape_reasons(entry):
+    """Why the record is not in the per-architecture shape, read against the
+    ROUTE-run fields, which name ``status``; the weld run fields do not."""
+    return metal_runs.shape_reasons(entry, run_fields=metal_runs.DISPATCH_RUN_FIELDS)
+
+
+def _tree_digest(name):
+    """The live raw digest of a path the record pins, resolved as this suite's drift
+    check resolves it."""
+    return _raw_digest(_resolve(name))
+
+
+def _dispatch_record_problems(record):
+    """What ``weld_record_walk.route_record_problems`` reports for this ledger's
+    dispatch record, from this suite's own measurements: liveness by
+    ``fastpath.live_capabilities``, drift by :func:`_measured_drift` (the raw tier,
+    as for a weld), and shape by :func:`_dispatch_shape_reasons`."""
+    entry = record[DISPATCH_RECORD]
+    return walk.route_record_problems(
+        entry, live=fastpath.live_capabilities(entry),
+        moved=sorted(_measured_drift(DISPATCH_RECORD, entry)),
+        stranded=_dispatch_shape_reasons(entry))
+
+
+def test_the_dispatch_record_stands_on_a_live_passing_route_run():
+    """The dispatch record is not a weld: it stands on its route runs and the tree.
+
+    ``driver_dispatch`` pins the bytes of the dispatch wiring, and no single gate
+    produced it, so the weld status rule does not apply to it. Its verdict is the
+    route campaign's: ``recut_driver_dispatch_record.py`` files each run under
+    ``runs[<key>]``, one per environment, with that run's ``status``. The rule is the
+    same in the three weld contracts (``weld_record_walk.route_record_problems``):
+
+      (a) at least one run is live (``fastpath.live_capabilities``), so an empty
+          ``runs``, or one whose every run binds bytes that have since moved, fails;
+      (b) every live run reads ``status`` PASS;
+      (c) every file the record pins in the raw tier matches the tree. A run stays
+          live after the files move, because it binds the record's digests and not
+          the tree, so liveness alone cannot say the record describes what ships;
+      (d) the route-run fields, ``status`` among them, appear only under
+          ``runs[<key>]``. A status beside the digests would be a second answer to
+          what the route campaign measured, and is refused.
+
+    Cleared by a route campaign that releases on these bytes and a recut that files
+    its run; never by writing a status beside the digests.
+    """
+    record = _record()
+    assert DISPATCH_RECORD in DISPATCH_RECORD_DECLARED_BY, (
+        f"{DISPATCH_RECORD} is no longer declared a non-weld, so the weld rules would "
+        f"apply to it as well as this one; declare it, or retire this test")
+    assert isinstance(record.get(DISPATCH_RECORD), dict), (
+        f"the ledger carries no {DISPATCH_RECORD} record")
+    problems = _dispatch_record_problems(record)
+    assert not problems, (
+        f"{DISPATCH_RECORD}: {problems} - run the route campaign on these bytes and "
+        f"cut its run with parity/meep_gpu/recut_driver_dispatch_record.py; never "
+        f"write a status beside the digests")
+
+
+def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
+    """ARMED, on this ledger's own record, because the test above fails until a route
+    campaign has run on these bytes, and a rule watched only while it fails has not
+    been watched refusing what it is meant to refuse.
+
+    The control first: a copy of the record re-pinned to the tree, holding one live
+    run that reads PASS, is accepted, so the rule can pass. Then four plants on that
+    control, each refused by its own clause and by nothing else: an entry-level
+    ``status`` (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes
+    other than the record's, so that no run is live (a), and the live run reading
+    FAIL (b). The stale run is what holds liveness to ``fastpath.live_capabilities``:
+    a check that read every recorded run as live would accept it."""
+    record = _record()
+    source = {name: _tree_digest(name)
+              for name in record[DISPATCH_RECORD]["source_sha256"]}
+    bound = fastpath.bound_digest(dict(record[DISPATCH_RECORD], source_sha256=source))
+
+    def problems_with(**fields):
+        planted = json.loads(json.dumps(record))
+        planted[DISPATCH_RECORD].update({"source_sha256": source, fastpath.RUNS: {
+            PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": bound}}})
+        planted[DISPATCH_RECORD].update(fields)
+        return _dispatch_record_problems(planted)
+
+    control = problems_with()
+    assert control == [], control
+    stated = problems_with(status="PASS")
+    assert len(stated) == 1 and "beside the digests" in stated[0], stated
+    assert "'status'" in stated[0], stated
+    emptied = problems_with(**{fastpath.RUNS: {}})
+    assert len(emptied) == 1 and emptied[0].startswith("no live run"), emptied
+    other_bytes = "0" * 64
+    assert other_bytes != bound
+    stale = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": other_bytes}}})
+    assert len(stale) == 1 and stale[0].startswith("no live run"), stale
+    failed = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "FAIL", "bound_sha256": bound}}})
+    assert len(failed) == 1 and failed[0].startswith(
+        f"{fastpath.RUNS}[{PLANTED_RUN_KEY!r}] reads status 'FAIL', not PASS"), failed
+
+
+# ---------------------------------------------------------------------------
 # WHAT A WELD MUST CARRY
 # ---------------------------------------------------------------------------
 
@@ -805,9 +952,62 @@ def test_every_metal_family_is_welded():
 
 
 @pytest.mark.parametrize("field", ["recorded_utc", "host", "artifact_sha256",
-                                   "subnormal_policy"])
+                                   "subnormal_policy", "environment_read_from",
+                                   "torch", "metal_frontend"])
 def test_every_metal_weld_carries_its_metadata(field):
     """The gap the CUDA comparison identified in certification.json - 0 of 4 blocks
-    carried recorded_utc - is not reintroduced here."""
-    missing = [name for name, entry in _welds().items() if not entry.get(field)]
-    assert not missing, f"{len(missing)} Metal welds lack {field}: {sorted(missing)[:5]}"
+    carried recorded_utc - is not reintroduced here.
+
+    ASKED OF EVERY LIVE RUN, because these describe one run of the gate and live in
+    ``runs[<architecture>]`` (``metal_runs.RUN_FIELDS``), not beside the digests. A
+    weld with no live run fails the test below rather than passing this one vacuously.
+    """
+    missing = sorted(f"{name}:runs[{architecture}]"
+                     for name, entry in _welds().items()
+                     for architecture, run in metal_runs.live_runs(entry).items()
+                     if not run.get(field))
+    assert not missing, f"{len(missing)} Metal weld runs lack {field}: {missing[:5]}"
+
+
+def test_every_metal_weld_has_a_live_run_in_the_per_architecture_shape():
+    """Every weld holds its runs under ``runs[<GPU architecture>]``, and at least one is live.
+
+    THE SHAPE IS REFUSED BY NAME (``metal_runs.shape_reasons``): no run field beside
+    the digests, every key an ``applegpu_*`` architecture, every run carrying its
+    ``bound_sha256`` and nothing that describes bytes, and every run's host line naming
+    the architecture it is keyed by and the torch and frontend it records. A run is
+    live while its ``bound_sha256`` is ``fastpath.bound_digest`` of the entry; a weld
+    whose every run binds bytes that have since moved certifies nothing.
+    """
+    welds = _welds()
+    assert len(welds) >= ENTRY_FLOOR - len(NOT_A_DEVICE_GATE), len(welds)
+    retired = {name: metal_runs.shape_reasons(entry) for name, entry in welds.items()}
+    retired = {name: why for name, why in retired.items() if why}
+    assert not retired, (
+        f"{len(retired)} Metal welds are not in the per-architecture shape - run "
+        f"parity/meep_gpu/migrate_metal_runs.py, never edit the ledger by hand: "
+        f"{dict(sorted(retired.items())[:3])}")
+    dead = sorted(name for name, entry in welds.items()
+                  if not metal_runs.live_architectures(entry))
+    assert not dead, (f"{len(dead)} Metal welds have no live run: {dead[:5]} - re-run "
+                      f"their gates and rebind")
+
+
+def test_the_cited_welds_admit_an_architecture_every_one_of_them_ran_on():
+    """The intersection the admission certifies is non-empty, and each blocker is named."""
+    report = metal_runs.admission_report(_record(), metal_runs.cited_keys())
+    blocked = {key: row["problem"] for key, row in report["by_key"].items()
+               if row["problem"]}
+    assert not blocked, blocked
+    assert report["admitted"], (
+        f"the {len(report['by_key'])} cited Metal welds share no live GPU "
+        f"architecture: {dict(sorted((k, v['live']) for k, v in report['by_key'].items()))}")
+
+
+def test_the_migration_note_states_no_digest():
+    """The note says what moved and from where; a digest in it would be a pin no tier checks."""
+    note = _record().get("_architecture_runs_migration")
+    assert isinstance(note, dict), "the ledger carries no per-architecture migration note"
+    assert note["entries"] >= ENTRY_FLOOR - len(NOT_A_DEVICE_GATE), note
+    assert note["architectures"], note
+    assert not [f for f in walk.census({"note": note})], note

@@ -869,7 +869,11 @@ def test_every_two_pair_bracketed_plan_at_drive_sizes_is_slower_than_its_singles
 #: clean-seam rows timed plans whose slots the CUDA and the Triton tables BOTH served,
 #: and a mixed-table plan is not a measurement of either table's plan (the cutter's
 #: admission rule). A count, not a floor, so a re-cut that loses them says so.
-CLEAN_DRIVE_ROWS = {"triton": 5, "cuda": 0}
+#: The Triton record has 3 since its cut from the 2026-09-20 rows: that round's
+#: DRIVE offdiag_2d row and its licensed folded_complex_offdiag_2d row failed
+#: spread_within_gate and are in the record's excluded list; the earlier
+#: cut, from the 2026-09-19 rows, admitted both and counted 5.
+CLEAN_DRIVE_ROWS = {"triton": 3, "cuda": 0}
 
 
 @pytest.mark.parametrize("table", sorted(SHIPPED))

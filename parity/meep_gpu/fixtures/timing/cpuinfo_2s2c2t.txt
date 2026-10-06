@@ -1,0 +1,32 @@
+processor	: 0
+physical id	: 0
+core id		: 0
+
+processor	: 1
+physical id	: 0
+core id		: 1
+
+processor	: 2
+physical id	: 1
+core id		: 0
+
+processor	: 3
+physical id	: 1
+core id		: 1
+
+processor	: 4
+physical id	: 0
+core id		: 0
+
+processor	: 5
+physical id	: 0
+core id		: 1
+
+processor	: 6
+physical id	: 1
+core id		: 0
+
+processor	: 7
+physical id	: 1
+core id		: 1
+

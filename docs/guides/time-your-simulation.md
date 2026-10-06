@@ -154,8 +154,15 @@ repeat each leg two or three times and compare the medians.
   per second. The lift includes MEEP's own initialization, which the MEEP leg
   pays too (`init` in its line), so subtract that for a closer figure.
 - **`step_path=array` on the GPU leg** means no compiled kernel served your
-  configuration, or the host is outside the certified set; the line on standard
-  error says which. That rate is the array path's.
+  configuration, or the host is outside the set the kernels run on (an NVIDIA
+  host outside the supported range, or any host outside the certified set with
+  `MEEP_GPU_ALLOW_UNCERTIFIED=0`); the line on standard error says which. That
+  rate is the array path's.
+- **A `NOTE` line on a Mac** (`the kernels are NOT CERTIFIED on this host`)
+  means the GPU leg ran the Metal kernels on a supported Apple GPU, in an
+  environment outside the certified one. The rate is the kernels' own;
+  compare the GPU leg's results with the reference leg's before relying on
+  them.
 - **The reference leg** is for checking results, not for speed. On a small grid
   it can be faster than the GPU leg
   ([Will it help?](will-it-help.md#small-grids-use-the-reference-or-meep-itself)).
@@ -178,3 +185,13 @@ Expect it to take several minutes per case, longer than its `--estimate`, and
 on a loaded machine it may report a row as not reportable. Follow
 [Benchmark fairly](validation-and-performance.md#benchmark-fairly) when you
 report a number.
+
+To compare with stock MEEP on the same simulation, the harness's timing ladder
+(`parity/meep_gpu/timing_ladder.py`) times the GPU rows and MEEP at a list of
+rank counts on one host, interleaved, with a quiet gate in front of every row;
+[Running the timing ladder](../development/timing.md) is its manual. Run it with
+`--dry-run` first: it prints every command and the time it expects to take. Its
+cases are defined once, in `parity/meep_gpu/timing_cases.py`, and built by both
+the GPU bench and the MEEP bench; a case of your own goes there, as a builder
+`builder(mp, res) -> (sim, [monitors], until)` with its declared cell, the DRIVE
+row its GPU spec is copied from, and the deposit-repair seam its source lands on.

@@ -470,7 +470,16 @@ CURRENT_EVIDENCE = (
     # clears moved this gate's import closure; the `_2026-09-25_night` fleet re-ran it (ALL GREEN),
     # released=True with ZERO recorded digests disagreeing with the tree, checked before
     # this line moved.
-    "metal_dispersive_update_e_2026-09-25_night/gate.json",
+    # RE-CUT AGAIN 2026-10-06 at `_2026-10-06_092_g13s`. CAUSE: 891243a (the supported,
+    # uncertified NVIDIA default) and 4c19311 (the NVIDIA route stamps) moved
+    # `meep_gpu/fastpath.py` (4c04d6d8 -> 4506b154 -> 9f4abde4) after the `_2026-10-02_arch3`
+    # artifact pinned here had run, and after its `_2026-10-04_g13s` twin, which the ledger
+    # reads this gate's verdict from; each recorded 45 digests and drifted on that one. This
+    # gate's ledger weld does not pin `fastpath.py`, so the rounds that scoped their re-gates
+    # from the ledger did not re-run it. The re-run on 06435a9 released (verdict PASS, 4
+    # product rows and 3 mutation rows) with ZERO of its 45 recorded digests disagreeing with
+    # the tree. Re-run rather than declared, and KNOWN_DRIFT stays empty.
+    "metal_dispersive_update_e_2026-10-06_092_g13s/gate.json",
     # RE-CUT AGAIN 2026-08-20T00:15, fresh directory, for the same reason and by
     # the same rule: the fused dispersive pair family added one import line and one
     # list entry to `registry.py`, which the whole-step gate imports, so the
@@ -894,7 +903,13 @@ CURRENT_EVIDENCE = (
     # ZERO drift against the tree.
     # RE-CUT AGAIN 2026-09-25 at `_2026-09-25_night`, same cause: released=True in the `_2026-09-25_night`
     # fleet, ZERO recorded digests disagreeing with the tree.
-    "metal_whole_step_2026-09-25_night/whole_step.json",
+    # RE-CUT AGAIN 2026-10-06 at `_2026-10-06_092_g13s`, same cause as the
+    # dispersive_update_e entry above: 891243a and 4c19311 moved `meep_gpu/fastpath.py`
+    # after the `_2026-10-04_g13s` artifact had run, one recorded digest of 125. The re-run on
+    # 06435a9: 60 cases, 44,243,856 uint32 comparisons, 74,276,352 subnormal words censused,
+    # divergences none -- the same figures as every earlier cut -- released=True, 125
+    # recorded digests and ZERO drift. KNOWN_DRIFT stays empty.
+    "metal_whole_step_2026-10-06_092_g13s/whole_step.json",
 )
 
 #: path-substring -> why it is known stale. MUST shrink, never grow silently.

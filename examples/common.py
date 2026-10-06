@@ -77,9 +77,11 @@ def describe_path(driver) -> None:
     """Which path served the step, and under which subnormal policy.
 
     The step path is "fused" when compiled kernels served the step and "array"
-    when the array path did. Printed, never asserted. A host outside the
+    when the array path did. Printed, never asserted. An NVIDIA host outside the
     certified identities is refused by name and steps on the array path; that is
-    a correct run, not a failure.
+    a correct run, not a failure. On a Mac outside the certified environment the
+    Metal kernels serve the step, and the run's NOTE line says they are not
+    certified there.
     """
     import meep_gpu
 

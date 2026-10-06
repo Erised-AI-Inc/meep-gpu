@@ -574,7 +574,14 @@ def test_this_module_is_welded_and_the_weld_describes_the_shipped_bytes():
         (PACKAGE_DIR / "fingerprints.json").read_text(encoding="utf-8"))
     weld = fingerprints["triton_complex_fused_magnetic_pair_device_gate"]
     assert weld["status"] == "PASS"
-    assert weld["artifact_sha256"] and weld["recorded_utc"] and weld["host"]
+    # THE RUN FACTS LIVE PER ARCHITECTURE since 0.9.1 (``fastpath.RUNS``): each
+    # record that still binds this entry's bytes must say which run it was.
+    from meep_gpu import fastpath  # noqa: PLC0415
+    live = fastpath.live_capabilities(weld)
+    assert live, "no architecture's record binds the bytes this weld pins"
+    for capability in live:
+        run = weld[fastpath.RUNS][capability]
+        assert run["artifact_sha256"] and run["recorded_utc"] and run["host"], capability
     # This weld records THIS TEST FILE's own hash among its sources, so a bytes
     # check that included the reader would score every edit to the test as a
     # "drift" -- a circular guard. Exclude the test file; the kernel module and

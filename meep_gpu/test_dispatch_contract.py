@@ -46,6 +46,7 @@ from meep_gpu.driver import FdtdDriver
 from meep_gpu.triton_kernels import launch as launch_module
 from meep_gpu.triton_kernels.coverage import Coverage
 from meep_gpu.triton_kernels.launch import TritonStepPlan
+from . import weld_record_walk as walk
 from .code_identity import code_digest
 from .device_identity import weld_survives_edit
 
@@ -1166,7 +1167,7 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
     and read at its default on every case, in an environment carrying no
     dispatch-shaping variable; a null control beside it that is clean over the same
     case list; a device whose compute capability every table that served certifies;
-    and the ``fastpath.py`` it ran equal to the record's bound digest and the tree's.
+    and a slot that still binds the record's bytes, whose ``fastpath.py`` is the tree's.
     """
     import hashlib
 
@@ -1244,12 +1245,89 @@ def _assert_one_licence_holds(record, package, wanted) -> None:
         assert capability in certified[table], (
             f"the licence ran on compute capability {capability}, which the {table} "
             f"table's ledger does not certify ({sorted(certified[table])})")
-    ran = licence["source_sha256"]["fastpath.py"]
+    # THE BYTES ARE PINNED BY THE SLOT, NOT BY THE LICENCE. The transcription proves
+    # the ship leg ran every file the record binds and then writes NO digest map into
+    # the block (``recut_driver_dispatch_record.transcribe_end_to_end``): the licence
+    # sits in ``runs[<capability>]``, whose ``bound_sha256`` is the digest of the
+    # record's own ``source_sha256``, so the moment those bytes move the whole slot,
+    # licence included, reads stale. A map inside the block would be a second pin the
+    # weld walk raw-checks forever, which a superseded licence can never satisfy. So
+    # "cut on the shipping bytes" is three facts here: the slot is live, the record
+    # binds the tree's ``fastpath.py``, and the block carries no map of its own. What
+    # the run itself digested is compared against the record in
+    # ``test_the_dispatch_by_default_licence_is_the_artifact_it_names``, from the
+    # artifact ``artifact_sha256`` pins.
+    assert "source_sha256" not in licence, (
+        f"the licence under runs[{wanted!r}] carries its own source_sha256 map; the "
+        "slot's bound_sha256 is the pin, and the run's digests stay in its artifact")
+    assert wanted in fastpath.live_capabilities(record), (
+        f"the licence sits in runs[{wanted!r}], whose bound_sha256 no longer matches "
+        f"the record's source_sha256 (live: "
+        f"{list(fastpath.live_capabilities(record))}): the bytes it was cut on have "
+        "moved, so it licenses nothing that ships")
     bound = record["source_sha256"]["fastpath.py"]
     tree = hashlib.sha256((package / "fastpath.py").read_bytes()).hexdigest()
-    assert ran == bound == tree, (
-        f"the licence ran fastpath.py {ran[:12]}, the record binds {bound[:12]} and "
-        f"the tree ships {tree[:12]}: the licence has to be cut on the shipping bytes")
+    assert bound == tree, (
+        f"the record binds fastpath.py {bound[:12]} and the tree ships {tree[:12]}: "
+        "the licence has to be cut on the shipping bytes")
+
+
+def _assert_each_admitted_capability_names_its_route_campaign(record, table, stamp):
+    """``runs[<capability>].released_fused_arms`` names THAT capability's route campaign.
+
+    WHICH CAMPAIGN DROVE THE ARMS IS A FACT ABOUT ONE RUN. The recut moves ``gate``,
+    ``artifact`` and ``what_was_measured``
+    (:data:`recut_driver_dispatch_record.RELEASED_RUN_SUBKEYS`) out of
+    ``exclusions.released_fused_arms`` into the route run's slot, and refuses a
+    campaign directory other than the one :func:`fastpath.route_campaign` spells for
+    the capability its legs stamped. So for every capability the table ADMITS: the
+    slot is live (its ``bound_sha256`` still binds the record's bytes), its ``gate``
+    and ``records`` name ``route_campaign(stamp, capability)``, and its ``artifact``
+    names that directory. Asked of every admitted capability, because an admitted
+    architecture with no live route run dispatches arms no route campaign drove on
+    it; and the entry level must have shed the three subkeys, because a ``gate``
+    left there is a second answer to which campaign drove the release.
+
+    AND EVERY LIVE ROUTE RUN READS PASS, in the words the three weld contracts use
+    (``weld_record_walk.route_run_problems``): a live run that did not release
+    licenses nothing it filed. AND NO ROUTE-RUN FIELD SITS BESIDE THE DIGESTS, read
+    against ``fastpath.DISPATCH_RUN_FIELDS``, which names ``status``, as the Metal
+    record is held to in
+    ``test_the_metal_record_is_welded_to_the_live_sources_when_it_exists``. Those
+    contracts also hold the record to the tree; this test compares the tree its own
+    way.
+    """
+    recut = _recut_tool()
+    admitted = fastpath.capability_admission(table)["admitted"] or ()
+    assert admitted, (
+        f"the {table} table admits no compute capability, so no route run can be "
+        "checked against one")
+    entry_level = sorted(set(recut.RELEASED_RUN_SUBKEYS)
+                         & set(record["exclusions"]["released_fused_arms"]))
+    assert not entry_level, (
+        f"exclusions.released_fused_arms still carries {entry_level} beside the "
+        f"per-capability route runs; they describe one run and live in "
+        f"{fastpath.RUNS}[<capability>].released_fused_arms")
+    live = fastpath.live_capabilities(record)
+    for capability in admitted:
+        assert capability in live, (
+            f"the {table} table admits compute capability {capability} and its "
+            f"driver_dispatch record has no live route run for it (live: {list(live)}); "
+            "run the route campaign on these bytes and recut")
+        run = record[fastpath.RUNS][capability]
+        moved = run["released_fused_arms"]
+        expected = fastpath.route_campaign(stamp, capability)
+        assert moved["gate"] == expected, (
+            f"runs[{capability!r}] names route campaign {moved['gate']!r}; the release "
+            f"constant spells {expected!r} for this capability")
+        assert run["records"] == f"apps/api/parity/meep_gpu/results/{expected}", (
+            capability, run["records"])
+        assert f"results/{expected}/" in moved["artifact"], (capability, moved["artifact"])
+        assert moved["what_was_measured"], capability
+    problems = walk.route_run_problems(record, live)
+    assert not problems, f"the {table} driver_dispatch record: {problems}"
+    shape = fastpath.retired_shape_reasons(record, run_fields=fastpath.DISPATCH_RUN_FIELDS)
+    assert not shape, f"the {table} driver_dispatch record: {shape}"
 
 
 def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
@@ -1312,7 +1390,8 @@ def test_the_recorded_dispatch_shape_matches_the_wiring_it_describes():
     # release the refusal clause could not see would never be consulted.
     released = record["exclusions"]["released_fused_arms"]
     assert set(released["arms"]) == set(fastpath.RELEASED_FUSED_ARMS), released
-    assert released["gate"] == fastpath.DRIVER_ROUTE_FUSED_GATE
+    _assert_each_admitted_capability_names_its_route_campaign(
+        record, "triton", fastpath.DRIVER_ROUTE_FUSED_GATE)
     for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
         assert fastpath.arm_is_fused(arm), arm
         assert cases, f"{arm} is released without naming a case it was driven on"
@@ -1335,6 +1414,38 @@ def _licence_artifact(package, spelled: str) -> pathlib.Path:
     if spelled.startswith(prefix):
         return package.parent / spelled[len(prefix):]
     return pathlib.Path(spelled)
+
+
+def _results_tree_or_skip(package, what: str) -> pathlib.Path:
+    """``parity/meep_gpu/results``, or a declared skip on the TREE's absence.
+
+    Never on an artifact's absence: a checkout that holds results but not the run a
+    record names is the state these checks exist to catch, so callers assert the
+    artifact is there once the tree is.
+    """
+    results = package.parent / "parity" / "meep_gpu" / "results"
+    if not results.is_dir():
+        requires_resource_skip(
+            "parity_meep_gpu_results",
+            f"parity/meep_gpu/results is gitignored and absent here, so the record "
+            f"cannot be read against its artifacts ({what})")
+    return results
+
+
+def _run_artifact(package, run) -> pathlib.Path:
+    """The gate artifact a weld's run record names in the first word of ``records``.
+
+    The rebind tools spell it ``apps/api/parity/meep_gpu/results/<root>/<gate>/`` (a
+    directory holding ``gate.json``) or the artifact file itself; both are resolved
+    and the file must exist once the results tree does.
+    """
+    path = _licence_artifact(package, run["records"].split()[0].rstrip("/"))
+    if path.is_dir():
+        path = path / "gate.json"
+    assert path.is_file(), (
+        f"the run record names {run['records'].split()[0]}, which is not here while "
+        "the results tree is: the record cites a run this checkout does not hold")
+    return path
 
 
 def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
@@ -1390,6 +1501,34 @@ def test_the_dispatch_by_default_licence_is_the_artifact_it_names():
         assert live == recorded, (
             f"the {what} artifact {spelled} hashes to {live[:12]} and the licence "
             f"recorded {recorded[:12]}: the block was not cut from these bytes")
+    # AND THE BYTES THE RUN EXECUTED ARE THE BYTES THE RECORD BINDS. The licence
+    # carries no digest map (see :func:`_assert_one_licence_holds`), so the third leg
+    # of "artifact, record, tree" is read here, from the artifact the digest above
+    # just proved is the one transcribed: every file the record binds, as the ship
+    # leg's provenance spells it, at the record's digest; and the null control on
+    # the same fastpath.py. Harness files (``parity/``) are skipped exactly as the
+    # transcription skips them -- they move no shipped byte.
+    recut = _recut_tool()
+    for wanted, licence in sorted(licences.items()):
+        ship = json.loads(_licence_artifact(package, licence["artifact"])
+                          .read_text(encoding="utf-8"))
+        ran = (ship.get("provenance") or {}).get("source_sha256") or {}
+        checked = 0
+        for name, digest in sorted(record["source_sha256"].items()):
+            if name.startswith("parity/"):
+                continue
+            key = recut._leg_key("triton", name)
+            assert ran.get(key) == digest, (
+                f"the {wanted} ship leg ran {key} at {str(ran.get(key))[:12]} and the "
+                f"record binds {digest[:12]}: the licence was cut on other bytes")
+            checked += 1
+        assert checked and "fastpath.py" in ran, (
+            f"the {wanted} ship leg's provenance names none of the bound files")
+        null = json.loads(_licence_artifact(package, licence["null_control_run"]["artifact"])
+                          .read_text(encoding="utf-8"))
+        assert ((null.get("provenance") or {}).get("source_sha256") or {}).get(
+            "fastpath.py") == ran["fastpath.py"], (
+            f"the {wanted} null control ran another fastpath.py than its ship leg")
 
 
 def test_the_cuda_record_states_the_default_the_code_ships():
@@ -1448,62 +1587,75 @@ def test_the_cited_driver_route_gate_ran_the_bytes_the_record_binds():
     if not results.is_dir():
         pytest.skip("parity/meep_gpu/results is gitignored and absent here")
 
-    run = results / fastpath.DRIVER_ROUTE_FUSED_GATE
-    assert run.is_dir(), (
-        f"DRIVER_ROUTE_FUSED_GATE names {fastpath.DRIVER_ROUTE_FUSED_GATE}, which "
-        f"is not a directory under {results}. The release cites an artifact that "
-        f"is not here.")
-    legs = sorted(p for p in run.glob("*/gate.json"))
-    assert len(legs) >= 4, (
-        f"{fastpath.DRIVER_ROUTE_FUSED_GATE} carries {len(legs)} legs; the gate is "
-        f"four (shipped, harness_keep, flush, shipped_expansion_probe)")
-
+    # ONE ROUTE CAMPAIGN PER ADMITTED CAPABILITY. The release constant is a STAMP; the
+    # campaign a capability's record cites is ``fastpath.route_campaign(stamp, cc)``
+    # (``<stamp>_cc86``), the directory the recut refuses to file under any other
+    # name, and the one the record's own slot names. Every capability the table
+    # admits is read, so an architecture certified without a route run fails here.
     record = json.loads((package / "triton_kernels" / "fingerprints.json")
                         .read_text(encoding="utf-8"))["driver_dispatch"]
     bound = record["source_sha256"]
-    for leg in legs:
-        artifact = json.loads(leg.read_text(encoding="utf-8"))
-        assert artifact["release"]["released"] is True, (
-            f"{leg.parent.name}: released={artifact['release']['released']} "
-            f"{artifact['release']['reasons']}")
-        ran = artifact["provenance"]["source_sha256"]
-        for name, digest in bound.items():
-            live = hashlib.sha256((package / name).read_bytes()).hexdigest()
-            assert ran.get(name) == digest == live, (
-                f"{leg.parent.name} ran {name} at {ran.get(name)}, the record binds "
-                f"{digest}, the tree ships {live}. Re-run the gate against the "
-                f"bytes that ship; do not type a digest in.")
-    # AND THE CASE LIST IS THE RUN'S OWN. RELEASED_FUSED_ARMS names the cases each
-    # arm was driven on; a case no leg drove would be provenance for a measurement
-    # nobody took. The record's driven_on_cases is checked against the constant
-    # above; this checks the ARTIFACT, which is the thing that did the driving.
-    # A CASE WHOSE LICENCE LIVES ON ANOTHER LEG IS NOT THIS LEG'S EVIDENCE (phase B,
-    # 2026-09-13): the complex, beta-complex, folded-complex and cylindrical-complex
-    # arms take their expansion licence from the unified probe record, which ONE leg
-    # exports, so every other leg records PASS-NOT-THIS-LEG for their cases -- the
-    # gate's own spelling, read off the artifact rather than off a table here. What
-    # is still required of EVERY (arm, case) is that some leg drove it.
-    driven_somewhere: set = set()
-    for leg in legs:
-        artifact = json.loads(leg.read_text(encoding="utf-8"))
-        if artifact.get("uncertified_policy_installed"):
-            continue          # this leg's licence is rung 8b refusing, not a dispatch
-        driven = {case: set((arms or {}).values())
-                  for case, arms in (artifact.get("arms_driven") or {}).items()}
-        verdicts = artifact.get("verdicts") or {}
+    admitted = fastpath.capability_admission("triton")["admitted"] or ()
+    assert admitted, "the Triton table admits no compute capability to read a run for"
+    for capability in admitted:
+        campaign = fastpath.route_campaign(fastpath.DRIVER_ROUTE_FUSED_GATE, capability)
+        slot = (record.get(fastpath.RUNS) or {}).get(capability) or {}
+        assert (slot.get("released_fused_arms") or {}).get("gate") == campaign, (
+            f"runs[{capability!r}] cites "
+            f"{(slot.get('released_fused_arms') or {}).get('gate')!r}; the release "
+            f"constant spells {campaign!r} for this capability")
+        run = results / campaign
+        assert run.is_dir(), (
+            f"DRIVER_ROUTE_FUSED_GATE spells {campaign} for compute capability "
+            f"{capability}, which is not a directory under {results}. The release "
+            f"cites an artifact that is not here.")
+        legs = sorted(p for p in run.glob("*/gate.json"))
+        assert len(legs) >= 4, (
+            f"{campaign} carries {len(legs)} legs; the gate is four (shipped, "
+            f"harness_keep, flush, shipped_expansion_probe)")
+        for leg in legs:
+            artifact = json.loads(leg.read_text(encoding="utf-8"))
+            assert artifact["release"]["released"] is True, (
+                f"{leg.parent.name}: released={artifact['release']['released']} "
+                f"{artifact['release']['reasons']}")
+            ran = artifact["provenance"]["source_sha256"]
+            for name, digest in bound.items():
+                live = hashlib.sha256((package / name).read_bytes()).hexdigest()
+                assert ran.get(name) == digest == live, (
+                    f"{leg.parent.name} ran {name} at {ran.get(name)}, the record binds "
+                    f"{digest}, the tree ships {live}. Re-run the gate against the "
+                    f"bytes that ship; do not type a digest in.")
+        # AND THE CASE LIST IS THE RUN'S OWN. RELEASED_FUSED_ARMS names the cases each
+        # arm was driven on; a case no leg drove would be provenance for a measurement
+        # nobody took. The record's driven_on_cases is checked against the constant
+        # above; this checks the ARTIFACT, which is the thing that did the driving.
+        # A CASE WHOSE LICENCE LIVES ON ANOTHER LEG IS NOT THIS LEG'S EVIDENCE (phase B,
+        # 2026-09-13): the complex, beta-complex, folded-complex and cylindrical-complex
+        # arms take their expansion licence from the unified probe record, which ONE
+        # leg exports, so every other leg records PASS-NOT-THIS-LEG for their cases --
+        # the gate's own spelling, read off the artifact rather than off a table here.
+        # What is still required of EVERY (arm, case) is that some leg drove it.
+        driven_somewhere: set = set()
+        for leg in legs:
+            artifact = json.loads(leg.read_text(encoding="utf-8"))
+            if artifact.get("uncertified_policy_installed"):
+                continue          # this leg's licence is rung 8b refusing, not a dispatch
+            driven = {case: set((arms or {}).values())
+                      for case, arms in (artifact.get("arms_driven") or {}).items()}
+            verdicts = artifact.get("verdicts") or {}
+            for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
+                for case in cases:
+                    if verdicts.get(case) == "PASS-NOT-THIS-LEG":
+                        continue
+                    assert arm in driven.get(case, set()), (
+                        f"{leg.parent.name}: RELEASED_FUSED_ARMS says {arm!r} was "
+                        f"driven on {case!r}, and this leg's artifact does not show it")
+                    driven_somewhere.add((arm, case))
         for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
             for case in cases:
-                if verdicts.get(case) == "PASS-NOT-THIS-LEG":
-                    continue
-                assert arm in driven.get(case, set()), (
-                    f"{leg.parent.name}: RELEASED_FUSED_ARMS says {arm!r} was driven "
-                    f"on {case!r}, and this leg's artifact does not show it")
-                driven_somewhere.add((arm, case))
-    for arm, cases in fastpath.RELEASED_FUSED_ARMS.items():
-        for case in cases:
-            assert (arm, case) in driven_somewhere, (
-                f"RELEASED_FUSED_ARMS says {arm!r} was driven on {case!r}, and no "
-                f"leg of {fastpath.DRIVER_ROUTE_FUSED_GATE} shows it")
+                assert (arm, case) in driven_somewhere, (
+                    f"RELEASED_FUSED_ARMS says {arm!r} was driven on {case!r}, and no "
+                    f"leg of {campaign} shows it")
 
 
 def test_every_recorded_certification_points_at_a_readable_record():
@@ -1534,11 +1686,26 @@ def test_every_recorded_certification_points_at_a_readable_record():
 
 
 def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
+    """The three no-absorber arms are certified by live runs of their own gates.
+
+    THE BUDGET IS READ FROM THE RUN'S ARTIFACT, because a re-bind does not carry it.
+    The ``step_budget`` sentence ("8 launches per row; ...") was hand-curated from the
+    2026-08-19 run, and ``rebind_triton_welds.py`` carries a curated run field only
+    while the record it replaces still binds the bytes: a run on moved bytes drops it
+    rather than restating a narrative about another tree. What the sentence stated is
+    in every one of these gates' artifacts as numbers -- ``cycles`` at the top level
+    and on each case -- so it is asserted there, from the artifact the run record
+    names and ``artifact_sha256`` pins. A record that still carries the sentence must
+    still say it; the artifact half skips only on the results tree's absence.
+    """
+    import hashlib
+
     expected = {
         "complex no-PML curl": "triton_complex_no_pml_curl_device_gate",
         "conductive no-PML": "triton_no_pml_conductive_device_gate",
         "no-PML stored E": "triton_no_pml_stored_e_device_gate",
     }
+    runs = {}
     for arm, gate in expected.items():
         assert arm not in fastpath.PENDING_DEVICE_GATE_ARMS
         entry = fastpath._certification_for(arm, capability=CERTIFIED_CAPABILITY)
@@ -1553,7 +1720,27 @@ def test_the_no_absorber_arms_are_device_certified_and_no_longer_pending():
         # pressures the next person to edit the record instead of re-running.
         assert entry["recorded_utc"] >= "2026-08-17T", entry["recorded_utc"]
         assert entry["recorded_utc"].endswith("Z"), "ISO-8601 UTC expected"
-        assert "8 launches per" in entry["step_budget"]
+        run = fastpath._fingerprints("triton")[gate][fastpath.RUNS][CERTIFIED_CAPABILITY]
+        if "step_budget" in run:
+            assert "8 launches per" in run["step_budget"], (arm, run["step_budget"])
+        runs[arm] = run
+    package = pathlib.Path(fastpath.__file__).resolve().parent
+    _results_tree_or_skip(package, "the gates' artifacts state the launches per row")
+    for arm, run in sorted(runs.items()):
+        artifact = _run_artifact(package, run)
+        assert hashlib.sha256(artifact.read_bytes()).hexdigest() == run["artifact_sha256"], (
+            f"{arm}: {artifact} is not the artifact the run record pins")
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+        cases = payload.get("cases") or []
+        assert payload.get("cycles") == 8 and cases, (arm, payload.get("cycles"), len(cases))
+        assert all(case.get("cycles") == 8 for case in cases), (
+            f"{arm}: per-case launches {sorted({case.get('cycles') for case in cases})}")
+        # The requested count above, and the launches each row actually recorded: one
+        # ``per_cycle`` measurement per launch, so a row that stopped early (or ran
+        # extra) reads differently from what it asked for.
+        assert all(len(case.get("per_cycle") or ()) == 8 for case in cases), (
+            f"{arm}: per-case recorded launches "
+            f"{sorted({len(case.get('per_cycle') or ()) for case in cases})}")
 
 
 def test_the_residual_closure_arms_are_explicitly_fail_closed_until_recertified():
@@ -4185,6 +4372,55 @@ def cupy_like_grid_with_device(capability=(8, 6), name=b"NVIDIA RTX A6000"):
     return grid
 
 
+#: Compute capabilities that stand in for a SUPPORTED device no cited gate ran on, in
+#: order of preference. A test takes the first ones that NEITHER NVIDIA table
+#: certifies and both support (:func:`supported_uncertified_capabilities`), so a round
+#: that certifies another architecture (9.0 is the next) leaves the stand-ins
+#: uncertified instead of turning them into certified devices under the tests that
+#: read them.
+SUPPORTED_UNCERTIFIED_CANDIDATES = ((8, 9), (7, 5), (8, 0), (7, 0))
+
+#: Compute capabilities outside the range either NVIDIA table supports, in order of
+#: preference: one below the floor and two above the ceiling.
+UNSUPPORTED_CANDIDATES = ((6, 1), (10, 0), (12, 0))
+
+
+def _certified_anywhere():
+    from meep_gpu import fastpath_cuda
+
+    return (set(fastpath.validated_compute_capabilities())
+            | set(fastpath_cuda.validated_compute_capabilities()))
+
+
+def supported_uncertified_capabilities(count=1):
+    """The first ``count`` candidates both tables support and neither certifies.
+
+    Fails rather than returning fewer: an empty parametrization is a skip, and a test
+    that silently ran on nothing would read as a pass. Supported is read from the
+    package (:func:`fastpath.capability_supported`), never typed here.
+    """
+    certified = _certified_anywhere()
+    chosen = [capability for capability in SUPPORTED_UNCERTIFIED_CANDIDATES
+              if f"{capability[0]}.{capability[1]}" not in certified
+              and all(fastpath.capability_supported(capability, table) is True
+                      for table in ("triton", fastpath.CUDA_TABLE))]
+    assert len(chosen) >= count, (
+        f"only {len(chosen)} of {SUPPORTED_UNCERTIFIED_CANDIDATES} are supported and "
+        f"uncertified (certified: {sorted(certified)}); add a candidate")
+    return chosen[:count]
+
+
+def unsupported_capabilities(count=1):
+    """The first ``count`` candidates NEITHER table supports (so neither certifies)."""
+    chosen = [capability for capability in UNSUPPORTED_CANDIDATES
+              if all(fastpath.capability_supported(capability, table) is False
+                     for table in ("triton", fastpath.CUDA_TABLE))]
+    assert len(chosen) >= count, (
+        f"only {len(chosen)} of {UNSUPPORTED_CANDIDATES} are unsupported; add a "
+        "candidate")
+    return chosen[:count]
+
+
 def test_the_recorded_gates_name_the_architecture_they_ran_on():
     """DERIVED FROM THE LEDGER ON DISK, not compared against a typed tuple.
 
@@ -4224,16 +4460,46 @@ def test_the_capability_spellings_normalize_to_one(value, expected):
     assert fastpath._normalized_capability(value) == expected
 
 
-def test_a_device_the_gates_never_ran_on_is_refused_by_name(monkeypatch):
-    """Triton generates PTX for an ARCH, so a bit-identity claim is arch-scoped."""
+def test_a_device_the_gates_never_ran_on_is_refused_by_name_when_it_is_unsupported(
+        monkeypatch):
+    """Triton generates PTX for an ARCH, so a bit-identity claim is arch-scoped; a
+    device outside the supported range is refused by name, with the way past it."""
     stub_triton(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
-    grid = cupy_like_grid_with_device(capability=(9, 0), name=b"NVIDIA H100 PCIe")
+    (capability,) = unsupported_capabilities(1)
+    grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
     assert fastpath.plan_fast_path(object(), object(), grid) is None
     record = fastpath.last_dispatch_report()
-    assert "9.0" in record["refused_because"]
-    assert record["environment"]["device"]["name"] == "NVIDIA H100 PCIe"
+    spelled = f"{capability[0]}.{capability[1]}"
+    assert spelled in record["refused_because"]
+    assert "outside the compute capabilities that table supports" in \
+        record["refused_because"]
+    assert record["refused_because"].endswith(fastpath.UNSUPPORTED_HINT)
+    assert record["environment"]["device"]["name"] == "another device"
+    assert record["environment"]["device_supported"] is False
+
+
+def test_a_supported_device_the_gates_never_ran_on_dispatches_uncertified(monkeypatch):
+    """A device in the supported range that no gate ran on runs by default, and the
+    record says it is not certified; ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` refuses it."""
+    stub_triton(monkeypatch)
+    block_cuda(monkeypatch)
+    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
+                                            {"step_B": "PML"}))
+    (capability,) = supported_uncertified_capabilities(1)
+    grid = cupy_like_grid_with_device(capability=capability, name=b"another device")
+    plan = fastpath.plan_fast_path(object(), object(), grid)
+    assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
+    record = plan.report()
+    assert record["certified"] is False
+    assert record["environment"]["device_certified"] is False
+    assert record["environment"]["device_supported"] is True
+    assert [entry["table"] for entry in record["uncertified"]["served"]] == ["triton"]
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
+    assert fastpath.plan_fast_path(object(), object(), grid) is None
+    assert fastpath.last_dispatch_report()["refused_because"].endswith(
+        fastpath.CERTIFIED_ONLY_TAIL)
 
 
 def test_the_certified_device_dispatches_and_is_recorded(monkeypatch):
@@ -4264,19 +4530,174 @@ def test_an_unreadable_device_is_recorded_as_unknown_and_not_refused(monkeypatch
 # ---------------------------------------------------------------------------
 
 
+#: How a family block of ``family_recert_2026-08-14`` names its own artifact: the path
+#: ``recut_composition_records.py --family-recert`` writes from the campaign root it
+#: read, ``parity/meep_gpu/results/<root>/<family>/gate.json``.
+_FAMILY_ARTIFACT = re.compile(
+    r"^parity/meep_gpu/results/(?P<root>[^/]+)/(?P<family>[^/]+)/gate\.json$")
+
+#: The one timestamp spelling the family re-cut and the fleet campaign rows write.
+_UTC = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _family_recert_run(capability=CERTIFIED_CAPABILITY):
+    """``family_recert_2026-08-14``'s run record on ``capability``, which must be live."""
+    entry = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE]
+    assert capability in fastpath.live_capabilities(entry), (
+        f"{fastpath.FAMILY_RECERT_GATE} has no live run on {capability}: live "
+        f"{list(fastpath.live_capabilities(entry))}")
+    return entry[fastpath.RUNS][capability]
+
+
+def _family_recut_tool():
+    """``parity/meep_gpu/recut_composition_records.py``: the family re-cut's own rules.
+
+    IMPORTED, NEVER RESTATED, for the reason :func:`_recut_tool` gives: where a family
+    gate's artifact states its step budget, the sentence a block carries when it states
+    none, where the campaign row lives and how a gate's release is read are decided by
+    the tool that writes the family blocks, and a second spelling here would be a second
+    place for them to disagree. The harness tree is not part of the standalone package,
+    so its absence is a declared resource.
+    """
+    import importlib
+
+    parity = pathlib.Path(fastpath.__file__).resolve().parent.parent / "parity" / "meep_gpu"
+    if not (parity / "recut_composition_records.py").is_file():
+        requires_resource_skip(
+            "parity_meep_gpu_harness",
+            "parity/meep_gpu/recut_composition_records.py holds the family re-cut's "
+            "rules and is not shipped with the standalone package")
+    if str(parity) not in sys.path:
+        sys.path.insert(0, str(parity))
+    return importlib.import_module("recut_composition_records")
+
+
+def assert_the_family_block_names_its_own_run(family, block, run):
+    """RECORD LEVEL, no artifact needed: the block is the record of ONE run of ONE gate.
+
+    The run id is the campaign root the block's own ``records`` path names, the log
+    sits beside that artifact, the run-level ``records`` line names the root, the exit
+    code is 0, both pins are digests, and the run-level ``recorded_utc`` -- stamped by
+    the re-cut when it wrote the record, not read from the artifact -- is a UTC
+    timestamp no earlier than the campaign row's ``started_utc`` for this family.
+    """
+    import datetime
+
+    match = _FAMILY_ARTIFACT.match(str(block.get("records")))
+    assert match and match["family"] == family, (
+        f"{family}: records {block.get('records')!r} does not name "
+        "parity/meep_gpu/results/<root>/<family>/gate.json")
+    root = match["root"]
+    assert block["run_id"] == root, (
+        f"{family}: run_id {block['run_id']!r} is not the campaign root its own "
+        f"artifact path names ({root!r})")
+    assert block["log"] == f"parity/meep_gpu/results/{root}/{family}/gate.log", (
+        family, block["log"])
+    assert f"parity/meep_gpu/results/{root}" in run["records"], (family, run["records"])
+    assert block["rc"] == 0, (family, block["rc"])
+    for field in ("artifact_sha256", "log_sha256"):
+        assert re.fullmatch(r"[0-9a-f]{64}", str(block.get(field))), (family, field)
+    started = datetime.datetime.strptime(block["started_utc"], _UTC)
+    recorded = datetime.datetime.strptime(run["recorded_utc"], _UTC)
+    assert recorded >= started, (
+        f"{family}: the record was cut at {run['recorded_utc']}, before the run it "
+        f"describes started ({block['started_utc']})")
+
+
+def assert_the_family_budget_is_its_artifacts(family, block, payload, recut):
+    """The block's ``step_budget`` is what THIS family's artifact states, and nothing else.
+
+    A stated budget is a non-empty mapping equal to the artifact's, read where the
+    re-cut reads it: measured 2026-10-04 over results/triton_fleet_2026-10-03_cc86, the
+    six family gates that state a budget state it as a block, and offdiag, nonlinear
+    and folded_offdiag state none. The tool's "not stated" sentence is accepted only
+    where the artifact states none at any of those places.
+    """
+    stated, read_from = recut._step_budget(payload)
+    assert block["step_budget"] == stated, (
+        f"{family}: the block records step_budget {block['step_budget']!r} and its own "
+        f"artifact states {stated!r} (read from {read_from})")
+    if read_from is None:
+        assert stated == recut.BUDGET_NOT_STATED, family
+    else:
+        assert isinstance(stated, dict) and stated, (family, read_from, stated)
+        assert all(isinstance(key, str) for key in stated), (family, sorted(stated))
+
+
+def assert_the_family_block_is_its_artifacts(family, block, package):
+    """ARTIFACT LEVEL: every fact of the block read back from the run it names.
+
+    The artifact and its log hash to the block's pins; the campaign row for this gate
+    in the root's ``campaign.json`` exited with the block's ``rc``, released, names the
+    same artifact digest, started at the block's ``started_utc`` and ran on the block's
+    GPU index; the artifact itself reads as released; the block's ``verdict`` is the
+    artifact's ``canonical_verdict``; and its budget is the artifact's
+    (:func:`assert_the_family_budget_is_its_artifacts`). Skips only on the results
+    tree's absence or the harness's.
+    """
+    import hashlib
+
+    assert _FAMILY_ARTIFACT.match(str(block.get("records"))), (
+        f"{family}: records {block.get('records')!r} names no gate artifact of a "
+        "campaign root, so there is no run to read the block back from")
+    recut = _family_recut_tool()
+    results = _results_tree_or_skip(package, f"the {family} family gate")
+    artifact = package.parent / block["records"]
+    assert artifact.is_file(), (
+        f"{family}: {block['records']} is not here while the results tree is: the "
+        "record cites a run this checkout does not hold")
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == block["artifact_sha256"], (
+        f"{family}: {block['records']} is not the artifact the block pins")
+    log = package.parent / block["log"]
+    assert log.is_file() and hashlib.sha256(log.read_bytes()).hexdigest() == \
+        block["log_sha256"], f"{family}: {block['log']} is not the log the block pins"
+    row, why_not = recut.campaign_row(results / block["run_id"], family)
+    assert row is not None, f"{family}: {why_not}"
+    assert row.get("exit_code") == block["rc"], (family, row.get("exit_code"))
+    assert row.get("released") is True, (family, row.get("released"))
+    assert row.get("artifact_sha256") == block["artifact_sha256"], family
+    assert row.get("started_utc") == block["started_utc"], (
+        family, row.get("started_utc"), block["started_utc"])
+    assert row.get("gpu") == block["pinned_gpu_index"], (family, row.get("gpu"))
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    verdict, read_from = recut.released(payload)
+    assert verdict is True, f"{family}: the artifact reads released={verdict!r} ({read_from})"
+    assert block["verdict"] == payload.get("canonical_verdict"), family
+    assert_the_family_budget_is_its_artifacts(family, block, payload, recut)
+
+
 def test_the_nine_families_certified_this_round_carry_real_provenance(monkeypatch):
     """Their gate was a path into a GITIGNORED directory, so it resolved to nothing.
 
     The nine families' own rows live inside the RUN record now (``families`` is a run
     field), so the per-family ``run_id`` and ``rc`` are reached only by naming the
     architecture — which is the point: a run id is a statement about one run.
+
+    RE-CUT FROM THE ROUND'S OWN ARTIFACTS, NOT TRANSCRIBED. Until the 2026-10-03 round
+    the blocks were the 2026-08-14 launcher's transcription and this test pinned its
+    literals (that date, ``recert_<family>_*`` run ids). ``recut_composition_records.py
+    --family-recert`` rebuilds every block from a fleet campaign, so what is pinned is
+    the relation each block must satisfy with the run it names — for all nine
+    families, not one: see :func:`assert_the_family_block_names_its_own_run` and
+    :func:`assert_the_family_block_is_its_artifacts`.
     """
+    package = pathlib.Path(fastpath.__file__).resolve().parent
+    run = _family_recert_run()
     entry = fastpath._certification_for("nonlinear", capability=CERTIFIED_CAPABILITY)
     assert entry["gate"] == fastpath.FAMILY_RECERT_GATE
-    assert entry["recorded_utc"] == "2026-08-14T11:00:00Z"
-    assert "A6000" in entry["host"]
-    assert entry["run_id"].startswith("recert_nonlinear_")
+    assert entry["capability"] == CERTIFIED_CAPABILITY
+    assert entry["recorded_utc"] == run["recorded_utc"]
+    assert entry["host"] == run["host"] and "A6000" in entry["host"]
+    assert entry["run_id"] == run["families"]["nonlinear"]["run_id"]
     assert entry["rc"] == 0
+    families = run["families"]
+    assert sorted(families) == sorted(
+        {family for family, gate in fastpath.ARM_CERTIFICATION.values()
+         if gate == fastpath.FAMILY_RECERT_GATE}), sorted(families)
+    for family, block in sorted(families.items()):
+        assert_the_family_block_names_its_own_run(family, block, run)
+    for family, block in sorted(families.items()):
+        assert_the_family_block_is_its_artifacts(family, block, package)
 
 
 def test_each_family_is_credited_with_its_own_step_budget_not_the_campaigns(monkeypatch):
@@ -4286,16 +4707,38 @@ def test_each_family_is_credited_with_its_own_step_budget_not_the_campaigns(monk
     architecture; asked without one, each arm gets the "not stated per family"
     sentence instead and the set below would collapse to a single element — the very
     shape this test refuses, arrived at from the other direction.
+
+    WHAT A BUDGET IS NOW. The family re-cut copies the budget each gate's artifact
+    STATES, as the artifact states it (a block such as ``{"engine": 4, "reference":
+    4}``), and writes its "not stated" sentence where the artifact states none. So the
+    credit is checked against each family's OWN artifact rather than against
+    "80/80"-style literals of the retired transcription: every arm quotes its own
+    family's block, each block equals what that family's artifact states, and the three
+    families those literals named (BFAST, special-kz, complex) state a budget.
     """
+    families = _family_recert_run()["families"]
+
     def budget(arm):
         return fastpath._certification_for(
             arm, capability=CERTIFIED_CAPABILITY)["step_budget"]
 
-    assert "80/80" in budget("BFAST run")
-    assert "192/192" in budget("complex beta run")
-    assert "78/78" in budget("complex")
-    budgets = {budget(arm) for arm in fastpath.ARM_CERTIFICATION}
+    for arm, (family, gate) in sorted(fastpath.ARM_CERTIFICATION.items()):
+        if gate == fastpath.FAMILY_RECERT_GATE:
+            assert budget(arm) == families[family]["step_budget"], (arm, family)
+    for arm in ("BFAST run", "complex beta run", "complex"):
+        stated = budget(arm)
+        assert isinstance(stated, dict) and stated, (arm, stated)
+        assert all(isinstance(key, str) for key in stated), (arm, sorted(stated))
+    budgets = {json.dumps(budget(arm), sort_keys=True) for arm in fastpath.ARM_CERTIFICATION}
     assert len(budgets) > 1, "one budget for every family is the defect, not the fix"
+    package = pathlib.Path(fastpath.__file__).resolve().parent
+    recut = _family_recut_tool()
+    _results_tree_or_skip(package, "the nine family gates state their budgets")
+    for family, block in sorted(families.items()):
+        artifact = package.parent / block["records"]
+        assert artifact.is_file(), (family, block["records"])
+        payload = json.loads(artifact.read_text(encoding="utf-8"))
+        assert_the_family_budget_is_its_artifacts(family, block, payload, recut)
 
 
 def test_a_gate_whose_re_run_was_blocked_says_so_in_the_artifact():
@@ -4614,23 +5057,30 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
     released campaign, and before that campaign has run there is nothing to weld —
     so its ABSENCE is the honest pre-campaign state and is asserted as such, while
     its presence brings the full comparison: every digest it binds must equal the
-    live tree's, and the run it cites must be the one the shipped constant names.
+    live tree's, and every GPU architecture the Metal table admits must have a live
+    route run in ``runs[<architecture>]`` naming the campaign the shipped constant
+    spells for it (``metal_runs.route_campaign``).
 
     That second clause is the ordering trap in one assertion. The route-gate
     constant must be edited BEFORE the campaign, because editing it is itself a
     source edit; a record whose ``gate`` and whose module's constant disagree is a
     record cut after the fact.
+
+    AND EVERY LIVE ROUTE RUN READS PASS, in the words the three weld contracts use
+    (``weld_record_walk.route_run_problems``), as the NVIDIA records are held to in
+    ``_assert_each_admitted_capability_names_its_route_campaign``.
     """
     import hashlib
     import json
     import pathlib
 
-    from meep_gpu import metal_dispatch
+    from meep_gpu import metal_dispatch, metal_runs
 
     package = pathlib.Path(fastpath.__file__).parent
     ledger = json.loads((package / "metal_kernels" / "fingerprints.json")
                         .read_text(encoding="utf-8"))
     record = ledger.get("driver_dispatch")
+    stamp = metal_dispatch.METAL_DRIVER_ROUTE_GATE
     if record is None:
         # THE PRE-CAMPAIGN BRANCH, AND IT NOW ASSERTS SOMETHING. It read
         # ``assert <expr> or True`` until 2026-09-11 -- a tautology, in a branch whose
@@ -4639,23 +5089,19 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
         # ledger with no block is a record that is owed, which is the state a cut
         # forgotten at the end of a long round leaves behind and the one this test is
         # positioned to see.
-        run = (package.parent / "parity" / "meep_gpu" / "results"
-               / metal_dispatch.METAL_DRIVER_ROUTE_GATE)
-        summary = run / "campaign.txt"
-        if summary.is_file():
+        results = package.parent / "parity" / "meep_gpu" / "results"
+        for summary in sorted(results.glob(f"{stamp}_applegpu_*/campaign.txt")):
             text = summary.read_text(encoding="utf-8")
             assert "fail=0" not in text, (
-                f"{metal_dispatch.METAL_DRIVER_ROUTE_GATE} released every leg "
-                f"(campaign.txt says fail=0) and metal_kernels/fingerprints.json "
-                f"carries no driver_dispatch block: the record is owed. Cut it with "
+                f"{summary.parent.name} released every leg (campaign.txt says "
+                f"fail=0) and metal_kernels/fingerprints.json carries no "
+                f"driver_dispatch block: the record is owed. Cut it with "
                 f"parity/meep_gpu/recut_driver_dispatch_record.py --backend metal "
-                f"--run {metal_dispatch.METAL_DRIVER_ROUTE_GATE}")
+                f"--run {summary.parent.name}")
         return
     assert record.get("table") == "metal", record.get("table")
-    assert record["exclusions"]["released_fused_arms"]["gate"] == \
-        metal_dispatch.METAL_DRIVER_ROUTE_GATE
-    assert set(record["exclusions"]["released_fused_arms"]["arms"]) == \
-        set(metal_dispatch.METAL_RELEASED_FUSED_ARMS)
+    released = record["exclusions"]["released_fused_arms"]
+    assert set(released["arms"]) == set(metal_dispatch.METAL_RELEASED_FUSED_ARMS)
     for name, digest in record["source_sha256"].items():
         path = (package.parent / name if name.startswith("parity/")
                 else package.parent / name if name.startswith("meep_gpu/")
@@ -4665,6 +5111,35 @@ def test_the_metal_record_is_welded_to_the_live_sources_when_it_exists():
             f"{name} changed since the Metal dispatch record was cut. Re-run the "
             f"campaign and re-cut with recut_driver_dispatch_record.py "
             f"--backend metal; do not type a digest in.")
+    # ONE ROUTE RUN PER GPU ARCHITECTURE, as the NVIDIA records keep one per compute
+    # capability (_assert_each_admitted_capability_names_its_route_campaign): the
+    # run's subkeys have left the entry level, and every architecture the cited welds
+    # certify has a live route run naming that architecture's campaign.
+    assert metal_runs.shape_reasons(record, run_fields=metal_runs.DISPATCH_RUN_FIELDS) \
+        == [], metal_runs.shape_reasons(record, run_fields=metal_runs.DISPATCH_RUN_FIELDS)
+    entry_level = sorted({"gate", "artifact", "what_was_measured"} & set(released))
+    assert not entry_level, (
+        f"exclusions.released_fused_arms still carries {entry_level} beside the "
+        f"per-architecture route runs; they describe one run and live in "
+        f"{metal_runs.RUNS}[<architecture>].released_fused_arms")
+    admitted = metal_runs.admission_report(ledger, metal_runs.cited_keys())["admitted"]
+    assert admitted, "the Metal table admits no GPU architecture, so no route run can be checked"
+    live = metal_runs.live_architectures(record)
+    for architecture in admitted:
+        assert architecture in live, (
+            f"the Metal table admits {architecture} and its driver_dispatch record has "
+            f"no live route run for it (live: {list(live)}); run the route campaign "
+            f"{metal_runs.route_campaign(stamp, architecture)} on these bytes and recut")
+        run = record[metal_runs.RUNS][architecture]
+        expected = metal_runs.route_campaign(stamp, architecture)
+        assert run["released_fused_arms"]["gate"] == expected, (
+            architecture, run["released_fused_arms"]["gate"], expected)
+        assert run["records"] == f"apps/api/parity/meep_gpu/results/{expected}", (
+            architecture, run["records"])
+        assert f"results/{expected}/" in run["released_fused_arms"]["artifact"], architecture
+        assert run["residency"]["mode"], architecture
+    problems = walk.route_run_problems(record, live)
+    assert not problems, f"the metal driver_dispatch record: {problems}"
 
 
 # ---------------------------------------------------------------------------
@@ -4988,7 +5463,8 @@ def test_the_recorded_cuda_dispatch_shape_matches_the_wiring_it_describes():
             "ordering rule rather than a gap")
     assert record.get("table") == "cuda", record.get("table")
     exclusions = record["exclusions"]["released_fused_arms"]
-    assert exclusions["gate"] == fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE
+    _assert_each_admitted_capability_names_its_route_campaign(
+        record, fastpath.CUDA_TABLE, fastpath_cuda.CUDA_DRIVER_ROUTE_FUSED_GATE)
     assert set(exclusions["arms"]) == set(fastpath_cuda.CUDA_RELEASED_FUSED_ARMS)
     for arm, cases in fastpath_cuda.CUDA_RELEASED_FUSED_ARMS.items():
         assert set(exclusions["per_arm_cases"][arm]) == set(cases), arm

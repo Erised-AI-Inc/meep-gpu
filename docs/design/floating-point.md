@@ -13,7 +13,7 @@ stops, and what it is not: it is not identity with MEEP.
 | Multiply-add contraction | Off, on every executor |
 | Subnormal numbers | One policy for the whole process, installed on every executor or refused |
 | What "bit-identical" means | Kernel results equal the package's own array path on the same host, under the subnormal policy the kernel table is certified for |
-| What it does not mean | Identity with MEEP, or identity between an NVIDIA host and an Apple host |
+| What it does not mean | Identity with MEEP, identity between an NVIDIA host and an Apple host, or a measured property of a device or environment outside the certified ones |
 
 ## Single precision
 
@@ -52,8 +52,13 @@ A compiler is free to rewrite an expression it is given, so the grouping is held
 by measurement and not by construction: each kernel family has a gate that
 compares its output with the array path bit for bit, and mutations of the
 grouping that the gate must catch. This is why a change of compiler version is
-treated as a correctness event: a kernel table is refused by name on a toolchain
-version other than the certified one.
+treated as a correctness event. The two NVIDIA tables run on a toolchain
+version other than the certified one only inside the supported range (Triton
+3.1), and record such a run as not certified; outside it they are refused by
+name. The Metal table runs on any GPU architecture, PyTorch and Metal frontend
+(every Apple GPU is supported), and records a run outside the certified
+environment as not certified. <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> refuses
+either by name instead.
 
 ## No multiply-add contraction
 
@@ -77,8 +82,24 @@ The setting is load-bearing, not a precaution. With contraction left on:
 | Folded-grid β tail, real fields, Metal | 44 of 1,728 words differ from the array path; 0 of 1,728 with contraction off | recorded in the kernel module's source |
 
 These figures are read from the kernel modules, where each family records the
-control its gate ran. The gate record behind each figure is re-cut by the
-certification round on the published files.
+control its gate ran. The certification round of 0.9.2 bound every ledger entry
+to the published files.
+
+## Fast math on the Metal table
+
+With <code>PYTORCH_MPS_FAST_MATH=1</code>, PyTorch compiles every Metal source in
+fast-math mode, <code>torch.mps.compile_shader</code> included, which is the path
+every Metal kernel of the package is compiled through. The package reads the
+variable and never sets it.
+
+| Measurement | Result | Status |
+|---|---|---|
+| One float32 divide and one square root, compiled through <code>torch.mps.compile_shader</code> and run on the same 1,048,576 inputs with the variable unset, <code>1</code> and <code>0</code> | With <code>1</code>, 274,523 of 1,048,576 divide words and 327,338 of 1,048,576 square-root words differ from the unset run; with <code>0</code>, 0 of each | measured 2026-10-02 on one Apple M1 Max, macOS 26.2, PyTorch 2.10.0 (<code>parity/meep_gpu/probe_metal_fast_math.py</code>) |
+
+The probe compiles two kernels of its own, not a kernel of the package. No Metal
+weld ran with the variable set, so the certified environment has it unset or
+<code>0</code>. A run with any other value is recorded as not certified, or refused
+by name under <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>.
 
 ## The subnormal policy
 
@@ -170,8 +191,17 @@ It is not any of the following:
 - **It is not identity between an NVIDIA host and an Apple host.** The two are
   certified under different subnormal policies, and no comparison between them
   is claimed.
-- **It is not a statement about an uncertified device or toolchain.** Those are
-  refused by name and take the array path.
+- **It is not a statement about an uncertified device, toolchain or environment.**
+  On the NVIDIA tables one outside the supported range (compute capability 7.0
+  to 9.0, Triton 3.1) is refused by name and takes the array path. On a
+  supported NVIDIA device or toolchain outside the certified one, and on an
+  Apple GPU outside the certified environment, which are supported and not
+  certified, the kernels run by default: the run's record says
+  <code>certified: False</code>, one
+  <code>meep_gpu: NOTE</code> line says the kernels are not certified there, and no
+  gate has measured the property on that environment.
+  <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> refuses it by name to the array path
+  instead.
 
 What the property gives a user: on a certified host, a dispatched run and the
 array path run under the subnormal policy the dispatched run reported give the

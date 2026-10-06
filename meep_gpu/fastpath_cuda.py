@@ -479,7 +479,13 @@ CUDA_FUSED_ARM_CONSTITUENTS: Mapping[str, Tuple[str, ...]] = {
 # the off-diagonal ``update_E`` single now launches its own-cell hoisted text, so the
 # legs that drive it execute different device bytes. ``_2026-09-27_flip`` stays the
 # record of the 0.9.0 route.
-CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-09-30_091"
+# ``_2026-10-05_092`` (named 2026-10-05, before its campaign) is release 0.9.2's route:
+# this file and ``fastpath.py`` moved (a supported device that is not certified runs
+# by default, and a table certified here outranks one that is only supported), and so
+# did ``gate_dispatch_fused_route.py``, which this record binds. One stamp for the
+# release, shared by every compute capability that drives it. ``_2026-09-30_091``
+# stays the record of the 0.9.1 route.
+CUDA_DRIVER_ROUTE_FUSED_GATE = "dispatch_fused_route_cuda_2026-10-05_092"
 
 #: THE ARMS THIS TABLE MAY DISPATCH, and the gate cases that drove each. TIER 1
 #: (2026-09-11), TIER 2 (2026-09-13) AND TIER 3 (2026-09-13, typed ahead of its
@@ -1680,7 +1686,7 @@ def certification_for(arm: str, *, capability: Optional[str] = None) -> Dict[str
             entry["run_record"] = (
                 f"this gate has no live run on compute capability {capability}: its "
                 f"live capabilities are {list(live)}. A plan that dispatched here was "
-                f"admitted by the opt-in, not by a record")
+                f"admitted uncertified (uncertified.served says why), not by a record")
         for key in ("recorded_utc", "host", "purpose", "records", "step_budget",
                     "status", "subnormal_policy", "legs", "kernels",
                     "kernel_module"):
@@ -1707,6 +1713,36 @@ SUBNORMAL_POLICY = "keep"
 #: kernels compile through NVRTC with ``-ftz`` stripped, and Triton is governed too
 #: whenever it is importable because BOTH tables' plans can be in one step.
 GOVERNED_EXECUTORS: Tuple[str, ...] = ("host", "cupy", "triton")
+
+
+#: THE COMPUTE CAPABILITIES THIS TABLE SUPPORTS, inclusive on (major, minor), which
+#: is a different list from the CERTIFIED one (:func:`validated_compute_capabilities`):
+#: a supported device is one the kernels are written for and expected to run on, and
+#: rung 4b of ``fastpath`` dispatches on it by default with ``certified: False``.
+#:
+#: WHY THIS RANGE. The kernels are NVRTC sources compiled at plan time for the
+#: device's own architecture, and a search of their sources for the usual
+#: architecture-gated features (``__CUDA_ARCH__``, warp shuffles, cooperative groups,
+#: tensor-core, half and bfloat16 types, ``cp.async``) finds none. The floor, 7.0,
+#: is the Triton table's (``fastpath.SUPPORTED_COMPUTE_CAPABILITIES``).
+#: The ceiling is set by the NVRTC that compiles them, which is the CuPy build's:
+#:
+#: * cupy-cuda11x (the ``nvidia-cuda11`` extra, the certified stack) compiles with
+#:   the NVRTC of CUDA 11.8, whose newest target is compute capability 9.0; on a
+#:   newer device CuPy compiles for that newest target, which a newer device is not
+#:   expected to load (read from CuPy's code, not run);
+#: * cupy-cuda12x (the ``nvidia`` extra) compiles with the NVRTC of the host's CUDA
+#:   12 toolkit, which targets newer devices too, so 9.0 is conservative for it.
+#:
+#: Static rather than read off NVRTC, so the range a record states is the range the
+#: code applies; ``UNCERTIFIED_SWITCH=1`` runs a device outside it, recorded
+#: ``supported: False``.
+SUPPORTED_COMPUTE_CAPABILITIES: Tuple[Tuple[int, int], Tuple[int, int]] = ((7, 0), (9, 0))
+
+#: The NVRTC each CuPy build compiles the kernels with, as the NOTE line and the
+#: dispatch record's ``supported_ranges`` name them.
+SUPPORTED_NVRTC_BUILDS: Mapping[str, str] = {"cupy-cuda11x": "CUDA 11.8",
+                                             "cupy-cuda12x": "the host's CUDA 12"}
 
 
 def validated_compute_capabilities() -> Tuple[str, ...]:
@@ -1750,9 +1786,10 @@ def cuda_candidate(record: Mapping[str, Any], xp: Any) -> Dict[str, Any]:
     checkout or a partially-installed package is a refusal rather than a crash.
 
     THE DEVICE IS NOT ASKED HERE. Rung 4b asks it per table, against
-    :func:`validated_compute_capabilities`, and its three-valued rule (an unreadable
-    device is unknown, not refused) belongs with the other device reads rather than
-    duplicated in this function.
+    :func:`validated_compute_capabilities` and :data:`SUPPORTED_COMPUTE_CAPABILITIES`,
+    and its three-valued rule (an unreadable device is unknown, not refused, unless
+    the run asked for certified identities only) belongs with the other device reads
+    rather than duplicated in this function.
     """
     block: Dict[str, Any] = {"candidate": False, "refused_because": None}
     backend = getattr(xp, "__name__", None)

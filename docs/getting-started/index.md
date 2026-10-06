@@ -32,8 +32,11 @@ Two defaults to know from the start:
   that has none. Pass `prefer_gpu=False` for the NumPy reference: it runs on the
   host CPU on every host and never runs a compiled kernel. On the one Mac
   measured it was faster than the GPU for a small cell.
-- Compiled kernels serve the sub-steps they cover, on a certified GPU; the rest
-  of each step runs on the array path, the same equations in NumPy or CuPy.
+- Compiled kernels serve the sub-steps they cover, on a supported NVIDIA GPU
+  (compute capability 7.0 to 9.0) and on any Apple GPU, every one of which is
+  supported (a run outside the certified set says it is not certified); the
+  rest of each step runs on the array path, the same equations in NumPy or
+  CuPy.
   `MEEP_GPU_DISPATCH=0` keeps a whole run on the array path.
 
 When something fails, [Troubleshooting](../guides/troubleshooting.md) is

@@ -23,6 +23,12 @@ WHAT IT REFUSES TO DO:
 EVERY FIELD IS DERIVED. Nothing here is typed by a person except the ``--purpose``
 line and the curated path list, and both are arguments rather than literals.
 
+THE RUN GOES UNDER ITS GPU ARCHITECTURE. The entry carries the digests, the purpose and
+the status; the run's facts go into ``runs[<architecture>]`` (``meep_gpu.metal_runs``),
+keyed by the architecture the campaign's environment record names. A ``--replace``
+keeps the other architectures' runs and refuses, naming them, when the bytes it binds
+moved, unless ``--supersede`` lists them.
+
     python mint_metal_weld.py --family fused_electric_pair \\
         --stamp 2026-08-28_arity --purpose "..." [--write]
 """
@@ -50,8 +56,13 @@ _API = _find_api_root(_HERE)
 if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
 
+from meep_gpu import fastpath  # noqa: E402
+from meep_gpu import metal_runs  # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
 from meep_gpu.device_identity import device_digests  # noqa: E402
+
+sys.path.insert(0, str(_HERE))
+import metal_environment  # noqa: E402
 
 LEDGER = _API / "meep_gpu" / "metal_kernels" / "fingerprints.json"
 RESULTS = _HERE / "results"
@@ -133,7 +144,13 @@ def main(argv=None) -> int:
         help="re-mint an entry this tool wrote (its pinned path set must match "
              "exactly); use after fixing a defect in this tool, never to retire a "
              "curated set")
+    parser.add_argument(
+        "--supersede", default="", metavar="ARCHITECTURE[,...]",
+        help="with --replace: GPU architectures whose runs this re-mint retires when "
+             "the bytes it binds moved")
     args = parser.parse_args(argv)
+    supersede = tuple(sorted({name.strip() for name in args.supersede.split(",")
+                              if name.strip()}))
 
     if args.artifact is not None:
         artifact = args.artifact.resolve()
@@ -172,6 +189,25 @@ def main(argv=None) -> int:
 
     key = f"metal_{args.family}_device_gate"
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+    environment = metal_environment.campaign(args.stamp)
+    host = metal_environment.host_line(environment)
+    named = metal_runs.environment_of(host)
+    try:
+        architecture = metal_runs.require_architecture(named["architecture"])
+    except metal_runs.ArchitectureRecordError as refused:
+        raise SystemExit(f"the campaign's environment cannot key a run: {refused}") from None
+    # THE ARTIFACT'S OWN GPU, WHERE IT NAMES ONE, must be the campaign's, as in
+    # ``rebind_metal_welds.py``: the run is keyed by the environment records.
+    ran_on = metal_runs.artifact_architecture(fresh)
+    if ran_on is not None and ran_on != architecture:
+        raise SystemExit(f"{artifact} records environment.apple_gpu.architecture "
+                         f"{ran_on!r} and the campaign's environment records "
+                         f"{architecture!r}; a run is filed under the GPU it ran on")
+    policy = metal_runs.artifact_policy(fresh)
+    if policy is None:
+        raise SystemExit(f"{artifact} states no subnormal policy (subnormal_policy or "
+                         f"subnormal_policy_report); a weld's policy line is the field a "
+                         f"reader consults to know which arithmetic it binds")
     pins = args.pins or [
         f"meep_gpu/metal_kernels/{args.family}.py",
         "meep_gpu/metal_kernels/launch.py",
@@ -183,6 +219,10 @@ def main(argv=None) -> int:
                 f"{key} already exists; rebind it with rebind_metal_welds.py rather "
                 f"than minting over its curated path set, or pass --replace to "
                 f"re-mint an entry this tool wrote")
+        retired = metal_runs.shape_reasons(ledger[key])
+        if retired:
+            raise SystemExit(f"{key} is not in the per-architecture shape "
+                             f"({'; '.join(retired)}); run migrate_metal_runs.py first")
         held = sorted((ledger[key].get("source_sha256") or {}))
         if held != sorted(pins):
             raise SystemExit(
@@ -205,6 +245,10 @@ def main(argv=None) -> int:
         "status": "PASS",
         "source_sha256": {name: imported[name] for name in pins},
         "code_sha256": {name: code_digest_of_path(_API / name) for name in pins},
+        "_not_wired": ("Registered NOT WIRED. Records byte-correctness, not dispatch "
+                       "eligibility."),
+    }
+    run = {
         "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
         # THE PATH RELATIVE TO ``results``, NOT THE PARENT'S BARE NAME. A campaign
         # that separates its policies puts the artifact at
@@ -216,23 +260,30 @@ def main(argv=None) -> int:
                     f"{artifact.parent.relative_to(RESULTS)}/ - "
                     f"{fresh.get('records', '?')} records"),
         "recorded_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "host": (f"this machine: Apple MPS device, torch "
-                 f"{fresh.get('torch_version', '?')}, "
-                 f"{fresh.get('metal_frontend', '?')}"),
+        # THE CAMPAIGN'S RECORDED ENVIRONMENT, not the artifact's own toolchain keys:
+        # 19 of 62 gates write neither, and none wrote the GPU architecture, which
+        # ``metal_dispatch`` certifies a weld for beside torch and the frontend. The
+        # run is keyed by the architecture the line names and records the torch and
+        # frontend it names, so the line and the fields cannot disagree.
+        "host": host,
+        "torch": named["torch"],
+        "metal_frontend": named["metal_frontend"],
+        "environment_read_from": f"metal_environment_{args.stamp}/start.json",
         # TWO SPELLINGS, because two generations of gate write it differently: the
         # older ones put the report under ``subnormal_policy`` and the 2026-09-07
         # tails gates under ``subnormal_policy_report``. Reading only the first
         # wrote a literal "?" into three ledger entries -- a weld whose policy line
         # says nothing, which is the one field a reader consults to know WHICH
-        # arithmetic the entry binds.
-        "subnormal_policy": (
-            f"{fresh.get('subnormal_policy') or fresh.get('subnormal_policy_report', '?')}"
-            f" - native and uncontrollable on MPS; the oracle flushes too"),
+        # arithmetic the entry binds. A REPORT IS READ BY ITS POLICY VALUE
+        # (``metal_runs.artifact_policy``): formatting the mapping whole wrote its
+        # Python repr into twelve entries, and the line is quoted into every
+        # dispatched arm's record.
+        "subnormal_policy": f"{policy}{metal_runs.POLICY_SUFFIX}",
         "verdict_read_from": (
             f"{artifact.parent.relative_to(RESULTS)}/{artifact.name}:{field}.released"
             + (f" (read_from={verdict['read_from']})" if verdict.get("read_from") else "")),
-        "_not_wired": ("Registered NOT WIRED. Records byte-correctness, not dispatch "
-                       "eligibility."),
+        "_subnormal_policy_read_from": (
+            f"derived from {artifact.parent.relative_to(RESULTS)}/{artifact.name}"),
     }
     # ABSOLUTE, because `device_digests` dispatches on the path's DIRECTORY to decide
     # which of the three device-source spellings applies; a repo-relative path
@@ -247,6 +298,22 @@ def main(argv=None) -> int:
     else:
         print("  NOTE: no device digest could be established for this module; the "
               "entry keeps the strict byte rule", flush=True)
+
+    # THE OTHER ARCHITECTURES' RUNS ARE KEPT on a re-mint, under the staleness rule:
+    # bytes that moved strand them, so they are named and refused unless superseded.
+    bound_before = None
+    if key in ledger:
+        bound_before = fastpath.bound_digest(ledger[key])
+        entry[metal_runs.RUNS] = json.loads(json.dumps(
+            ledger[key].get(metal_runs.RUNS) or {}))
+    try:
+        staled = metal_runs.bind_architecture(
+            entry, bound_before=bound_before, architecture=architecture, run=run,
+            supersede=supersede)
+    except metal_runs.ArchitectureRecordError as refused:
+        raise SystemExit(f"{key}: {refused}") from None
+    if staled:
+        print(f"  superseded {list(staled)} (their runs now read stale)", flush=True)
 
     print(json.dumps({key: entry}, indent=2, sort_keys=True), flush=True)
     if not args.write:

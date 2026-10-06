@@ -112,8 +112,10 @@ GOVERNED_EXECUTORS: Tuple[str, str] = ("host", "mps")
 #: this line is itself such an edit — so a run that discovers the constant is wrong
 #: has to be repeated, not repointed. The campaign driver
 #: (``parity/meep_gpu/run_metal_dispatch_campaign.sh``) writes its legs under
-#: ``results/<this name>/``, and ``recut_driver_dispatch_record.py --backend metal``
-#: refuses to cut the record unless the artifact it reads and this constant agree.
+#: ``results/<this name>_<architecture>/`` (see the 2026-10-05 entry below), and
+#: ``recut_driver_dispatch_record.py --backend metal`` refuses to cut the record
+#: unless the directory it reads is the one this constant spells for the
+#: architecture its legs recorded.
 #: REPOINTED 2026-09-15, BEFORE the relaunch, which is the order the paragraph above
 #: demands. The ``2026-09-14_weldgrid`` campaign died with its host at 44 of 62 fleet
 #: gates, before its dispatch stage, and it had been launched while this line still
@@ -164,7 +166,21 @@ GOVERNED_EXECUTORS: Tuple[str, str] = ("host", "mps")
 #: different bytes and the fleet and the route are re-run on them.
 #: REPOINTED 2026-09-30 to ``_2026-09-30_091`` for release 0.9.1, whose certification
 #: round re-runs the fleet and the route on the released files.
-METAL_DRIVER_ROUTE_GATE = "dispatch_metal_route_2026-09-30_091"
+#: REPOINTED 2026-10-02 to ``_2026-10-02_arch3``, before that campaign runs: the
+#: 0.9.1 Metal round never ran, and this one is the first whose welds record the GPU
+#: architecture each ran on, which the route record requires every row to read
+#: certified. (``_2026-10-02_arch`` was abandoned during its fleet: its lift legs
+#: found no MEEP corpus. ``_2026-10-02_arch2`` was killed 40 gates in, every one
+#: released, when the shell that started it exited.)
+#: REPOINTED 2026-10-05 to ``_2026-10-05_perarch``, before that campaign runs: the
+#: admission reads the per-architecture run records and the route record keeps one
+#: run per GPU architecture, so this file moved and the route is re-run on it. THE
+#: CONSTANT IS NOW THE STAMP, not the directory: each architecture's campaign writes
+#: its legs under ``results/<metal_runs.route_campaign(this, architecture)>/``
+#: (``dispatch_metal_route_2026-10-05_perarch_applegpu_g13s``), the way the NVIDIA
+#: constants name ``<stamp>_cc86``, so a second Mac drives the same release on the
+#: same bytes without editing this line.
+METAL_DRIVER_ROUTE_GATE = "dispatch_metal_route_2026-10-05_perarch"
 
 #: The four expansion-probe families, as ``(plan_step keyword, module)``. Each
 #: module owns its own ``PROBE_PATH_ENVIRONMENT`` and ``load_expansion_probe``; the
@@ -191,7 +207,7 @@ def fingerprints() -> Mapping[str, Any]:
 
     The Metal twin of ``fastpath._fingerprints``, kept here so this module can
     check its own rows (every :data:`ARM_CERTIFICATION` gate must resolve) and
-    derive :func:`validated_toolchains` without waiting on the per-table argument
+    derive :func:`cited_environments` without waiting on the per-table argument
     ``fastpath._fingerprints`` is due to grow.
     """
     global _FINGERPRINTS
@@ -206,13 +222,31 @@ def fingerprints() -> Mapping[str, Any]:
     return _FINGERPRINTS
 
 
-#: How a Metal weld records the machine it ran on: ``"this machine: Apple MPS
-#: device, torch 2.10.0, metalfe-32023.850.10"``. Parsed rather than typed, for the
-#: reason ``fastpath.validated_triton_versions`` is read off the Triton ledger: the
-#: validated set is a fact about which gates have run, and a hand-kept copy of it
-#: drifts the moment one does.
+#: How a Metal weld's run records the machine it ran on: ``"this machine: Apple MPS
+#: device applegpu_g13s, torch 2.10.0, metalfe-32023.850.10"``. Parsed rather than
+#: typed, for the reason ``fastpath.validated_triton_versions`` is read off the
+#: Triton ledger: the certified set is a fact about which gates have run, and a
+#: hand-kept copy of it drifts the moment one does. The writers parse the line they
+#: write (``metal_runs.environment_of``) to key the run by its architecture and to
+#: record its torch and frontend beside it; the admission reads those fields
+#: (:func:`cited_environments`). Lines written before the GPU architecture was
+#: stamped name no ``applegpu_`` token, and that fact then reads as not recorded.
+_HOST_ARCHITECTURE = re.compile(r"\b(applegpu_[A-Za-z0-9_]+)")
 _HOST_TORCH = re.compile(r"torch\s+([^\s,]+)")
 _HOST_FRONTEND = re.compile(r"metalfe-([^\s,]+)")
+
+#: THE THREE FACTS THAT MAKE A METAL ENVIRONMENT, each of which changes the code
+#: that runs: the GPU architecture is the unit Metal compiles for, torch supplies
+#: ``mps.compile_shader`` and picks the language version, and the Metal frontend
+#: (one per macOS build, whatever the GPU) turns the source into instructions.
+ENVIRONMENT_FACTS: Tuple[str, ...] = ("architecture", "torch", "metal_frontend")
+
+#: torch's switch that compiles every Metal source, ``compile_shader`` included, in
+#: fast-math mode. Measured 2026-10-02 (``parity/meep_gpu/probe_metal_fast_math.py``,
+#: M1 Max, torch 2.10.0): ``1`` changed 274,523 of 1,048,576 float32 divide words
+#: and 327,338 square roots; ``0`` changed none. Every weld ran with it unset, so a
+#: run with any value but ``0`` is outside the certified environment.
+FAST_MATH = "PYTORCH_MPS_FAST_MATH"
 
 
 def frontend_key(value: Optional[str]) -> Optional[str]:
@@ -241,38 +275,193 @@ def frontend_key(value: Optional[str]) -> Optional[str]:
     return text or None
 
 
-def validated_toolchains() -> Tuple[Tuple[str, Optional[str]], ...]:
-    """The ``(torch, metal frontend)`` pairs some Metal weld actually ran on.
+def host_environment(host: Any) -> Dict[str, Optional[str]]:
+    """The Metal environment one run's ``host`` line records.
 
-    THE METAL ANALOGUE OF ``validated_triton_versions``, and it is a pair rather
-    than a version because BOTH halves own code generation here: torch supplies
-    ``mps.compile_shader``, and the Metal frontend is what turns the source into
-    instructions. A frontend bump is a correctness event for these files exactly as
-    a Triton bump is for the Triton ones — the arithmetic is held by measurement,
-    not by construction.
-
-    A ``host`` string that names torch but not the frontend contributes a pair with
-    ``None`` in the second slot. That is not a wildcard: rung 4M refuses on a value
-    it READ and found absent from this set, and records — rather than refuses — a
-    value it could not read at all.
+    A fact the line does not name is ``None``, and so is one it names as ``?`` or
+    ``unknown``: a record that could not tell is not a record of a value. The
+    frontend is normalised through :func:`frontend_key`.
     """
-    pairs: List[Tuple[str, Optional[str]]] = []
-    for entry in fingerprints().values():
-        if not isinstance(entry, Mapping):
+    text = host if isinstance(host, str) else ""
+
+    def first(pattern: Any) -> Optional[str]:
+        match = pattern.search(text)
+        value = None if match is None else match.group(1)
+        return None if value in (None, "?", "unknown") else value
+
+    return {"architecture": first(_HOST_ARCHITECTURE),
+            "torch": first(_HOST_TORCH),
+            "metal_frontend": frontend_key(first(_HOST_FRONTEND))}
+
+
+def _run_environment(architecture: str, run: Mapping[str, Any]) -> Dict[str, Optional[str]]:
+    """The environment one per-architecture run records: its key, torch and frontend."""
+    torch_version = run.get("torch")
+    return {"architecture": architecture,
+            "torch": None if torch_version in (None, "?", "unknown") else str(torch_version),
+            "metal_frontend": frontend_key(run.get("metal_frontend"))}
+
+
+def cited_environments(ledger: Optional[Mapping[str, Any]] = None,
+                       gates: Optional[Sequence[str]] = None
+                       ) -> Tuple[Tuple[str, Optional[Tuple[Dict[str, Optional[str]], ...]]],
+                                  ...]:
+    """``(gate, runs)`` for every weld :data:`ARM_CERTIFICATION` cites.
+
+    ``runs`` is the environment of each LIVE run the weld's entry records under
+    ``runs[<architecture>]``, in architecture order: the architecture it is keyed by,
+    the torch and the Metal frontend it recorded. A run is live while its
+    ``bound_sha256`` is ``fastpath.bound_digest`` of the entry, and
+    ``fastpath.live_capabilities`` is the one function that answers that, for this
+    table as for the NVIDIA ones. An entry whose bytes moved after a run was cut no
+    longer offers that run.
+
+    ``runs`` is ``None`` when the entry cannot be read as per-architecture runs:
+    the gate has no entry, or the entry holds no ``runs`` mapping (the one-run shape
+    the per-architecture records replaced, which is not read both ways). Such a weld
+    recorded nothing this ladder can judge: every verdict it takes part in is
+    ``None``, so by default the plan dispatches with ``certified: None`` and prints no
+    NOTE line, and only ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` refuses it. What catches a
+    ledger in that shape is the test suite
+    (``test_the_shipped_ledger_cites_a_readable_entry_for_every_gate``), not the run;
+    :func:`unresolved_certification_rows` refuses a row with no entry at all.
+
+    THE CERTIFIED SET IS READ FROM THE CITED WELDS ONLY. An entry no dispatched arm
+    quotes certifies nothing this table runs, so its runs cannot widen what counts as
+    certified. ``ledger`` defaults to :func:`fingerprints` and ``gates`` to the welds
+    :data:`ARM_CERTIFICATION` cites; the migration tool passes the document it is
+    about to write, to check entry by entry the admission it would produce.
+    """
+    from . import fastpath  # noqa: PLC0415
+
+    ledger = fingerprints() if ledger is None else ledger
+    gates = sorted({gate for _family, gate in ARM_CERTIFICATION.values()}
+                   if gates is None else set(gates))
+    out = []
+    for gate in gates:
+        entry = ledger.get(gate) if isinstance(ledger, Mapping) else None
+        runs = entry.get(fastpath.RUNS) if isinstance(entry, Mapping) else None
+        if not isinstance(runs, Mapping):
+            out.append((gate, None))
             continue
-        host = entry.get("host")
-        if not isinstance(host, str):
-            continue
-        torch_match = _HOST_TORCH.search(host)
-        if torch_match is None or torch_match.group(1) in ("?", "unknown"):
-            continue
-        frontend_match = _HOST_FRONTEND.search(host)
-        frontend = (None if frontend_match is None
-                    else frontend_key(frontend_match.group(1)))
-        pair = (torch_match.group(1), None if frontend in ("?",) else frontend)
-        if pair not in pairs:
-            pairs.append(pair)
-    return tuple(pairs)
+        out.append((gate, tuple(_run_environment(architecture, runs[architecture])
+                                for architecture in fastpath.live_capabilities(entry))))
+    return tuple(out)
+
+
+def recorded_environments(ledger: Optional[Mapping[str, Any]] = None
+                          ) -> List[Dict[str, Any]]:
+    """The distinct environments the cited welds' live runs recorded, with their weld counts.
+
+    What a reader is shown beside a verdict: one row per distinct
+    ``(architecture, torch, metal_frontend)`` among the live runs of the cited welds,
+    ``welds`` counting the cited welds with a live run that recorded it, most common
+    first. A cited weld that cannot be read as per-architecture runs is one row of
+    ``None`` facts. A weld with runs for two architectures counts in two rows, so the
+    counts need not sum to the number of cited welds.
+    """
+    counts: Dict[Tuple[Optional[str], ...], int] = {}
+    for _gate, runs in cited_environments(ledger=ledger):
+        environments = ([{fact: None for fact in ENVIRONMENT_FACTS}] if runs is None
+                        else runs)
+        for key in {tuple(environment[fact] for fact in ENVIRONMENT_FACTS)
+                    for environment in environments}:
+            counts[key] = counts.get(key, 0) + 1
+    return [dict(zip(ENVIRONMENT_FACTS, key), welds=count)
+            for key, count in sorted(counts.items(),
+                                     key=lambda item: (-item[1], repr(item[0])))]
+
+
+def environment_judgements(fact: str, value: Optional[str],
+                           architecture: Optional[str] = None, *,
+                           ledger: Optional[Mapping[str, Any]] = None
+                           ) -> Tuple[Tuple[str, Optional[bool]], ...]:
+    """``(gate, verdict)`` per cited weld: does that weld's record certify ``value``?
+
+    * ``architecture``: ``True`` when the weld has a live run keyed by ``value``;
+      ``False`` when it can be read and has none (it never ran on this GPU on these
+      bytes, or that run was superseded); ``None`` when it cannot be read.
+    * ``torch`` / ``metal_frontend``: judged against the weld's live run for
+      ``architecture`` (this host's), because the facts are recorded inside each
+      architecture's run. ``None`` when the weld has no such run or the run does not
+      record the fact. With ``architecture`` unread, against every live run the weld
+      holds: ``True`` when all recorded ``value``, ``False`` when one recorded another.
+    """
+    wanted = frontend_key(value) if fact == "metal_frontend" else value
+    out = []
+    for gate, runs in cited_environments(ledger=ledger):
+        verdict: Optional[bool]
+        if wanted is None or runs is None:
+            verdict = None
+        elif fact == "architecture":
+            verdict = any(run["architecture"] == wanted for run in runs)
+        else:
+            if architecture is not None:
+                candidates = [run for run in runs if run["architecture"] == architecture]
+            else:
+                candidates = list(runs)
+            seen = [run[fact] for run in candidates]
+            if any(recorded is not None and recorded != wanted for recorded in seen):
+                verdict = False
+            elif seen and all(recorded == wanted for recorded in seen):
+                verdict = True
+            else:
+                verdict = None
+        out.append((gate, verdict))
+    return tuple(out)
+
+
+def environment_verdict(fact: str, value: Optional[str],
+                        architecture: Optional[str] = None, *,
+                        ledger: Optional[Mapping[str, Any]] = None) -> Optional[bool]:
+    """Is ``value`` the ``fact`` EVERY cited weld certifies? THREE-VALUED.
+
+    The intersection rule of ``fastpath.capability_report``, per fact
+    (:func:`environment_judgements`): ``True`` when every cited weld certifies it;
+    ``False`` when one can be read and does not, so the table as a whole is not
+    certified here; ``None`` when the value was not read, when no weld is cited, or
+    when some cited welds cannot judge it and none contradicts it: the records
+    cannot tell, and saying ``True`` would certify what no gate recorded.
+
+    So this host's GPU architecture is certified when every cited weld has a live
+    run for it, and its torch and Metal frontend when every such run recorded this
+    host's. ``architecture`` is this host's, for judging torch and the frontend.
+    """
+    if value is None:
+        return None
+    verdicts = [verdict for _gate, verdict in environment_judgements(
+        fact, value, architecture, ledger=ledger)]
+    if not verdicts:
+        return None
+    if any(verdict is False for verdict in verdicts):
+        return False
+    if all(verdict is True for verdict in verdicts):
+        return True
+    return None
+
+
+def certified_values(fact: str, architecture: Optional[str] = None, *,
+                     ledger: Optional[Mapping[str, Any]] = None) -> List[str]:
+    """The values of ``fact`` the cited welds CERTIFY, as a NOTE line or a refusal names them.
+
+    A candidate is a value some live run of a cited weld recorded: for torch and the
+    frontend, a run for ``architecture`` (this host's) where any weld has one, else
+    any run. It is listed only when :func:`environment_verdict` says ``True`` for it,
+    so the list obeys the intersection rule the verdict obeys. During a partial round
+    an architecture some cited welds ran on and others did not is therefore NOT
+    listed: naming every architecture any weld recorded would print
+    ``certified: applegpu_g13s, applegpu_g15s`` on the very GPU the verdict has just
+    found not certified (measured on a ledger holding the second architecture on 44
+    of 45 cited welds).
+    """
+    rows = recorded_environments(ledger=ledger)
+    if fact in ("torch", "metal_frontend") and any(
+            row["architecture"] == architecture for row in rows):
+        rows = [row for row in rows if row["architecture"] == architecture]
+    candidates = sorted({str(row[fact]) for row in rows if row[fact] is not None})
+    return [value for value in candidates if environment_verdict(
+        fact, value, None if fact == "architecture" else architecture,
+        ledger=ledger) is True]
 
 
 def certification_policy() -> str:
@@ -1636,7 +1825,7 @@ def released_fused_arms_metal(shape: Mapping[str, Any]) -> Tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 def metal_toolchain() -> Dict[str, Any]:
-    """torch, MPS and the Metal frontend, as READ. Never raises.
+    """torch, MPS, the Metal frontend and the GPU architecture, as READ. Never raises.
 
     ``importable``/``built``/``available``/``compile_shader`` are the same three
     reads ``metal_kernels.coverage._metal_backend_reasons`` makes, kept in step by
@@ -1646,8 +1835,22 @@ def metal_toolchain() -> Dict[str, Any]:
     """
     block: Dict[str, Any] = {"importable": False, "version": None, "built": None,
                              "available": None, "compile_shader": None,
-                             "metal_frontend": None,
+                             "metal_frontend": None, "architecture": None,
+                             "device_name": None,
+                             "fast_math": os.environ.get(FAST_MATH),
                              "machine": platform.machine()}
+    # THE GPU IS READ BEFORE TORCH, because it needs no torch: a host whose torch
+    # is broken still says which GPU it has.
+    try:
+        from .metal_kernels import device  # noqa: PLC0415
+
+        gpu = device.apple_gpu_identity()
+        block["architecture"] = gpu.get("architecture")
+        block["device_name"] = gpu.get("name")
+        if gpu.get("error"):
+            block["architecture_error"] = gpu["error"]
+    except Exception as exc:  # noqa: BLE001 - an unreadable GPU is recorded, not refused
+        block["architecture_error"] = repr(exc)
     try:
         import torch  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001 - a broken install is as absent as a missing one
@@ -1674,43 +1877,102 @@ def metal_toolchain() -> Dict[str, Any]:
 def environment_block(grid: Any, toolchain: Mapping[str, Any]) -> Dict[str, Any]:
     """The Metal half of the dispatch record's ``environment``.
 
-    WAITS ON ``fastpath._environment_block(grid, probe, probe_error, table)``, which
-    is where the Triton half lives and which will merge this in for the Metal table.
-    Kept here because every fact in it is a Metal fact: which torch, which frontend,
-    and whether the pair is one some Metal weld actually ran on.
+    Every fact in it is a Metal fact: which GPU, which torch, which frontend, and
+    whether each is the one every cited Metal weld ran on (:func:`environment_verdict`).
+    The GPU is recorded as ``device``, with its verdict as ``device_certified``, in
+    the keys the NVIDIA tables use for theirs: the architecture is to a Metal
+    environment what the compute capability is to an NVIDIA one.
 
-    ``torch_certified`` and ``frontend_certified`` are THREE-VALUED. ``None`` means
-    the question could not be asked — no readable ledger pair, or a frontend this
-    host will not name — and rung 4M records that rather than refusing on it, for
-    the same reason the device rung does not refuse a compute capability it could
-    not read: refusing on an unread fact asserts one.
+    ``device_certified``, ``torch_certified`` and ``frontend_certified`` are
+    THREE-VALUED (:func:`environment_verdict`): ``None`` means the fact was not read
+    or the cited welds' runs cannot judge it. torch and the frontend are judged
+    against the runs recorded for THIS architecture, because each architecture's
+    run records its own.
+
+    THE ARCHITECTURE IS ALSO WRITTEN AS ``device.compute_capability``, the key
+    ``fastpath._finish`` hands to ``fastpath._certification_for``, so each
+    dispatched arm quotes the run of the weld that certified it on this GPU (its
+    ``host``, ``recorded_utc``, ``records``), and no other architecture's run. The
+    Metal ledger keys its runs by architecture exactly where the NVIDIA ledgers key
+    theirs by compute capability. Measured 2026-10-05 against every reader of the
+    key that a Metal plan reaches: the decision, the slots, the arms, ``certified``,
+    the status line and the field are byte-equal with and without it; the NVIDIA
+    rungs that also read it are never reached by a Metal plan
+    (``fastpath.candidate_tables`` offers ``("metal",)`` alone on an MPS host).
+    Written only when the architecture was read, so an unread one still quotes no
+    run and says why.
     """
-    validated = validated_toolchains()
+    architecture = toolchain.get("architecture")
     torch_version = toolchain.get("version")
     frontend = toolchain.get("metal_frontend")
-    torch_certified: Optional[bool] = None
-    frontend_certified: Optional[bool] = None
-    if validated and torch_version is not None:
-        torch_certified = any(pair[0] == torch_version for pair in validated)
-    if validated and frontend is not None:
-        # NORMALISED ON BOTH SIDES, through the one function that knows the two
-        # spellings; see :func:`frontend_key` for the refusal this closed.
-        wanted = frontend_key(frontend)
-        frontend_certified = any(pair[1] == wanted for pair in validated
-                                 if pair[1] is not None)
+    device: Dict[str, Any] = {"name": toolchain.get("device_name"),
+                              "architecture": architecture}
+    if architecture is None:
+        device["unreadable"] = toolchain.get("architecture_error") or "unknown"
+    else:
+        device["compute_capability"] = architecture
     return {
         "backend": getattr(getattr(grid, "xp", None), "__name__", None),
         "table": TABLE,
+        "device": device,
         "torch": torch_version,
         "mps_built": toolchain.get("built"),
         "mps_available": toolchain.get("available"),
         "mps_compile_shader": toolchain.get("compile_shader"),
         "metal_frontend": frontend,
         "machine": toolchain.get("machine"),
-        "torch_certified": torch_certified,
-        "frontend_certified": frontend_certified,
-        "validated_toolchains": [list(pair) for pair in validated],
+        "device_supported": device_supported(toolchain),
+        "device_certified": environment_verdict("architecture", architecture),
+        "torch_certified": environment_verdict("torch", torch_version, architecture),
+        "frontend_certified": environment_verdict("metal_frontend", frontend,
+                                                  architecture),
+        "fast_math": toolchain.get("fast_math"),
+        "fast_math_certified": toolchain.get("fast_math") in (None, "0"),
+        "recorded_environments": recorded_environments(),
+        "certified_only": certified_only(),
     }
+
+
+#: WHY AN UNCERTIFIED METAL ENVIRONMENT RAN, in the words the run's NOTE line uses.
+#: The Metal table runs by default on an environment the cited welds did not record,
+#: and says so; ``fastpath.UNCERTIFIED_SWITCH=0`` restricts it to certified ones. On
+#: an Apple GPU the reason is that every Apple GPU is SUPPORTED: the kernels are
+#: meant to run there and only have not been measured there.
+SUPPORTED_BECAUSE = ("this Apple GPU is supported, and {switch}=0 would restrict the "
+                     "Metal kernels to certified environments")
+UNCERTIFIED_BECAUSE = ("the Metal table runs on environments outside the certified "
+                       "set unless {switch}=0")
+
+
+def device_supported(toolchain: Mapping[str, Any]) -> Optional[bool]:
+    """Is this GPU one the Metal table SUPPORTS: an Apple GPU? THREE-VALUED.
+
+    SUPPORTED IS NOT CERTIFIED. Every Apple GPU is supported: the same Metal source
+    compiles for each of them and the kernels are meant to run there. Certified is
+    narrower: the environment is one every cited weld measured
+    (:func:`environment_verdict`). Read off the architecture Metal names
+    (``applegpu_*``) and, where the architecture cannot be read (before macOS 14),
+    off the device name. ``None`` when neither was read.
+    """
+    architecture = toolchain.get("architecture")
+    if architecture:
+        return str(architecture).startswith("applegpu_")
+    name = toolchain.get("device_name")
+    if name:
+        return str(name).startswith("Apple ")
+    return None
+
+
+def certified_only() -> bool:
+    """Does this run restrict the Metal kernels to certified environments? Never raises.
+
+    ``True`` for ``fastpath.UNCERTIFIED_SWITCH=0`` only. Unset and ``1`` both run an
+    uncertified environment, recorded as uncertified; any other value is refused by
+    name at rung 3b before this is asked.
+    """
+    from . import fastpath  # noqa: PLC0415
+
+    return os.environ.get(fastpath.UNCERTIFIED_SWITCH) == "0"
 
 
 # ---------------------------------------------------------------------------
@@ -2407,11 +2669,9 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
 
     environment = record.setdefault("environment", {})
 
-    # (4M) THE TOOLCHAIN. torch supplies the launch path and the Metal frontend
-    # supplies the code generation, so a pair no gate ran on invalidates a
-    # bit-identity claim the same way an unvalidated Triton does on the other
-    # table. The three availability reads are refusals; the two VERSION reads are
-    # refusals only where they were actually read (see :func:`environment_block`).
+    # (4M) THE TOOLCHAIN, AVAILABLE. torch supplies the launch path, so the three
+    # availability reads below are refusals. Which environment the kernels run in
+    # is judged after them.
     toolchain = metal_toolchain()
     environment.update(environment_block(grid, toolchain))
     if not toolchain["importable"]:
@@ -2431,34 +2691,75 @@ def decide(record: Dict[str, Any], fields: Any, pml: Any, grid: Any,
                          "torch.mps.compile_shader is missing; hand-written Metal "
                          "sources cannot be compiled on this build")
         return None
-    # ``fastpath.UNCERTIFIED_SWITCH`` set to ``1`` ADMITS a version that was read and
-    # is not certified, recorded as read; its value was judged at rung 3b, and a
-    # caller that reaches this ladder directly with any other value is refused here
-    # as though it were unset.
-    allowed = fastpath.uncertified_allowed()
-    if environment.get("torch_certified") is False:
-        if not allowed:
+    # (4M) THE ENVIRONMENT: GPU architecture, torch and Metal frontend, each judged
+    # against the live runs every cited weld recorded (:func:`environment_verdict`):
+    # the architecture by whether each weld has a run for it, torch and the frontend
+    # against those runs. Fast math is certified only off. BY DEFAULT AN UNCERTIFIED ENVIRONMENT RUNS: a fact
+    # the welds contradict is recorded under ``uncertified.admitted`` (copied to
+    # ``uncertified.served`` when the table serves), so the record says
+    # ``certified: False`` and the run prints one NOTE line naming it.
+    # ``certified_only()`` (``UNCERTIFIED_SWITCH=0``) refuses instead, and refuses a
+    # fact it could not judge as well: a run restricted to certified environments
+    # does not run on one it cannot identify.
+    architecture = toolchain.get("architecture")
+    # THE NUMBER OF CITED WELDS, not the sum of the rows: a weld with runs for two
+    # architectures is one row per architecture.
+    cited = len(cited_environments())
+    strict = certified_only()
+    switch = fastpath.UNCERTIFIED_SWITCH
+    # WHETHER THIS TABLE MAY RUN AN UNCERTIFIED ENVIRONMENT, as the record's switch
+    # block states it for the NVIDIA tables (``1`` only); here, anything but ``0``.
+    record.setdefault("uncertified", {})["allowed"] = not strict
+    for fact, what, verdict_key, read in (
+            ("architecture", "GPU architecture", "device_certified",
+             toolchain.get("architecture")),
+            ("torch", "torch", "torch_certified", toolchain.get("version")),
+            ("metal_frontend", "Metal frontend", "frontend_certified",
+             toolchain.get("metal_frontend")),
+            ("fast_math", FAST_MATH, "fast_math_certified", toolchain.get("fast_math"))):
+        verdict = environment.get(verdict_key)
+        if verdict is True:
+            continue
+        # WHAT IS CERTIFIED, as the NOTE line and a refusal name it: only values every
+        # cited weld certifies (:func:`certified_values`), so a partial round never
+        # lists the GPU it has just found not certified. torch and the frontend are
+        # certified PER ARCHITECTURE, so theirs are read off this GPU's runs.
+        values = (["unset"] if fact == "fast_math" else
+                  certified_values(fact, architecture))
+        if verdict is False:
+            if strict:
+                cause = (f"{FAST_MATH}={read} compiles the Metal kernels in fast-math "
+                         "mode, which no Metal weld ran" if fact == "fast_math" else
+                         f"{what} {read} is not the one every Metal weld this table "
+                         f"cites ran on (certified: {values or 'none'})")
+                fastpath._refuse(record,  # noqa: SLF001
+                                 f"{cause}; {switch}=0 restricts the Metal kernels to "
+                                 "certified environments")
+                return None
+            because = (SUPPORTED_BECAUSE if environment.get("device_supported")
+                       else UNCERTIFIED_BECAUSE)
+            fastpath._admit_uncertified(  # noqa: SLF001
+                record, TABLE, what, read, values, because=because.format(switch=switch))
+            continue
+        if strict:
+            if read is None:
+                cause = (f"the {what} could not be read on this host"
+                         + (f" ({toolchain.get('architecture_error')})"
+                            if fact == "architecture"
+                            and toolchain.get("architecture_error") else ""))
+            else:
+                silent = sum(1 for _gate, judged in environment_judgements(
+                    fact, read, architecture) if judged is None)
+                cause = (f"{what} {read} cannot be certified: {silent} of the {cited} "
+                         + ("Metal welds this table cites hold no per-architecture "
+                            "run record to judge it by" if fact == "architecture" else
+                            f"Metal welds this table cites record no {what} in a live "
+                            f"run for {architecture or 'this GPU architecture'}"))
             fastpath._refuse(record,  # noqa: SLF001
-                             f"torch {toolchain['version']} is not in the toolchains "
-                             f"any Metal weld recorded running on "
-                             f"{environment['validated_toolchains']}"
-                             + fastpath.UNCERTIFIED_HINT)
+                             f"{cause}; {switch}=0 restricts the Metal kernels to "
+                             "certified environments, and an environment that cannot "
+                             "be judged is not one")
             return None
-        fastpath._admit_uncertified(  # noqa: SLF001
-            record, TABLE, "torch", toolchain["version"],
-            sorted({pair[0] for pair in environment["validated_toolchains"]}))
-    if environment.get("frontend_certified") is False:
-        if not allowed:
-            fastpath._refuse(record,  # noqa: SLF001
-                             f"Metal frontend {toolchain['metal_frontend']} is not in "
-                             f"the toolchains any Metal weld recorded running on "
-                             f"{environment['validated_toolchains']}"
-                             + fastpath.UNCERTIFIED_HINT)
-            return None
-        fastpath._admit_uncertified(  # noqa: SLF001
-            record, TABLE, "Metal frontend", toolchain["metal_frontend"],
-            sorted({pair[1] for pair in environment["validated_toolchains"]
-                    if pair[1] is not None}))
 
     record["subnormal"] = fastpath._subnormal_block()  # noqa: SLF001
     # THE BLOCK IS THE TRITON CONSTANT'S until ``fastpath._subnormal_block`` grows

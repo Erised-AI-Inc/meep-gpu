@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 #     python tools/rename_distribution.py --name NEW-NAME --apply
 # and never edit the name by hand.
 name = "meep-gpu"
-version = "0.9.1"
+version = "0.9.2"
 description = "GPU time stepping for MEEP simulations: steps a simulation built by the user's own MEEP installation on one NVIDIA or Apple GPU"
 readme = "README.md"
 license = "GPL-2.0-or-later"
@@ -28,7 +28,7 @@ maintainers = [
 ]
 keywords = ["FDTD", "MEEP", "GPU", "CUDA", "Metal", "electromagnetics", "photonics"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Physics",
   "Programming Language :: Python :: 3",
@@ -73,10 +73,13 @@ Changelog = "https://github.com/Erised-AI-Inc/meep-gpu/blob/main/CHANGELOG.md"
 #   * Triton is a RANGE and carries a platform marker. PyTorch pins an exact
 #     Triton on linux-x86_64, and PyTorch 2.5.1 is the release that pins the
 #     certified one, so an exact pin here could only repeat it or contradict it.
-#     The range is not the correctness pin: the package refuses, by name, any
-#     installed Triton version that is not in its certification ledger and takes
-#     the array path. Triton 3.1.0 publishes wheels for Python 3.10 to 3.12, so
-#     the NVIDIA route needs one of those interpreters.
+#     The range is not the correctness pin: an installed Triton version that is
+#     not in the certification ledger is supported inside this same range and runs
+#     recorded as not certified (MEEP_GPU_ALLOW_UNCERTIFIED=0 refuses it by name
+#     and takes the array path); outside it the package refuses it by name
+#     unless MEEP_GPU_ALLOW_UNCERTIFIED=1.
+#     Triton 3.1.0 publishes wheels for Python 3.10 to 3.12, so the NVIDIA route
+#     needs one of those interpreters.
 #   * The extras install Python packages only. The NVIDIA driver, the CUDA
 #     libraries a CuPy wheel loads and the C compiler Triton uses at its first
 #     launch belong to the host.
@@ -104,10 +107,13 @@ fdtd-gpu-triton = [
 ]
 # ---------------------------------------------------------------------------
 # The Apple route: PyTorch supplies the MPS device and the Metal shader
-# frontend the Metal kernels launch through. Certified pair of record: torch
-# 2.10.0 with Metal frontend 32023.850.10. The frontend version belongs to the
-# operating system and cannot be pinned by an installer; a host whose frontend
-# is not in the ledger is refused by name and takes the array path.
+# frontend the Metal kernels launch through. Certified environment of record:
+# GPU architecture applegpu_g13s (Apple M1 Max), torch 2.10.0, Metal frontend
+# metalfe-32023.850.10, PYTORCH_MPS_FAST_MATH unset or 0. The GPU and the
+# frontend (one per macOS build) belong to the host and cannot be pinned by an
+# installer. On any other environment the Metal kernels run and the run is
+# recorded as not certified, unless MEEP_GPU_ALLOW_UNCERTIFIED=0 refuses it by
+# name to the array path.
 # ---------------------------------------------------------------------------
 apple = [
   "torch==2.10.0; sys_platform == 'darwin' and platform_machine == 'arm64'"

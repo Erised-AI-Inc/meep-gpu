@@ -791,11 +791,12 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
       of a comparison into a kernel run and the gate compares a kernel against
       itself. Every test oracle in the package is pinned the same way for the same
       reason.
-    * ``MEEP_GPU_ALLOW_UNCERTIFIED`` — REMOVED from the child's environment. The
-      opt-in exists so a developer can dispatch on a card the record does not
-      certify; a round whose point is to EARN that certification must not inherit
-      it from the shell that launched it, or the evidence it cuts would rest on the
-      admission it is supposed to produce.
+    * ``MEEP_GPU_ALLOW_UNCERTIFIED`` — SET TO ``0`` in the child's environment. The
+      package runs a supported card the record does not certify by default, and
+      ``1`` runs an unsupported one too; a round whose point is to EARN that
+      certification must neither inherit ``1`` from the shell that launched it nor
+      take the default, or the evidence it cuts would rest on the admission it is
+      supposed to produce. ``0`` restricts every kernel to certified identities.
     """
     home = Path.home()
     stub = os.environ.get("TRITON_LIBCUDA_PATH", str(home / "triton_libcuda_stub"))
@@ -808,7 +809,7 @@ def gate_environment(gpu: int, cache_root: Path, gate_name: str,
     cupy_cache.mkdir(parents=True, exist_ok=True)
     triton_cache.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
-    env.pop("MEEP_GPU_ALLOW_UNCERTIFIED", None)
+    env["MEEP_GPU_ALLOW_UNCERTIFIED"] = "0"
     env.update({
         "CUDA_VISIBLE_DEVICES": str(gpu),
         "MEEP_GPU_SUBNORMAL_POLICY": policy,

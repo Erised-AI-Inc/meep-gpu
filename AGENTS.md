@@ -53,9 +53,11 @@ for runs in segments. Copy from `examples/`.
 `result.driver.active_step_path` (`"fused"` or `"array"`), and
 `result.driver.fast_path_report()`. Quote its `step_path`, `decision`,
 `refused_because`, `table`, `reference_driver` and `certified`. `certified` has
-three values: `True` when every identity that served is certified, `False` when
-`MEEP_GPU_ALLOW_UNCERTIFIED=1` admitted one that is not, and `None` when nothing
-dispatched or an identity could not be read. A run prints at most one
+three values: `True` when every identity that served is certified; `False` when one
+that served is not, named under `uncertified.served` (by default on a supported
+identity outside the certified one, on every table); and `None`
+when nothing dispatched, or an identity could not be read or the records do not
+name it. A run prints at most one
 `meep_gpu:` line on stderr per process for each distinct message;
 [Reading what ran](docs/getting-started/reading-what-ran.md) explains them. `MEEP_GPU_DISPATCH_LOG=<path>` appends one JSON record per
 configuration freeze, for long runs.
@@ -81,12 +83,29 @@ message.
   that is not a guarantee ([Precision](INSTALL.md#precision)). Keep a quantity
   that needs more than about seven significant digits on MEEP.
 - Certified identities: NVIDIA compute capability 8.6 (Triton 3.1.0, or the
-  hand-written CUDA table); Apple PyTorch 2.10.0 with Metal frontend
-  32023.850.10. Any other identity is refused by name to the array path, which
-  is correct and slower. The NVIDIA list is DERIVED from the ledgers' per-architecture
-  records, never typed: a capability enters it only when every weld the table's arms
-  cite has a live record for it, which a certification round writes
-  (`docs/development/certification.md`). Never widen it by editing a ledger.
+  hand-written CUDA table); on Apple, one certified environment: GPU architecture
+  `applegpu_g13s` (Apple M1 Max), PyTorch 2.10.0, Metal frontend
+  `metalfe-32023.850.10`, `PYTORCH_MPS_FAST_MATH` unset or `0`. On NVIDIA hardware
+  compute capability 7.0 to 9.0 (with Triton 3.1 on the Triton table) is
+  supported: there the kernels run by default outside the certified identity,
+  the record says `certified: False` and one `meep_gpu: NOTE` line says so, except
+  that a table certified for the device and toolchain runs alone in place of one
+  that is only supported; an identity outside the supported range is refused by
+  name to the array path, which is correct and slower, unless
+  `MEEP_GPU_ALLOW_UNCERTIFIED=1`. Every Apple GPU is supported (M1 through M5 and later; the record's
+  `environment.device_supported`), and supported is not certified: on a Mac the
+  Metal kernels also run outside the certified environment (another Apple GPU,
+  PyTorch or macOS build), the status line marks an Apple GPU that is not the
+  certified one `supported, UNCERTIFIED`, the record says `certified: False`, and
+  one `meep_gpu: NOTE` line says so. `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts
+  every table to its certified identities: anything else, including a fact that
+  could not be judged, is refused by name to the array path (on a Mac, the host
+  CPU). Neither set
+  is typed: an NVIDIA capability enters only when every weld the table's arms cite
+  has a live record for it, and a Metal architecture, PyTorch or frontend is
+  certified only when every one of the 45 welds the Metal table cites recorded it;
+  a certification round writes those records (`docs/development/certification.md`).
+  Never widen either by editing a ledger.
 - One simulation, one GPU, one process: no MPI (refused by name), no multi-GPU.
 - Speed: point to [Will it help?](docs/guides/will-it-help.md) and repeat no
   ratio without the conditions stated there. The target is large 3-D problems
@@ -103,9 +122,10 @@ message.
 - write `MEEP_GPU_DISPATCH`, `MEEP_GPU_FUSED` or `MEEP_GPU_ALLOW_UNCERTIFIED` as
   `true`, `false` or `off`: only `0` and `1` are read, and anything else is
   refused by name and sends the run to the array path;
-- set `MEEP_GPU_ALLOW_UNCERTIFIED=1` without comparing that run with a
-  `prefer_gpu=False` run of the same simulation, and without telling the user
-  that it carries no certification;
+- rely on a run whose record says `certified: False` (any run outside the
+  certified identity: by default on a supported NVIDIA GPU or Apple environment,
+  and under `MEEP_GPU_ALLOW_UNCERTIFIED=1`) without comparing it with a `prefer_gpu=False` run of the
+  same simulation, and without telling the user that it carries no certification;
 - edit, regenerate or delete a ledger (`meep_gpu/*_kernels/*.json`) to unlock a
   device or to turn a red test green: dispatch reads them at run time. That
   includes calling `launch.write_fingerprints()` and running a `rebind_*` or
@@ -126,8 +146,8 @@ script that builds the simulation ([CONTRIBUTING.md](CONTRIBUTING.md)).
 | `meep_gpu/` | The package, tests beside the code: `driver.py` (the engine), `stepping.py` (the array path), `from_meep.py` (the lift), `fastpath.py` (the dispatch planner) |
 | `meep_gpu/triton_kernels/`, `cuda_kernels/`, `metal_kernels/` | The three kernel tables, each with its certification ledger (`*.json`) |
 | `parity/meep_gpu/` | The certification and benchmark harness; not installed; [its README](parity/meep_gpu/README.md) |
-| `tools/` | `check_install.py`, `rename_distribution.py`, and `ci/`: `check_failures.py` (failure arbiter), `check_wheel.py` (what the wheel carries), `pending_certification.txt`, `declared_resources.txt` |
-| `examples/`, `environments/`, `docs/` | Example scripts with recorded output; the three conda environments; the MkDocs manual |
+| `tools/` | `check_install.py`, `compare_reference_environment.py` (this environment against the certification reference lock), `rename_distribution.py`, and `ci/`: `check_failures.py` (failure arbiter), `check_wheel.py` (what the wheel carries), `pending_certification.txt`, `declared_resources.txt` |
+| `examples/`, `environments/`, `docs/` | Example scripts with recorded output; the three conda environments, and under `environments/locks/` the certification reference locks the reference build scripts install; the MkDocs manual |
 | `conftest.py` | The skip policy and the `certification` marker |
 
 Set up: MEEP first ([INSTALL.md](INSTALL.md)), then
@@ -142,7 +162,7 @@ Commands, fastest first. Sizes and durations are in
 | `python -m pytest meep_gpu/test_<module>.py -q` | The loop while editing. Metal and Triton tests are `meep_gpu/test_metal_*.py` and `meep_gpu/test_triton_*.py`; the CUDA table keeps its tests beside the code, `meep_gpu/cuda_kernels/test_*.py` |
 | `python -m pytest parity/meep_gpu -q` | The harness suite |
 | `python -m pytest meep_gpu -q` | The package suite; long: run it in the background, one suite at a time |
-| `python -m pytest meep_gpu parity/meep_gpu -m certification` | Fails until the certification round has run; do not "fix" it |
+| `python -m pytest meep_gpu parity/meep_gpu -m certification` | Shows the two pending timing-record failures listed in `tools/ci/pending_certification.txt`, and no other; do not "fix" them |
 | The three suites with `--junitxml`, then `python tools/ci/check_failures.py <reports>` | As CI runs them ([Running them as CI does](docs/development/testing.md#running-them-as-ci-does)); passes when every failure is listed in `tools/ci/pending_certification.txt` |
 | `python examples/run_examples.py --check` | Must pass on the host |
 | `python tools/check_install.py` | Must end `OK:` |
@@ -169,11 +189,15 @@ your own records
 
 Compiled kernels are held to bit identity, not to a tolerance. Each kernel table
 must return the same bits as the package's own array path on the same device,
-under the subnormal policy that table declares, and a kernel dispatches only on
-a certified device and toolchain identity. Agreement with MEEP is a separate,
-measured tolerance. The harness under `parity/meep_gpu` produces the evidence:
-device gates per kernel family, route gates over whole runs, and a null control
-for each that must be seen to fail.
+under the subnormal policy that table declares. An NVIDIA kernel dispatches on a
+supported device and toolchain identity (compute capability 7.0 to 9.0, Triton 3.1),
+unless `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts it to a certified one, and outside
+that range only under `MEEP_GPU_ALLOW_UNCERTIFIED=1`; a Metal kernel dispatches on
+any Apple GPU environment, since every Apple GPU is supported. Either way the
+record says whether the identity is the certified one. Agreement with MEEP
+is a separate, measured tolerance. The harness under `parity/meep_gpu` produces
+the evidence: device gates per kernel family, route gates over whole runs, and a
+null control for each that must be seen to fail.
 
 The ledgers (`meep_gpu/*_kernels/*.json`) bind each verdict to the sha256
 digests of the source files that produced it; dispatch reads them at run time.

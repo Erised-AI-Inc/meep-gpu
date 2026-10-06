@@ -8,6 +8,10 @@ or Apple GPU. MEEP keeps the setup and the post-processing.
 
 </div>
 
+**Status: alpha (0.9.2).** This is an early release. Significant changes are
+planned before version 1.0, and interfaces and record formats may change until
+then.
+
 meep-gpu (import name `meep_gpu`) is an add-on for MEEP users, distributed under
 GPL-2.0-or-later. It takes the simulation a user's own MEEP installation has
 built and time-steps it on one GPU: Triton or hand-written CUDA kernels on
@@ -121,13 +125,27 @@ hardware, not a preference, decides which table can serve a run:
   says so on stderr and in <code>driver.fast_path_report()</code>;
 - a driver built with <code>prefer_gpu=False</code> never consults a table.
 
-A device or toolchain the release does not certify is refused by name, and its
-run takes the array path. [Reading what ran](getting-started/reading-what-ran.md)
-shows how to tell which happened and why.
+On NVIDIA hardware, a device of compute capability 7.0 to 9.0 (with Triton 3.1)
+is supported: the kernels run on it whether or not it is certified, and a run
+outside the certified identity says so; a device or toolchain outside that range
+is refused by name, and its run takes the array path, unless
+<code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>
+([Certification on an NVIDIA GPU](guides/kernel-dispatch.md#certification-on-an-nvidia-gpu)).
+Every Apple GPU is supported: the
+Metal kernels run on it whether or not the environment (the GPU architecture,
+PyTorch, the Metal frontend of the macOS build, and
+<code>PYTORCH_MPS_FAST_MATH</code>) is the certified one, and a run outside it
+says so;
+<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> restricts every table to its
+certified identities ([Certification on an Apple GPU](guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
+[Reading what ran](getting-started/reading-what-ran.md) shows how to tell which
+happened and why.
 
 Kernel results are bit-identical to the package's own array path on the same
-host, under the subnormal policy the kernel table is certified for. That is not
-identity with MEEP: agreement with MEEP is measured separately, as a tolerance.
+host, under the subnormal policy the kernel table is certified for; on an Apple
+GPU outside the certified environment, where the Metal kernels also run, no gate
+has measured it. Bit identity is not identity with MEEP: agreement with MEEP is
+measured separately, as a tolerance.
 See the [floating-point contract](design/floating-point.md).
 
 None of this is a general Torch array backend. The Metal table holds the field

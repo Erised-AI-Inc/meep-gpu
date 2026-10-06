@@ -22,9 +22,17 @@ What it does, in order:
    absorbing boundaries and one flux monitor) and steps it three ways, each in
    its own process: with the package's default (prefer_gpu=True, this host's
    GPU route), on the NumPy reference, and with MEEP itself;
-6. prints whether the device and the toolchain are on the certified list,
-   whether compiled kernels served the default run, where that run stepped, and
-   whether the three runs agree.
+6. prints whether the device and the toolchain are supported and certified (on
+   an NVIDIA GPU, per kernel table, and the Triton version; on a Mac, each fact of
+   the Metal environment: GPU architecture, PyTorch, Metal frontend), whether
+   compiled kernels served the default run and whether that run is certified,
+   where that run stepped, and whether the three runs agree;
+7. compares this environment with the certification reference of its platform:
+   first MEEP itself against the build the reference names (version, precision,
+   MPI), then, through tools/compare_reference_environment.py and the lock files
+   under environments/locks/, same, different, missing, differs by design or not
+   read for every numerics-relevant package, and one verdict line.
+   Informational unless --require-reference is given.
 
 The exit status is 0 when everything that ran is in order. Otherwise the last
 line states the reason and names the section of INSTALL.md to read, and the exit
@@ -32,10 +40,13 @@ status is 1.
 
 Options:
 
-    --require-gpu   fail when this host has no GPU route (the default is to
-                    check the NumPy reference alone on such a host)
-    --gpu-id N      the CUDA device to use (default 0); an Apple GPU is device 0
-    --verbose       also print what each run wrote
+    --require-gpu        fail when this host has no GPU route (the default is to
+                         check the NumPy reference alone on such a host)
+    --require-reference  fail when this environment or its MEEP does not match
+                         the certification reference of its platform (step 7)
+    --gpu-id N           the CUDA device to use (default 0); an Apple GPU is
+                         device 0
+    --verbose            also print what each run wrote
 
 Only the documented surface of meep_gpu is used: available_gpu,
 missing_dependencies, gpu_compatibility, run_on_gpu, the result object, and the
@@ -80,6 +91,11 @@ SECTION_PRECISION = "Precision"
 SECTION_OPENMP = "One OpenMP runtime on an Apple silicon Mac"
 SECTION_UNCERTIFIED = "GPUs that are not on the certified list"
 SECTION_TROUBLE = "Troubleshooting"
+SECTION_REFERENCE = "The certification reference environment"
+#: The drift report of step 7, beside this file. Loaded by path, so nothing is
+#: added to the import path and the package does not depend on it.
+REFERENCE_TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "compare_reference_environment.py")
 
 # Every MEEP name the lift reads, by where it is read from. A MEEP release that
 # lacks one of them cannot be lifted from.
@@ -381,8 +397,8 @@ def child_facts() -> int:
             name: os.environ.get(name)
             for name in ("KMP_DUPLICATE_LIB_OK", "PYTHONPATH", "MEEP_GPU_DISPATCH",
                          "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
-                         "MEEP_GPU_BACKEND_PREFERENCE", "TRITON_LIBCUDA_PATH",
-                         "CUDA_VISIBLE_DEVICES", "CC")
+                         "MEEP_GPU_BACKEND_PREFERENCE", "MEEP_GPU_ALLOW_UNCERTIFIED",
+                         "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "CC")
         },
         "distributions": distribution_versions(),
     }
@@ -498,16 +514,27 @@ def summarize_report(report):
         "frontend_certified": environment.get("frontend_certified"),
         "triton": environment.get("triton"),
         "triton_certified": environment.get("triton_certified"),
+        "triton_supported": environment.get("triton_supported"),
         "triton_import_error": environment.get("triton_import_error"),
         "cupy": environment.get("backend_version")
         if environment.get("backend") == "cupy" else None,
         "device_name": device.get("name") or device.get("device_name"),
+        "architecture": device.get("architecture"),
+        "device_unreadable": device.get("unreadable"),
         "compute_capability": device.get("compute_capability"),
         "device_certified": environment.get("device_certified"),
+        "device_supported": environment.get("device_supported"),
         "device_certified_by_table": environment.get("device_certified_by_table"),
+        "device_supported_by_table": environment.get("device_supported_by_table"),
+        "supported_ranges": environment.get("supported_ranges"),
         "certified_compute_capabilities":
             environment.get("validated_compute_capabilities_by_table"),
-        "certified_toolchains": environment.get("validated_toolchains"),
+        "recorded_environments": environment.get("recorded_environments"),
+        "fast_math": environment.get("fast_math"),
+        "fast_math_certified": environment.get("fast_math_certified"),
+        "certified": report.get("certified"),
+        "uncertified_served": (report.get("uncertified") or {}).get("served"),
+        "uncertified_dropped": (report.get("uncertified") or {}).get("dropped"),
     }
 
 
@@ -656,9 +683,68 @@ def describe_precision(meep) -> str:
     return f"{word} precision ({meep.get('real_bytes')}-byte real numbers)"
 
 
-def mark(value) -> str:
-    return {True: "on the certified list", False: "NOT on the certified list"}.get(
+def mark(value, supported=None) -> str:
+    """One NVIDIA fact's verdict: certified, supported, or neither."""
+    if value is False:
+        return ("supported, NOT on the certified list" if supported is True else
+                "NOT supported and NOT on the certified list" if supported is False
+                else "NOT on the certified list")
+    return {True: "on the certified list"}.get(
         value, "could not be read, so it is not refused")
+
+
+def nvidia_runs(certified, supported, value) -> bool:
+    """Would an NVIDIA table run on this fact under MEEP_GPU_ALLOW_UNCERTIFIED=value?
+
+    Certified runs; supported but not certified runs unless the value is 0; outside
+    the supported range runs only under 1; a fact that could not be read runs unless
+    the value is 0.
+    """
+    if certified is True:
+        return True
+    if certified is None:
+        return value != "0"
+    if value == "0":
+        return False
+    return supported is True or value == "1"
+
+
+def nvidia_uncertified_note(entries, section) -> str:
+    """The NOTE for an NVIDIA run that dispatched uncertified, from what was served.
+
+    Names each identity read with its own verdict: supported but not certified, or
+    outside the supported range (which only MEEP_GPU_ALLOW_UNCERTIFIED=1 runs). An
+    identity two tables share is named once.
+    """
+    supported, outside = [], []
+    for entry in entries:
+        name = f"{entry.get('what')} {entry.get('read')}"
+        group = supported if entry.get("supported") is True else outside
+        if name not in supported + outside:
+            group.append(name)
+    clauses = []
+    if supported:
+        clauses.append(f"{' and '.join(supported)} "
+                       f"{'is' if len(supported) == 1 else 'are'} supported but not "
+                       "certified bit-identical")
+    if outside:
+        clauses.append(f"{' and '.join(outside)} "
+                       f"{'is' if len(outside) == 1 else 'are'} outside the supported "
+                       "range, which only MEEP_GPU_ALLOW_UNCERTIFIED=1 runs")
+    text = ("; ".join(clauses) or "an identity was admitted uncertified")
+    text = (text[0].upper() + text[1:] + ", so the kernels ran uncertified; compare "
+            f"with the NumPy reference above (INSTALL.md, \"{section}\").")
+    if not outside:
+        text += (" Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a certified "
+                 "device and toolchain.")
+    return text
+
+
+def metal_mark(value) -> str:
+    """One Metal fact's verdict: does every certification record cited name this value?"""
+    return {True: "certified",
+            False: "NOT certified: the records name another"}.get(
+        value, "not judged: it could not be read, or the records do not name it")
 
 
 def launched_processes():
@@ -672,6 +758,60 @@ def launched_processes():
         if value.isdigit():
             return int(value)
     return None
+
+
+def load_reference_tool(path: str = REFERENCE_TOOL):
+    """tools/compare_reference_environment.py as a module of its own."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("meep_gpu_reference_environment", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def reference_section(require_reference: bool, tool=None, result=None, meep=None):
+    """``(lines, failure)`` of step 7. Never raises.
+
+    ``meep`` holds what step 2 read from the imported MEEP (version,
+    single_precision, mpi); the first line judges it against the MEEP build the
+    reference names, since the drift report judges packages only. None means it
+    was not read, which is not a match.
+
+    ``failure`` is a Failure only when ``require_reference`` is set and either the
+    verdict is not "matches" or MEEP is not the reference's build; otherwise None,
+    and the report is informational.
+    """
+    meep_ok, meep_found, meep_reference = False, None, None
+    try:
+        tool = tool if tool is not None else load_reference_tool()
+        result = result if result is not None else tool.report()
+        lines = tool.format_report(result)
+        matched = tool.passes(result)
+        verdict = result.get("verdict", "could not be compared")
+        judged = tool.judge_meep(result.get("meep_reference"), meep)
+        meep_ok, meep_found, meep_reference = judged["ok"], judged["found"], judged["reference"]
+        lines.insert(0, f"   {judged['line']}")
+    except Exception as exc:  # noqa: BLE001 - step 7 never stops the check by raising
+        verdict = f"not compared with the certification reference ({type(exc).__name__}: {exc})"
+        lines = [f"   {verdict}"]
+        matched = False
+    failure = None
+    if require_reference and not (matched and meep_ok):
+        reasons = []
+        if meep_found is None:
+            reasons.append("its MEEP was not compared with the reference's build")
+        elif not meep_ok:
+            reasons.append(f"its MEEP is {meep_found}"
+                           + (f", not the reference's {meep_reference}" if meep_reference
+                              else ", which no reference build was compared with"))
+        if not matched:
+            reasons.append(f"this environment {verdict}")
+        failure = Failure("--require-reference was given and " + "; and ".join(reasons) + ".",
+                          SECTION_REFERENCE)
+    return lines, failure
 
 
 def check(arguments) -> int:
@@ -887,18 +1027,60 @@ def check(arguments) -> int:
         report = gpu.get("report") or {}
         say(f"   GPU route        {words.get(route, route)}")
         if route == "metal":
+            gpu_text = (f"{report.get('device_name') or 'name not read'}, architecture "
+                        f"{report.get('architecture') or 'not read'}")
+            gpu_mark = metal_mark(report.get("device_certified"))
+            if report.get("device_supported") is True and report.get("device_certified") is not True:
+                gpu_mark = f"supported (every Apple GPU is); {gpu_mark}"
+            elif report.get("device_supported") is False:
+                gpu_mark = f"not an Apple GPU, so not supported; {gpu_mark}"
+            say(f"   GPU              {gpu_text}: {gpu_mark}")
             say(f"   PyTorch          {report.get('torch')}: "
-                f"{mark(report.get('torch_certified'))}")
+                f"{metal_mark(report.get('torch_certified'))}")
             say(f"   Metal frontend   {report.get('metal_frontend')}: "
-                f"{mark(report.get('frontend_certified'))}")
-            certified = (report.get("torch_certified") is not False
-                         and report.get("frontend_certified") is not False)
+                f"{metal_mark(report.get('frontend_certified'))}")
+            if report.get("fast_math") is not None:
+                say(f"   PYTORCH_MPS_FAST_MATH  {report.get('fast_math')}: "
+                    + ("off" if report.get("fast_math_certified")
+                       else "fast-math kernels, which no certification ran"))
+            # THE METAL KERNELS RUN ON AN UNCERTIFIED ENVIRONMENT BY DEFAULT, and are
+            # expected to unless the shell restricts them to certified ones; then all
+            # three facts must be certified.
+            if variables.get("MEEP_GPU_ALLOW_UNCERTIFIED") == "0":
+                certified = all(report.get(key) is True for key in (
+                    "device_certified", "torch_certified", "frontend_certified",
+                    "fast_math_certified"))
+            else:
+                certified = True
+                if report.get("certified") is False:
+                    notes.append(
+                        "This Mac's environment is supported but not the certified "
+                        "one, so the Metal kernels ran uncertified; compare with the "
+                        f"NumPy reference above (INSTALL.md, \"{SECTION_UNCERTIFIED}\"). "
+                        "Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a "
+                        "certified environment."
+                        if report.get("device_supported") else
+                        "This Mac's environment is not the certified one, so the "
+                        "Metal kernels ran uncertified; compare with the NumPy "
+                        f"reference above (INSTALL.md, \"{SECTION_UNCERTIFIED}\"). "
+                        "Set MEEP_GPU_ALLOW_UNCERTIFIED=0 to run them only on a "
+                        "certified environment.")
+                elif report.get("certified") is None and report.get("step_path") == "fused":
+                    notes.append(
+                        "A fact of this Mac's environment could not be judged against "
+                        "the certification records (marked 'not judged' above), so "
+                        "the run is neither certified nor uncertified; "
+                        "MEEP_GPU_ALLOW_UNCERTIFIED=0 would refuse it.")
         else:
             by_table = report.get("device_certified_by_table") or {}
+            supported_by = report.get("device_supported_by_table") or {}
+            switch = variables.get("MEEP_GPU_ALLOW_UNCERTIFIED")
             say(f"   device           {report.get('device_name') or 'name not read'}, "
                 f"compute capability {report.get('compute_capability')}")
-            say(f"      for the Triton kernels: {mark(by_table.get('triton'))}")
-            say(f"      for the CUDA kernels:   {mark(by_table.get('cuda'))}")
+            say(f"      for the Triton kernels: "
+                f"{mark(by_table.get('triton'), supported_by.get('triton'))}")
+            say(f"      for the CUDA kernels:   "
+                f"{mark(by_table.get('cuda'), supported_by.get('cuda'))}")
             say(f"   CuPy             {report.get('cupy')}")
             if report.get("triton") is None:
                 say("   Triton           not importable"
@@ -906,9 +1088,34 @@ def check(arguments) -> int:
                        if report.get("triton_import_error") else ""))
             else:
                 say(f"   Triton           {report.get('triton')}: "
-                    f"{mark(report.get('triton_certified'))}")
-            certified = any(value is not False for value in by_table.values()) \
-                if by_table else report.get("device_certified") is not False
+                    f"{mark(report.get('triton_certified'), report.get('triton_supported'))}")
+            # THE KERNELS ARE EXPECTED wherever one table may run on what was read:
+            # certified, or supported and not restricted by MEEP_GPU_ALLOW_UNCERTIFIED=0,
+            # or anything read under =1.
+            if by_table:
+                runnable = [nvidia_runs(by_table.get("cuda"), supported_by.get("cuda"),
+                                        switch)]
+                if report.get("triton") is not None:
+                    runnable.append(
+                        nvidia_runs(by_table.get("triton"), supported_by.get("triton"),
+                                    switch)
+                        and nvidia_runs(report.get("triton_certified"),
+                                        report.get("triton_supported"), switch))
+                certified = any(runnable)
+            else:
+                certified = report.get("device_certified") is not False
+            served_entries = report.get("uncertified_served") or []
+            if report.get("certified") is False:
+                notes.append(nvidia_uncertified_note(served_entries, SECTION_UNCERTIFIED))
+            elif report.get("certified") is None and report.get("step_path") == "fused":
+                notes.append(
+                    "This GPU's compute capability could not be read, so the run is "
+                    "neither certified nor uncertified; MEEP_GPU_ALLOW_UNCERTIFIED=0 "
+                    "would refuse it.")
+            for entry in report.get("uncertified_dropped") or []:
+                if entry.get("dropped_because"):
+                    notes.append(f"Kernel table {entry.get('table')} did not run: "
+                                 f"{entry['dropped_because']}.")
         served = gpu.get("step_path") == "fused"
         tables = report.get("tables_dispatched") or (
             [report.get("table")] if report.get("table") else [])
@@ -933,11 +1140,23 @@ def check(arguments) -> int:
         if not served and switched_off:
             notes.append("Kernel dispatch is switched off by MEEP_GPU_DISPATCH=0 or "
                          "MEEP_GPU_FUSED=0 in this shell.")
-        if not served and not certified:
-            notes.append("This device or toolchain is outside the certified list, so "
-                         "the default run took the array path"
-                         + (", NumPy on the host CPU" if route == "metal" else "")
-                         + f" (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
+        if not served and not certified and route == "metal":
+            notes.append("MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the Metal kernels to "
+                         "certified environments, and this Mac's is not certified or "
+                         "could not be judged, so the run took the array path, NumPy "
+                         f"on the host CPU (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
+        elif not served and not certified and variables.get(
+                "MEEP_GPU_ALLOW_UNCERTIFIED") == "0":
+            notes.append("MEEP_GPU_ALLOW_UNCERTIFIED=0 restricts the NVIDIA kernels to "
+                         "certified devices and toolchains, and this one is not certified "
+                         "or could not be judged, so the default run took the array "
+                         f"path (INSTALL.md, \"{SECTION_UNCERTIFIED}\").")
+        elif not served and not certified:
+            notes.append("This device or toolchain is outside the supported range, so "
+                         "the default run took the array path; "
+                         "MEEP_GPU_ALLOW_UNCERTIFIED=1 runs the kernels on it, "
+                         "uncertified (INSTALL.md, "
+                         f"\"{SECTION_UNCERTIFIED}\").")
 
     failures = []
     for (first, second), (field, spectrum) in differences.items():
@@ -948,6 +1167,13 @@ def check(arguments) -> int:
             + ("agree" if within else "DO NOT AGREE"))
         if not within:
             failures.append((first, second))
+    say()
+
+    say("7. Certification reference environment")
+    reference_lines, reference_failure = reference_section(
+        getattr(arguments, "require_reference", False), meep=meep)
+    for line in reference_lines:
+        say(line)
     say()
     for note in notes:
         say(f"NOTE: {note}")
@@ -962,9 +1188,14 @@ def check(arguments) -> int:
                       + results["gpu"]["libcuda_link_error"][0][:120]
                       + "). Do step 3 of Route 1 in this shell.", SECTION_TROUBLE)
     if kernels_expected:
-        raise Failure("the device and toolchain are on the certified list, but "
-                      "compiled kernels did not serve the run; it took the array "
-                      "path.", SECTION_TROUBLE)
+        raise Failure(("the Metal kernels run on any Apple GPU by default"
+                       if route == "metal" else
+                       "the device and toolchain are certified, or supported and not "
+                       "restricted to certified ones")
+                      + ", but compiled kernels did not serve the run; it took the "
+                      "array path.", SECTION_TROUBLE)
+    if reference_failure is not None:
+        raise reference_failure
     if route and served:
         say("OK: MEEP and meep-gpu work together on this host's GPU.")
     elif route == "metal":
@@ -984,6 +1215,9 @@ def main() -> int:
         description="Check that MEEP and meep-gpu are installed and work together.")
     parser.add_argument("--require-gpu", action="store_true",
                         help="fail when this host has no GPU route")
+    parser.add_argument("--require-reference", action="store_true",
+                        help="fail when this environment or its MEEP does not "
+                             "match the certification reference of its platform")
     parser.add_argument("--gpu-id", type=int, default=0,
                         help="the CUDA device to use (default 0)")
     parser.add_argument("--verbose", action="store_true",

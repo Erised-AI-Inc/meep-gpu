@@ -8,9 +8,12 @@
 # command without anyone remembering to add it — and a gate that vanishes shows up
 # as a shorter run rather than as a silently unchecked one.
 #
-# ORDER MATTERS AT ONE POINT ONLY, and it is not in this file: `write_fingerprints`
-# must run AFTER the last gate, deliberately and separately, because a fingerprint
-# cut before the gates that check it certifies nothing. This script never calls it.
+# ORDER MATTERS AT TWO POINTS. Inside this file: every expansion probe a gate binds is
+# cut before the first gate that binds it -- the three standalone probes, then
+# `gate_metal_complex`, whose expansion leg cuts the fourth, and only then the rest
+# (see below). Outside it: `write_fingerprints` must run AFTER the last gate,
+# deliberately and separately, because a fingerprint cut before the gates that check
+# it certifies nothing. This script never calls it.
 #
 # progress reporting: one flushed line per gate as it lands, plus a per-gate log, so the state
 # of a fifteen-gate run is readable from the filesystem while it is still running.
@@ -46,6 +49,12 @@ export MEEP_GPU_SUBNORMAL_POLICY=flush
 # sets the enable itself, in-process, per leg. Exactly 0 -- any other value is refused
 # by name.
 export MEEP_GPU_DISPATCH=0
+# NO PROBE FROM THE CALLING SHELL. Every expansion probe a gate binds is cut by this run
+# and exported by it below; a value inherited from the shell would license this host's
+# arms from a record another run, or another machine, measured.
+unset MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE MEEP_GPU_METAL_EXPANSION_PROBE \
+      MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE \
+      MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE
 
 mkdir -p "$ROOT"
 export MEEP_GPU_GATE_SOURCE_MANIFEST="$ROOT/source_sha256.txt"
@@ -53,12 +62,31 @@ SUMMARY="$ROOT/recut_summary.txt"
 : > "$SUMMARY"
 
 fail=0
+# THE ENVIRONMENT THE WELDS WILL NAME, recorded before the first gate and after the
+# last: the GPU architecture, torch and Metal frontend `metal_dispatch` certifies a
+# weld for. `rebind_metal_welds.py` writes each weld's host line from these two
+# records and refuses a campaign whose records are missing or disagree.
+if [[ -n "$STAMP" ]]; then
+  ENVIRONMENT="$RESULTS/metal_environment_$STAMP"
+  # Appended rather than piped through tee: zsh reports a pipeline's LAST status,
+  # so a refusal piped through tee would read as success.
+  if ! $PY "$API/parity/meep_gpu/metal_environment.py" --write "$ENVIRONMENT/start.json" \
+      >> "$SUMMARY" 2>&1; then
+    print -r -- "VERDICT: COULD NOT RECORD THE METAL ENVIRONMENT" | tee -a "$SUMMARY"
+    exit 1
+  fi
+fi
 # Four complex families are licensed by their own MPS expansion measurements.  The
 # gate sources used to search an ambient results directory, which made a green gate
 # dependent on whichever old artifact happened to be present.  Cut the three
 # standalone records first, source-weld them through the same runner, and bind them
 # explicitly for every later child.  The base complex gate creates its own probe in
-# its expansion leg and is welded immediately after that gate returns.
+# its expansion leg, is welded immediately after that gate returns, and RUNS BEFORE
+# EVERY OTHER GATE: several earlier-sorting gates bind it too (the refusal leg of
+# `gate_metal_beta_complex_fused_hd_pair` asks the plain complex family to admit, which
+# needs the probe). Run in directory order they ran without it, and on a Mac holding
+# the evidence archive `metal_composition_matrix.prepare_environment` silently filled
+# the gap with a dated archive probe measured on another run.
 PROBE_ROOT="$ROOT/probes"
 mkdir -p "$PROBE_ROOT"
 
@@ -98,7 +126,8 @@ else
   COMPLEX_PROBE="$ROOT/gate_metal_complex/complex_expansion_probe.json"
 fi
 
-for gate in "$API"/parity/meep_gpu/gate_metal_*.py; do
+run_gate() {
+  gate="$1"
   name=$(basename "$gate" .py)
   log="$ROOT/$name.log"
   started=$(date +%s)
@@ -116,12 +145,6 @@ for gate in "$API"/parity/meep_gpu/gate_metal_*.py; do
     out="$dir"
   else
     out="$dir/gate.json"
-  fi
-  # The base complex probe does not exist until its gate's expansion leg has run.
-  # Once present it is an explicit input for all complex-family gates; no source is
-  # allowed to fall back to a glob of historic results.
-  if [[ -f "$COMPLEX_PROBE" ]]; then
-    export MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE="$COMPLEX_PROBE"
   fi
   $PY -u "$gate" --out "$out" > "$log" 2>&1
   rc=$?
@@ -144,8 +167,34 @@ for gate in "$API"/parity/meep_gpu/gate_metal_*.py; do
     print -r -- "$probe_line" | tee -a "$SUMMARY"
     [[ $probe_rc -ne 0 ]] && fail=1
   fi
+}
+
+# The base complex gate first: its expansion leg writes the probe every complex-family
+# gate binds. Once present it is an explicit input for all of them; no source is allowed
+# to fall back to a glob of historic results.
+run_gate "$API/parity/meep_gpu/gate_metal_complex.py"
+if [[ -f "$COMPLEX_PROBE" ]]; then
+  export MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE="$COMPLEX_PROBE"
+else
+  fail=1
+  print -r -- "$(printf "%-36s MISSING  %s" "complex expansion probe" "$COMPLEX_PROBE")" \
+    | tee -a "$SUMMARY"
+  print -r -- "  every gate that binds the complex probe will refuse by name; none falls back" \
+    | tee -a "$SUMMARY"
+fi
+
+for gate in "$API"/parity/meep_gpu/gate_metal_*.py; do
+  [[ "$(basename "$gate")" == "gate_metal_complex.py" ]] && continue
+  run_gate "$gate"
 done
 
+if [[ -n "$STAMP" ]]; then
+  $PY "$API/parity/meep_gpu/metal_environment.py" --write "$ENVIRONMENT/end.json" \
+    >> "$SUMMARY" 2>&1 || fail=1
+  $PY "$API/parity/meep_gpu/metal_environment.py" --check "$STAMP" \
+    >> "$SUMMARY" 2>&1 || fail=1
+  tail -1 "$SUMMARY"
+fi
 print -r -- "---" | tee -a "$SUMMARY"
 print -r -- "VERDICT: $([[ $fail -eq 0 ]] && echo ALL GREEN || echo 'AT LEAST ONE GATE FAILED')" \
   | tee -a "$SUMMARY"

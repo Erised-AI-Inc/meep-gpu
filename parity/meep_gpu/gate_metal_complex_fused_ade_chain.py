@@ -54,9 +54,9 @@ comparison but a REFUSAL, and leg ``policy`` requires the plan to be refused BY
 NAME under it rather than silently downgraded.
 
 THE EXPANSION PROBE IS THE MEASURED ARTIFACT, NOT AN INLINE DICT. This gate reads
-``results/metal_complex_audit_2026-08-16/complex_expansion_probe.json`` — the same
-record ``recut_metal_gates.sh`` exports — so the claim rests on a measurement of
-this host rather than on a literal typed into a gate. A synthesized DISAGREEING
+the record ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` names — the one
+``recut_metal_gates.sh`` cuts on this Mac and exports — so the claim rests on a
+measurement of this host rather than on a literal typed into a gate. A synthesized DISAGREEING
 record is used in exactly one place, leg ``arm_binding``, to show the refusal fires.
 
 LEGS
@@ -104,13 +104,16 @@ for _path in (str(API_ROOT), str(HERE)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-#: The MEASURED expansion-probe artifact this host's complex families bind to.
-#: Exported before any meep_gpu import so ``load_expansion_probe`` finds it, which
-#: is how ``recut_metal_gates.sh`` arms every complex gate.
-PROBE_ARTIFACT = (API_ROOT / "parity" / "meep_gpu" / "results"
-                  / "metal_complex_audit_2026-08-16"
-                  / "complex_expansion_probe.json")
-os.environ.setdefault("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE", str(PROBE_ARTIFACT))
+#: The MEASURED expansion-probe artifact this host's complex families bind to: the
+#: one the environment names, which is the file ``load_expansion_probe`` reads.
+#: ``recut_metal_gates.sh`` cuts it with ``gate_metal_complex`` on the Mac it runs on
+#: and exports it before every other gate; by hand, export
+#: ``MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE`` to this host's probe. A dated archive
+#: path typed here would name one machine's record while the loader read another's,
+#: and on a Mac without that archive it refused although the round had cut its own.
+PROBE_ENVIRONMENT = "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE"
+PROBE_ARTIFACT = (Path(os.environ[PROBE_ENVIRONMENT])
+                  if os.environ.get(PROBE_ENVIRONMENT) else None)
 
 import numpy as np  # noqa: E402
 
@@ -865,10 +868,10 @@ def leg_arm_binding() -> Dict[str, Any]:
         "passed": bool(licensed is not None and licensed == baked
                        and not verdict.covered and plan is None and named
                        and admitted.covered),
-        "probe_artifact": str(PROBE_ARTIFACT),
+        "probe_artifact": None if PROBE_ARTIFACT is None else str(PROBE_ARTIFACT),
         "probe_artifact_sha256": (
             hashlib.sha256(PROBE_ARTIFACT.read_bytes()).hexdigest()
-            if PROBE_ARTIFACT.exists() else None),
+            if PROBE_ARTIFACT is not None and PROBE_ARTIFACT.is_file() else None),
         "arm_the_probe_licenses": licensed,
         "arm_the_certified_ADE_half_bakes_in": baked,
         "they_agree": licensed == baked,
@@ -1366,10 +1369,11 @@ def main() -> int:
     import torch
     if not torch.backends.mps.is_available():
         raise SystemExit("MPS is not available; this gate must run on an Apple GPU")
-    if not PROBE_ARTIFACT.exists():
+    if PROBE_ARTIFACT is None or not PROBE_ARTIFACT.is_file():
         raise SystemExit(
-            f"the measured expansion probe {PROBE_ARTIFACT} is missing; which "
-            f"complex arm this host takes may not be guessed")
+            f"no measured expansion probe: {PROBE_ENVIRONMENT} is "
+            f"{'unset' if PROBE_ARTIFACT is None else repr(str(PROBE_ARTIFACT)) + ', not a file'}"
+            f"; which complex arm this host takes may not be guessed")
     if args.plant:
         plant(args.plant)
         log(f"PLANTED DEFECT {args.plant!r}: the verdict below MUST be FAIL")
@@ -1563,6 +1567,8 @@ def main() -> int:
                    "byte_neutral_controls": 0 if neutral is None else 1},
         "expansion_arm": arm,
         "expansion_probe_artifact": str(PROBE_ARTIFACT),
+        "expansion_probe_artifact_sha256": hashlib.sha256(
+            PROBE_ARTIFACT.read_bytes()).hexdigest(),
         "torch_version": torch.__version__,
         "numpy_version": np.__version__,
         "metal_frontend": metal_frontend_version(),

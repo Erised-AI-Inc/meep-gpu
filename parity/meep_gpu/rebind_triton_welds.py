@@ -778,8 +778,11 @@ def bind_bit_identity(artifact_argument: str, write: bool,
     refused = toolchain_refusal(identity, ledger)
     if refused is not None:
         raise SystemExit(f"{artifact.name}: {refused}")
-    from seed_triton_welds import policy_line  # noqa: PLC0415
-    policy = policy_line(fresh)
+    from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
+    try:
+        policy = policy_line(fresh, entry)
+    except PolicyStampConflict as exc:
+        raise SystemExit(f"{artifact.name}: policy refused: {exc}") from None
     if policy is None:
         raise SystemExit(
             f"{artifact.name} carries no subnormal_policy stamp naming a resolved "
@@ -1173,8 +1176,16 @@ def main(argv=None) -> int:
         if refused is not None:
             skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name}: {refused}"))
             continue
-        from seed_triton_welds import policy_line  # noqa: PLC0415
-        derived_policy = policy_line(fresh)
+        # THE ENTRY IS PASSED so a declared ``_mixed_policy`` exception is honoured in
+        # the one spelling its existing records use, and refused if the run contradicts
+        # it; see ``seed_triton_welds.policy_line``.
+        from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
+        try:
+            derived_policy = policy_line(fresh, entry)
+        except PolicyStampConflict as exc:
+            skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name}: policy "
+                                 f"refused: {exc}"))
+            continue
         if derived_policy is None:
             skipped.append((key, f"{CAMPAIGN_DIRS[key]}/{artifact.name} carries no "
                                  "subnormal_policy stamp naming a resolved policy"))

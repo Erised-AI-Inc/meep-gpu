@@ -141,6 +141,15 @@ HOST_NOT_MACHINE_STAMPED = {
 #: the same way: the gate stamps its own hostname and the leg is re-cut.
 HOST_TRANSCRIPTION_BUDGET = 3
 
+#: THE RELEASE SPELLING OF A MACHINE'S NAME. The release export replaces the name of
+#: the machine a run stamped with this phrase, in every record it ships, and a bind
+#: of a new round applies the same rule before the record is committed. A record
+#: holding it therefore says "the one machine the artifact stamped", and that is what
+#: :func:`test_the_recorded_host_is_the_one_the_artifact_stamped` checks: the artifact
+#: must stamp a hostname, and exactly one, because one placeholder cannot stand for two
+#: machines. Any other recorded value must still be one the artifact stamped.
+RELEASE_HOST_PLACEHOLDER = "the GPU host"
+
 
 def record() -> dict:
     return json.loads(RECORD.read_text(encoding="utf-8"))
@@ -420,6 +429,9 @@ def test_the_recorded_time_is_a_stamp_the_artifact_actually_carries():
 
 @pytest.mark.requires_resource("cuda-gate-artifact")
 def test_the_recorded_host_is_the_one_the_artifact_stamped():
+    """A recorded host is a name the artifact stamped, or the release placeholder over
+    an artifact that stamps exactly one hostname; a block whose artifact stamps none
+    must be declared in ``HOST_NOT_MACHINE_STAMPED``."""
     for name, (block, directory) in _require_artifacts().items():
         recorded = _fact(block, "host")
         stamped = _artifact_stamps(directory)["hostname"]
@@ -432,6 +444,13 @@ def test_the_recorded_host_is_the_one_the_artifact_stamped():
         assert name not in HOST_NOT_MACHINE_STAMPED, (
             f"{name} is declared as prose-only and {directory.name} stamps "
             f"{sorted(stamped)} — delete the entry")
+        if recorded == RELEASE_HOST_PLACEHOLDER:
+            # The release spelling of the stamped machine's name (see the constant):
+            # it can stand for one stamped machine and no more.
+            assert len(stamped) == 1, (
+                f"{name}: records the release placeholder {recorded!r}, which names one "
+                f"machine, and {directory.name} stamps {len(stamped)} hostnames")
+            continue
         assert recorded in stamped, (
             f"{name}: records host {recorded!r}; the artifact stamps {sorted(stamped)}")
 

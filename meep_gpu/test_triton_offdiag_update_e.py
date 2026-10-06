@@ -239,22 +239,23 @@ def test_no_fingerprint_entry_is_claimed():
     ``test_triton_special_kz`` both scan the top-level KEYS), and stricter than the
     boundary itself: what must not happen is this tranche claiming a gate record it
     did not cut. The shared ``family_recert_2026-08-14`` transcription is the one
-    place the module may be named, and it exists because the alternative was
+    place the module may be CLAIMED, and it exists because the alternative was
     measured to be worse — the dispatcher pointed at this family's provenance by a
     path into a gitignored results directory, so every run artifact that dispatched
     it named a family, a dead path and nothing else. The digest under that key is
     additionally what makes a drift in this module VISIBLE: no ``host_sha256``
-    entry covers it.
+    entry covers it. Anywhere else the module may be NAMED only as the import record
+    of a run an entry describes, never by a weld (see the third narrowing below).
     """
     import json
+
+    from meep_gpu.test_triton_weld_contract import _welds
 
     recorded = json.loads((PACKAGE_DIR / "fingerprints.json")
                           .read_text(encoding="utf-8"))
     assert not any("offdiag_update_e" in name for name in recorded), (
         "this tranche's provenance lives in the gate's results directory, "
         "not in a gate entry of the table's fingerprints.json")
-    shared = json.dumps({key: value for key, value in recorded.items()
-                         if key != "family_recert_2026-08-14"})
     # THE EXACT PATH, not the bare substring. Measured 2026-08-19: the substring
     # spelling also matched a SIBLING tranche's file — folded_offdiag_update_e.py
     # contains "offdiag_update_e" — so welding the folded off-diagonal family's own
@@ -263,9 +264,118 @@ def test_no_fingerprint_entry_is_claimed():
     # string spelling being "stricter than the boundary itself"); this is the same
     # correction one step further. What is still forbidden is unchanged: THIS
     # tranche's module claimed by an entry that did not cut it.
-    assert "meep_gpu/triton_kernels/offdiag_update_e.py" not in shared, (
-        "outside the shared family-recert transcription, nothing in this file may "
-        "name this tranche's module")
+    #
+    # AND NAMED IS NOT CLAIMED, the third narrowing (2026-10-04). Since 2026-09-30
+    # ``bit_identity_gate`` binds every ``meep_gpu/`` file its identity run IMPORTED
+    # (``rebind_triton_welds.bind_bit_identity``), and that run imports the whole
+    # Triton package, this module included -- so the bytes are named because the run
+    # executed them, which is the opposite of a claim the entry did not cut. What a
+    # claim IS in this ledger is a WELD: an entry with ``status: PASS`` over a
+    # ``source_sha256`` map, the set ``test_triton_weld_contract._welds`` enumerates and
+    # the one a "which weld pins this module?" lookup walks. So outside the shared
+    # family-recert transcription: no weld may name this module at all, and any other
+    # entry may name it ONLY as a key of its own ``source_sha256``. That such a map is
+    # exactly the import record of a run the entry describes is read from the run's
+    # artifact, by the next test.
+    naming = _entries_naming_this_module(recorded)
+    claimed = sorted(key for key in naming if key in _welds(recorded))
+    assert not claimed, (
+        f"{claimed} are welds (status PASS over a source_sha256 map) that name this "
+        "tranche's module: a weld claims the bytes it pins, and this tranche's "
+        "provenance lives in its gate's results directory")
+    for key, found in sorted(naming.items()):
+        assert found == [(("source_sha256", GUARDED_MODULE), "key")], (
+            f"{key} names this tranche's module at {found}; outside the family-recert "
+            "transcription it may appear only as a key of an entry's own "
+            "source_sha256, as the import record of a run that entry describes")
+
+
+#: The path ``test_no_fingerprint_entry_is_claimed`` guards, spelled as the ledger
+#: keys it (repository-relative).
+GUARDED_MODULE = "meep_gpu/triton_kernels/offdiag_update_e.py"
+
+
+def _entries_naming_this_module(recorded):
+    """``{entry key: [(trail, "key" | "value"), ...]}`` for every entry outside the shared
+    family-recert transcription in which :data:`GUARDED_MODULE` appears, as a mapping key
+    or inside a string value, at any depth."""
+    def occurrences(node, trail=()):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if GUARDED_MODULE in str(key):
+                    yield trail + (key,), "key"
+                yield from occurrences(value, trail + (key,))
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                yield from occurrences(value, trail + (index,))
+        elif isinstance(node, str) and GUARDED_MODULE in node:
+            yield trail, "value"
+
+    naming = {key: sorted(occurrences(value), key=repr)
+              for key, value in recorded.items()
+              if key != "family_recert_2026-08-14" and isinstance(value, (dict, list, str))}
+    return {key: found for key, found in naming.items() if found}
+
+
+def test_an_entry_naming_this_module_pins_the_import_record_of_its_own_run():
+    """Named because it ran, verified against what ran.
+
+    The third narrowing in ``test_no_fingerprint_entry_is_claimed`` lets an entry that
+    is not a weld name this module as a key of its own ``source_sha256``. What makes
+    that the record of an execution rather than a claim is checked here, from the
+    artifact: the map is EXACTLY the ``meep_gpu/`` part of the ``imported_source_sha256``
+    of a run the entry records, in the artifact that run's ``records`` names and its
+    ``artifact_sha256`` pins -- which is the rule ``rebind_triton_welds.bind_bit_identity``
+    writes ``bit_identity_gate``'s map by. A ledger in which nothing outside the
+    family-recert transcription names the module has nothing to check here.
+
+    Declared under ``[evidence_archive]`` in ``tools/ci/declared_resources.txt``: it
+    reads the run's artifact, which a checkout holds only with the archive restored.
+    """
+    import hashlib
+    import json
+
+    from conftest import requires_resource_skip
+
+    from meep_gpu import fastpath
+
+    recorded = json.loads((PACKAGE_DIR / "fingerprints.json")
+                          .read_text(encoding="utf-8"))
+    naming = _entries_naming_this_module(recorded)
+    root = PACKAGE_DIR.parent.parent
+    if naming and not (root / "parity" / "meep_gpu" / "results").is_dir():
+        requires_resource_skip(
+            "parity_meep_gpu_results",
+            f"{sorted(naming)} name this module in their source_sha256, and whether "
+            "that map is the import record of their own run is read from the run's "
+            "artifact; parity/meep_gpu/results is gitignored and absent here")
+    for key in sorted(naming):
+        entry = recorded[key]
+        pins = entry.get("source_sha256") or {}
+        matched = []
+        for capability, run in sorted((entry.get(fastpath.RUNS) or {}).items()):
+            words = str(run.get("records") or "").split()
+            if not words or not run.get("artifact_sha256"):
+                continue
+            spelled = words[0].rstrip("/")
+            spelled = spelled[len("apps/api/"):] if spelled.startswith("apps/api/") else spelled
+            artifact = root / spelled
+            if artifact.is_dir():
+                artifact = artifact / "gate.json"
+            assert artifact.is_file(), (
+                f"{key} runs[{capability!r}] names {words[0]}, which is not here while "
+                "the results tree is")
+            assert hashlib.sha256(artifact.read_bytes()).hexdigest() == \
+                run["artifact_sha256"], f"{key} runs[{capability!r}]: artifact moved"
+            imported = json.loads(artifact.read_text(encoding="utf-8")).get(
+                "imported_source_sha256") or {}
+            if {name: digest for name, digest in imported.items()
+                    if name.startswith("meep_gpu/")} == pins:
+                matched.append(capability)
+        assert matched, (
+            f"{key} pins this tranche's module, and no run it records imported exactly "
+            "its meep_gpu/ pin set: the pin is not the import record of a run the "
+            "entry describes")
 
 
 def test_the_gate_and_its_composition_probe_exist_beside_the_other_tranches():

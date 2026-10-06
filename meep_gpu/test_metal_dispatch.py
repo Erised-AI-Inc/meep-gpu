@@ -498,12 +498,21 @@ def test_every_certification_row_resolves_to_a_readable_ledger_entry():
     assert metal_dispatch.unresolved_certification_rows() == ()
     ledger = metal_dispatch.fingerprints()
     assert ledger, "metal_kernels/fingerprints.json is unreadable here"
+    from meep_gpu import metal_runs  # noqa: PLC0415
+
     for arm, (family, gate) in metal_dispatch.ARM_CERTIFICATION.items():
         assert family and gate, arm
         entry = ledger.get(gate)
         assert isinstance(entry, dict), f"{arm} names {gate}, which the ledger lacks"
-        assert entry.get("recorded_utc"), f"{arm} names {gate}, which records no time"
-        assert entry.get("host"), f"{arm} names {gate}, which records no host"
+        # THE RUN'S FACTS LIVE IN ITS ARCHITECTURE'S RECORD, and only a live one
+        # describes the bytes the entry pins.
+        runs = metal_runs.live_runs(entry)
+        assert runs, f"{arm} names {gate}, which has no live per-architecture run"
+        for architecture, run in runs.items():
+            assert run.get("recorded_utc"), (
+                f"{arm} names {gate}, whose {architecture} run records no time")
+            assert run.get("host"), (
+                f"{arm} names {gate}, whose {architecture} run records no host")
 
 
 def test_the_release_rows_are_self_consistent():

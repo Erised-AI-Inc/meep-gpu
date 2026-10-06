@@ -4621,6 +4621,7 @@ def _provenance() -> Dict[str, Any]:
         from meep_gpu.metal_kernels import device, subnormal  # noqa: PLC0415
 
         record["metal_frontend"] = device.metal_frontend_version()
+        record["apple_gpu"] = device.apple_gpu_identity()
         # THE STAMP THE ARTIFACT CARRIES, and it is not decoration: the claim is only
         # as good as the precondition it was certified under, and this arm's answer
         # can differ from `policy_resolution`'s because it also honours an install
@@ -4635,8 +4636,7 @@ def _provenance() -> Dict[str, Any]:
                 in metal_dispatch.METAL_RELEASED_FUSED_ARMS.items()},
             "pending_device_gate_arms": sorted(
                 metal_dispatch.METAL_PENDING_DEVICE_GATE_ARMS),
-            "validated_toolchains": [list(pair) for pair
-                                     in metal_dispatch.validated_toolchains()],
+            "recorded_environments": metal_dispatch.recorded_environments(),
             "unresolved_certification_rows": list(
                 metal_dispatch.unresolved_certification_rows()),
             "release_rows_without_a_weld": list(

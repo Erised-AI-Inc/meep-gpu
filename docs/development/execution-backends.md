@@ -15,7 +15,7 @@ supported simulation has been lifted.
 | CuPy array path | **Active when available** | The same array implementation on CUDA-resident arrays. CuPy translates its array operations into GPU work. | <code>prefer_gpu=True</code>, the default of <code>lift_simulation</code> and <code>run_on_gpu</code>, with a visible CUDA device. |
 | Triton kernel table | **Dispatch (on by default)** | Compiled GPU sub-steps and fused products operating on the existing CuPy allocations. 30 released arms over 64 arm-case rows. | A CuPy engine with the certified Triton (3.1.0) installed. Composes first. |
 | Hand-written CUDA kernel table | **Dispatch (on by default)** | <code>cp.RawKernel</code> sources behind the same fail-closed seam, with their own certification ledger. 23 released arms over 68 arm-case rows, plus certified single kernels adopted as seam pairs and the symmetry-fill pair. | A CuPy engine. Second behind a validated Triton; first under <code>MEEP_GPU_BACKEND_PREFERENCE=cuda</code>; **alone** where no validated Triton is installed, a composition run on one device for the installation check's simulation, one example and one route leg with Triton withheld from the process (2026-09-29), and not timed. |
-| Metal kernel table | **Dispatch (on by default)** | Hand-written Metal sub-steps launched through <code>torch.mps.compile_shader</code> over persistent device mirrors of NumPy-owned fields. Not a general Torch array backend. 29 released arms over 72 arm-case rows. | <code>prefer_gpu=True</code> on an Apple GPU: a **NumPy** engine with an MPS device and the certified torch (2.10.0, Metal frontend 32023.850.10). |
+| Metal kernel table | **Dispatch (on by default)** | Hand-written Metal sub-steps launched through <code>torch.mps.compile_shader</code> over persistent device mirrors of NumPy-owned fields. Not a general Torch array backend. 29 released arms over 72 arm-case rows. | <code>prefer_gpu=True</code> on an Apple GPU, every one of which is supported: a **NumPy** engine with an MPS device and <code>torch.mps.compile_shader</code>, in any environment; outside the certified one (GPU architecture <code>applegpu_g13s</code>, torch 2.10.0, Metal frontend <code>metalfe-32023.850.10</code>, fast math off) the run is labelled uncertified, or refused under <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> ([Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)). |
 | Kernel-table selector | — | Two switches at two rungs. <code>MEEP_GPU_KERNEL_TABLE</code> names a table within the candidate set the hardware allows; <code>MEEP_GPU_BACKEND_PREFERENCE</code> orders the two tables a CuPy engine has. | A value naming a table this host cannot run is refused **by name**, never answered with a different table. |
 
 Whether a driver plans at all is decided by how it was built. A driver built
@@ -52,7 +52,10 @@ exactly when that answer is not <code>None</code>.
 Dispatch is on by default, and <code>MEEP_GPU_DISPATCH=0</code> turns it off. The
 switch accepts only <code>0</code> and <code>1</code>; any other value is refused by
 name and the run takes the array path. A dispatching run still reaches kernels
-only where a released family covers the configuration on a certified host;
+only where a released family covers the configuration on a host its kernel
+table admits (a supported NVIDIA host, compute capability 7.0 to 9.0 with
+Triton 3.1, or any Apple GPU, every one of which is supported; outside the
+certified identity, labelled uncertified);
 everything else stays on the array path, which handles every configuration by
 construction. Whichever happened is
 recorded: <code>driver.fast_path_report()</code> names the path, the per-slot
@@ -167,8 +170,12 @@ The shipped fingerprint record certifies **Triton 3.1.0** on the CUDA validation
 host — an NVIDIA RTX A6000, compute capability 8.6. A different installed version
 is a correctness event rather than an automatic upgrade, and the package test
 deliberately fails outside the certified set until the gate is repeated. A
-compute capability outside the validated list is refused **by name** when it can
-be read; a capability that cannot be read is recorded as unknown and not refused,
+supported identity outside the certified one (compute capability 7.0 to 9.0, a
+Triton 3.1 release) runs the kernels by default, uncertified, and says so; a
+compute capability or Triton version outside the supported range is refused
+**by name** when it can be read
+([Certification on an NVIDIA GPU](../guides/kernel-dispatch.md#certification-on-an-nvidia-gpu));
+a capability that cannot be read is recorded as unknown and not refused,
 because refusing on a fact that was not read would be asserting it.
 
 ### The subnormal question is a policy contract, not a blocker
@@ -268,9 +275,9 @@ faster choice, and why direct writes into <code>driver.fields</code> are
 unsupported under a hold — are in
 [Compiled-kernel dispatch](../guides/kernel-dispatch.md#the-metal-table-and-held-residency).
 
-The certification of the held default on the release bytes is pending: the
-Metal device gates, the Metal route campaign, the re-cut of the Metal dispatch
-record and the coverage board have not yet run on the published code. The
+The held default is certified on the files of 0.9.2 on the Apple M1 Max: the
+Metal device gates, the Metal route campaign with residency held, the re-cut of
+the Metal dispatch record and the coverage board ran on them. The
 table's route gate supports no timing claim, and the Metal
 board's coverage figure is a correctness and reachability number only.
 

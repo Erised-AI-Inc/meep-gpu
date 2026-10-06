@@ -5,7 +5,7 @@ steps. The citation metadata is `CITATION.cff` at the root of the repository;
 code hosts and reference managers read it directly.
 
 > Ivan Biggs, Alicia Zeng and Yanlin Dou, *meep-gpu: single-GPU time stepping for
-> MEEP simulations on NVIDIA and Apple hardware*, version 0.9.0 (2026),
+> MEEP simulations on NVIDIA and Apple hardware*, version 0.9.2 (2026),
 > <https://github.com/Erised-AI-Inc/meep-gpu>.
 
 > A. F. Oskooi, D. Roundy, M. Ibanescu, P. Bermel, J. D. Joannopoulos and
@@ -19,7 +19,7 @@ In BibTeX:
 @software{meep_gpu_2026,
   author  = {Biggs, Ivan and Zeng, Alicia and Dou, Yanlin},
   title   = {{meep-gpu: single-GPU time stepping for MEEP simulations on NVIDIA and Apple hardware}},
-  version = {0.9.0},
+  version = {0.9.2},
   year    = {2026},
   url     = {https://github.com/Erised-AI-Inc/meep-gpu},
   license = {GPL-2.0-or-later}

@@ -1,0 +1,3 @@
+# The reference build scripts compare the conda lock with the new environment line by
+# line (step 1b); a checkout with CRLF line endings would make that comparison refuse.
+environments/locks/* text eol=lf

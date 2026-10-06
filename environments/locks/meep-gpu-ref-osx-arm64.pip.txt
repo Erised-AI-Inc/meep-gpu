@@ -1,0 +1,31 @@
+# meep-gpu certification reference, Apple silicon (osx-arm64): the PyPI part.
+# The PyPI packages of the environment the Metal kernels were certified in, each at the
+# version that environment holds and pinned to one wheel by SHA-256. networkx, setuptools
+# and packaging come from the conda part (meep-gpu-ref-osx-arm64.conda.txt).
+# torch: the build-tag-2 wheel, torch-2.10.0-2-cp312-none-macosx_11_0_arm64.whl, which is
+# the one the certified environment installed. PyPI also carries an earlier untagged
+# 2.10.0 wheel for this platform; its hash is not listed, so pip refuses it.
+# autograd: added 2026-10-05 at 1.8.0, the version the certified environment holds (its
+# installed files are the 1.8.0 wheel's, 39 of 39). MEEP's adjoint module (meep.adjoint)
+# and MEEP's adjoint tests import it, so without it those tests fail on import and a
+# corpus lift loses their rows. It requires only numpy<3 and does not take part in the
+# field updates, so numerics-relevant.json does not judge it.
+# Install into the prefix made from the conda part (build script step 7):
+#   <prefix>/bin/python -s -m pip install --no-deps -r meep-gpu-ref-osx-arm64.pip.txt
+#   <prefix>/bin/python -s -m pip check
+--index-url https://pypi.org/simple
+--only-binary :all:
+--require-hashes
+torch==2.10.0 --hash=sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574
+filelock==3.25.2 --hash=sha256:ca8afb0da15f229774c9ad1b455ed96e85a81373065fb10446672f64444ddf70
+fsspec==2026.2.0 --hash=sha256:98de475b5cb3bd66bedd5c4679e87b4fdfe1a3bf4d707b151b3c07e58c9a2437
+jinja2==3.1.6 --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+markupsafe==3.0.3 --hash=sha256:1872df69a4de6aead3491198eaf13810b565bdbeec3ae2dc8780f14458ec73ce
+mpmath==1.3.0 --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
+sympy==1.14.0 --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
+typing-extensions==4.15.0 --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+pytest==9.0.3 --hash=sha256:2c5efc453d45394fdd706ade797c0a81091eccd1d6e4bccfcd476e2b8e0ab5d9
+iniconfig==2.3.0 --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
+pluggy==1.6.0 --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+pygments==2.19.2 --hash=sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b
+autograd==1.8.0 --hash=sha256:4ab9084294f814cf56c280adbe19612546a35574d67c574b04933c7d2ecb7d78

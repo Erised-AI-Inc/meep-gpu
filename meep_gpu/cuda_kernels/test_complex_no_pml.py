@@ -52,6 +52,7 @@ from ..grid import Grid
 from ..pml import PML
 from . import complex_emitter, coverage
 from . import complex_no_pml_kernels as family
+from .test_certification_metadata import RELEASE_HOST_PLACEHOLDER, _artifact_stamps
 
 HERE = pathlib.Path(__file__).parent
 MODULE_PATH = HERE / "complex_no_pml_kernels.py"
@@ -882,10 +883,20 @@ def test_the_recorded_verdict_is_the_artifact_on_disk():
     reader would otherwise have to trust.
     """
     record = family.COMPLEX_NO_PML_ADMISSION
-    _root, gate = _gate_record()
+    root, gate = _gate_record()
     summary = gate["summary"]
     assert summary["released"] is True
-    assert record["host"] == gate["host"]
+    if record["host"] == RELEASE_HOST_PLACEHOLDER:
+        # The release export writes this placeholder in place of the machine name a
+        # run stamped, and the artifact is never edited, so the record is read by the
+        # rule test_certification_metadata states for the placeholder: it stands for
+        # one stamped machine, so the artifact's legs must stamp exactly one hostname.
+        stamped = _artifact_stamps(root)["hostname"]
+        assert len(stamped) == 1, (
+            f"the record holds the release placeholder {record['host']!r}, which "
+            f"names one machine, and {root.name} stamps {sorted(stamped)}")
+    else:
+        assert record["host"] == gate["host"]
     assert record["recorded_utc"] == gate["finished_utc"]
     assert record["cases_scored"] == summary["scored_cases"]
     assert record["expansion_arm"] == gate["expansion_arm"]["name"]

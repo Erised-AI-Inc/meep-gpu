@@ -86,6 +86,12 @@ requires the comparison to catch it.
 Progress reporting: one flushed line per leg per chunk, and every row is appended to
 ``cases.jsonl`` as it lands.
 
+A non-smoke leg starts only on a card the table under test certifies
+(:func:`uncertified_card_refusal`): the package dispatches a supported, uncertified
+card by default, and the record's recut would refuse every row such a leg wrote. It
+also starts only with ``MEEP_GPU_ALLOW_UNCERTIFIED`` unset
+(:func:`uncertified_switch_refusal`), so the legs measure the default.
+
 Run (the GPU host, ONE pinned GPU, nothing installed by the harness so rung 8b does
 the policy install itself)::
 
@@ -102,7 +108,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import numpy
 
@@ -6000,6 +6006,104 @@ def _provenance(gpu_id: int) -> Dict[str, Any]:
     return record
 
 
+# ---------------------------------------------------------------------------
+# A route leg starts only on a card the table under test certifies
+# ---------------------------------------------------------------------------
+
+def card_capability(gpu_id: int) -> Optional[str]:
+    """Device ``gpu_id``'s compute capability, spelled as the ledgers key it. Never raises.
+
+    ``None`` when it cannot be read. The device is the one the legs lift onto
+    (``lift_simulation(gpu_id=...)``), read the way ``fastpath._device_identity``
+    reads it.
+    """
+    try:
+        import cupy  # noqa: PLC0415
+        from meep_gpu import fastpath  # noqa: PLC0415
+
+        properties = cupy.cuda.runtime.getDeviceProperties(gpu_id)
+        return fastpath._normalized_capability(  # noqa: SLF001
+            (properties["major"], properties["minor"]))
+    except Exception:  # noqa: BLE001 - an unreadable card is refused, not a crash
+        return None
+
+
+def installed_triton_version() -> Optional[str]:
+    """The importable Triton's version, as ``fastpath`` records it, or ``None``."""
+    try:
+        import triton  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - no Triton is refused on the Triton table
+        return None
+    return str(getattr(triton, "__version__", "unknown"))
+
+
+def uncertified_card_refusal(table: str, capability: Optional[str],
+                             triton_version: Optional[str] = None) -> Optional[str]:
+    """Why a route leg of ``table`` may not start on this card, or ``None``.
+
+    A supported NVIDIA card that is not certified dispatches by default, uncertified,
+    and ``recut_driver_dispatch_record.py`` refuses every such row only after the
+    campaign has spent its GPU time. So a leg starts only when the card's compute
+    capability is in ``fastpath.capability_admission(table)["admitted"]`` and, on the
+    Triton table, whose identity is the device and the Triton version together, when
+    the installed Triton is in ``fastpath.validated_triton_versions()``. A capability
+    or a version that could not be read is not certified. ``--smoke`` lifts the NumPy
+    reference and is never asked.
+
+    The end-to-end licence gate is not guarded here: it refuses every ``MEEP_GPU_*``
+    variable and reads no admission, so the admission check before it stays a step of
+    the round.
+    """
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    tail = ("; a supported card that is not certified dispatches by default, "
+            "uncertified, and recut_driver_dispatch_record.py refuses every such row. "
+            "Bind the card's family gates first (docs/development/certification.md, "
+            "steps 1 to 3), then start the route campaign")
+    if capability is None:
+        return (f"REFUSING: this route leg drives the {table} table and the card's "
+                f"compute capability could not be read; a card that cannot be judged "
+                f"is not certified" + tail)
+    admitted = fastpath.capability_admission(table)["admitted"]
+    if not admitted or capability not in admitted:
+        return (f"REFUSING: this route leg drives the {table} table on compute "
+                f"capability {capability}, which that table's records do not certify "
+                f"(capability_admission({table!r}) admits "
+                f"{list(admitted) if admitted is not None else 'nothing readable'})"
+                + tail)
+    if table == "triton":
+        validated = fastpath.validated_triton_versions()
+        if triton_version not in validated:
+            return (f"REFUSING: this route leg drives the triton table with Triton "
+                    f"{triton_version or 'not importable'}, which that table's records "
+                    f"do not certify (validated_triton_versions() is "
+                    f"{list(validated)})" + tail)
+    return None
+
+
+def uncertified_switch_refusal(environ: Mapping[str, str]) -> Optional[str]:
+    """Why a route leg may not start under an exported uncertified switch, or ``None``.
+
+    :func:`uncertified_card_refusal` judges the table under test alone, and no leg
+    sets ``fastpath.UNCERTIFIED_SWITCH``, so a value the invoking shell exports
+    reaches every leg. ``1`` lifts rung 4e, so a table that only supports the card
+    composes, uncertified, beside the certified table under test; ``0`` restricts the
+    kernels to certified identities, which is not the default a user who sets nothing
+    gets; any other value is refused at rung 3b and the leg takes the array path. A
+    route leg therefore runs with the switch unset, as the round scripts leave it.
+    ``--smoke`` lifts the NumPy reference and is never asked.
+    """
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    value = environ.get(fastpath.UNCERTIFIED_SWITCH)
+    if value is None:
+        return None
+    return (f"REFUSING: {fastpath.UNCERTIFIED_SWITCH}={value!r} is set; a route leg "
+            "runs with it unset, so that it measures the default and no table the "
+            "card is not certified for composes beside the table under test. Unset "
+            "it, then start the leg")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True)
@@ -6105,6 +6209,18 @@ def main() -> int:
     # host prefer_gpu=True resolves the Metal table, which this gate does not grade.
     refusal = (None if arguments.smoke
                else e2e.nvidia_host_refusal("gate_dispatch_fused_route.py"))
+    # AND ONLY ON A CARD THE TABLE UNDER TEST CERTIFIES, before the leg directory
+    # exists (:func:`uncertified_card_refusal`). The Triton version is read on the
+    # Triton table only: the ``cuda_alone`` leg has withheld Triton by now.
+    if refusal is None and not arguments.smoke:
+        refusal = uncertified_card_refusal(
+            arguments.backend, card_capability(arguments.gpu_id),
+            installed_triton_version() if arguments.backend == "triton" else None)
+    # AND WITH THE UNCERTIFIED SWITCH UNSET (:func:`uncertified_switch_refusal`): the
+    # check above admits the table under test alone, and an exported ``=1`` would
+    # let the other table compose beside it uncertified.
+    if refusal is None and not arguments.smoke:
+        refusal = uncertified_switch_refusal(os.environ)
     if refusal:
         print(refusal, file=sys.stderr)
         return 2

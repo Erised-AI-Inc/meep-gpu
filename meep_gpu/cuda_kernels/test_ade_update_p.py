@@ -56,7 +56,7 @@ RECORD = HERE / "certification.json"
 #: the block that run produced. It moves with each re-cut, the same way
 #: ``metal_dispatch.METAL_DRIVER_ROUTE_GATE`` does, and for the same reason: the name
 #: of the run a claim rests on belongs in the source, not in a reader's memory.
-SHIPPING_RECORD_BLOCK = "cuda_ade_recut_2026-09-25_roundb"
+SHIPPING_RECORD_BLOCK = "cuda_ade_recut_2026-10-05_cc86_residue"
 KERNEL_MODULE = HERE / "ade_kernels.py"
 CONSTITUTIVE_MODULE = HERE / "constitutive_kernels.py"
 OFFDIAG_MODULE = HERE / "offdiag_constitutive_kernels.py"

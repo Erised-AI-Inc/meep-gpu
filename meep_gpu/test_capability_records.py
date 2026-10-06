@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import json
+import pathlib
 import types
 
 import pytest
@@ -27,8 +28,12 @@ import meep_gpu.fastpath as fastpath
 import meep_gpu.fastpath_cuda as fastpath_cuda
 from meep_gpu import weld_record_walk as walk
 
-from .test_dispatch_contract import (CountingPlan, cupy_like_grid_with_device,
-                                     install_composer, step_plan, stub_triton)
+from .test_dispatch_contract import (CountingPlan, assert_the_family_block_is_its_artifacts,
+                                     assert_the_family_block_names_its_own_run,
+                                     certified_envelope_fields, certified_envelope_grid,
+                                     certified_envelope_pml, cuda_step_plan,
+                                     cupy_like_grid_with_device, install_composer,
+                                     install_cuda_composer, step_plan, stub_triton)
 
 
 @pytest.fixture(autouse=True)
@@ -282,10 +287,44 @@ def test_the_family_record_binds_the_bytes_its_nine_families_re_ran():
 
 
 def test_a_family_quotes_the_run_that_certified_THIS_architecture():
+    """The plan quotes the 8.6 run's host, timestamp and the family's OWN block.
+
+    The budget used to be pinned as the literal "78/78" of the retired 2026-08-14
+    transcription. The family re-cut now copies each gate's budget from its artifact,
+    so what is asserted is the chain: the quoted budget and run id are the complex
+    family's block inside ``runs["8.6"]``, the complex gate states a budget (a
+    non-empty block), and the block names its own run. That the block is what the
+    gate's artifact states is the next test's, which needs the evidence archive.
+    """
     entry = fastpath._certification_for("complex", capability="8.6")
     assert entry["capability"] == "8.6" and entry["capabilities_live"] == ["8.6"]
     assert "A6000" in entry["host"] and entry["recorded_utc"]
-    assert "78/78" in entry["step_budget"], "the per-family budget comes from the run"
+    run = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE][fastpath.RUNS]["8.6"]
+    block = run["families"]["complex"]
+    assert entry["host"] == run["host"] and entry["recorded_utc"] == run["recorded_utc"]
+    assert entry["run_id"] == block["run_id"]
+    assert entry["step_budget"] == block["step_budget"], (
+        "the per-family budget comes from the family's block in this architecture's run")
+    assert isinstance(entry["step_budget"], dict) and entry["step_budget"], (
+        f"the complex gate states its budget, and the block reads "
+        f"{entry['step_budget']!r}")
+    assert_the_family_block_names_its_own_run("complex", block, run)
+
+
+def test_the_quoted_family_block_is_the_artifact_of_its_own_run():
+    """The complex family's block, read back from the gate run it names.
+
+    The artifact and its log hash to the block's pins, the campaign row agrees on exit
+    code, release, artifact digest, start time and GPU index, and the budget is the
+    one the artifact states -- the checks ``test_dispatch_contract`` applies to all
+    nine families. Declared under ``[evidence_archive]`` in
+    ``tools/ci/declared_resources.txt``: it reads the round's own artifacts, which a
+    checkout holds only with the archive restored.
+    """
+    run = fastpath._fingerprints("triton")[fastpath.FAMILY_RECERT_GATE][fastpath.RUNS]["8.6"]
+    assert_the_family_block_is_its_artifacts(
+        "complex", run["families"]["complex"],
+        pathlib.Path(fastpath.__file__).resolve().parent)
 
 
 def test_a_family_quotes_no_run_for_an_architecture_it_was_not_certified_on():
@@ -346,7 +385,8 @@ def test_a_card_every_family_was_re_run_on_dispatches_with_no_opt_in(
     assert environment["device"]["compute_capability"] == "9.0"
     assert environment["device_certified"] is True
     assert environment["device_certified_by_table"]["triton"] is True
-    assert not plan.report().get("uncertified_admissions")
+    assert plan.report()["uncertified"]["admitted"] == []
+    assert plan.report()["certified"] is True
     quoted = plan.report()["families"]["PML"]
     assert quoted["capability"] == "9.0", quoted.get("run_record")
 
@@ -387,8 +427,10 @@ def test_a_cuda_arm_admitted_on_a_new_architecture_quotes_that_architectures_run
 
 def test_one_family_short_refuses_the_card_and_names_the_weld(
         monkeypatch, certified_on_9_0):
-    """A partial round admits nothing: the arm it did not cover could be the one
-    serving a slot. The refusal names what would have to be re-run."""
+    """A partial round certifies nothing: the arm it did not cover could be the one
+    serving a slot. Restricted to certified identities, the card is refused and the
+    refusal names what would have to be re-run."""
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
     skipped = "bit_identity_gate"
     certified_on_9_0(skip_triton=skipped)
     assert fastpath.validated_compute_capabilities() == ("8.6",)
@@ -400,20 +442,74 @@ def test_one_family_short_refuses_the_card_and_names_the_weld(
     record = fastpath.last_dispatch_report()
     triton = record["tables"]["triton"]
     assert triton["candidate"] is False and "9.0" in triton["refused_because"]
+    assert triton["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL)
     assert skipped in triton["welds_without_a_live_run_here"]
     # ...and the architecture that WAS fully certified still dispatches.
     assert fastpath.plan_fast_path(object(), object(),
                                    cupy_like_grid_with_device()) is not None
 
 
-def test_a_card_no_family_ran_on_is_still_refused(monkeypatch, certified_on_9_0):
+def test_one_family_short_drops_the_table_by_default_when_the_other_is_certified(
+        monkeypatch, certified_on_9_0):
+    """By default the partially re-run table is SUPPORTED on 9.0, but the hand-CUDA
+    table is certified there, so rung 4e drops the Triton table by name, with the
+    weld that would have to be re-run, and the hand-CUDA table runs alone, certified."""
+    skipped = "bit_identity_gate"
+    certified_on_9_0(skip_triton=skipped)
+    stub_triton(monkeypatch)
+    monkeypatch.delenv(fastpath.FUSE_ARMS_SWITCH, raising=False)
+    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
+                                            {"step_B": "PML"}))
+    install_cuda_composer(monkeypatch, cuda_step_plan())
+    grid = certified_envelope_grid()
+    grid.xp.cuda = cupy_like_grid_with_device(capability=(9, 0),
+                                              name=b"NVIDIA H100 PCIe").xp.cuda
+    plan = fastpath.plan_fast_path(certified_envelope_fields(), certified_envelope_pml(),
+                                   grid)
+    assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
+    record = plan.report()
+    assert record["decision"] == "dispatched" and record["step_path"] == "fused"
+    assert record["composition"]["tables_dispatched"] == [fastpath.CUDA_TABLE]
+    assert sorted(plan.slots) == ["step_D", "update_E"]
+    assert record["certified"] is True
+    triton = record["tables"]["triton"]
+    assert triton["candidate"] is False
+    assert triton["dropped_for_a_certified_table"] == [fastpath.CUDA_TABLE]
+    assert skipped in triton["welds_without_a_live_run_here"]
+    assert record["uncertified"]["admitted"] == []
+    (dropped,) = record["uncertified"]["dropped"]
+    assert (dropped["table"], dropped["read"]) == ("triton", "9.0")
+
+
+def test_a_supported_card_no_family_ran_on_is_refused_only_when_restricted(
+        monkeypatch, certified_on_9_0):
     certified_on_9_0()
     stub_triton(monkeypatch)
     install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
                                             {"step_B": "PML"}))
     grid = cupy_like_grid_with_device(capability=(8, 9), name=b"NVIDIA L40S")
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
     assert fastpath.plan_fast_path(object(), object(), grid) is None
     assert "8.9" in fastpath.last_dispatch_report()["refused_because"]
+    # By default it runs, uncertified, and names the welds no run covers.
+    monkeypatch.delenv(fastpath.UNCERTIFIED_SWITCH)
+    plan = fastpath.plan_fast_path(object(), object(), grid)
+    assert plan is not None, fastpath.last_dispatch_report()["refused_because"]
+    assert plan.report()["certified"] is False
+    served = plan.report()["uncertified"]["served"]
+    assert served and all(entry["welds_without_a_live_run_here"] for entry in served)
+
+
+def test_an_unsupported_card_no_family_ran_on_is_still_refused(monkeypatch,
+                                                              certified_on_9_0):
+    certified_on_9_0()
+    stub_triton(monkeypatch)
+    install_composer(monkeypatch, step_plan({"step_B": CountingPlan("b")},
+                                            {"step_B": "PML"}))
+    grid = cupy_like_grid_with_device(capability=(10, 0), name=b"another card")
+    assert fastpath.plan_fast_path(object(), object(), grid) is None
+    reason = fastpath.last_dispatch_report()["refused_because"]
+    assert "10.0" in reason and reason.endswith(fastpath.UNSUPPORTED_HINT), reason
 
 
 # ---------------------------------------------------------------------------

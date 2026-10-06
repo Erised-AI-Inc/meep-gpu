@@ -176,7 +176,7 @@
 #     that orphans the gate and lands `exit=?` while the gate is still running.
 #   * A STOPPED OR UNRELEASED LEG HAS USED ITS DIRECTORY, and a campaign that lands
 #     one has used its stamp: nothing is retried, so the re-run is a new stamp, and
-#     `metal_dispatch.METAL_DRIVER_ROUTE_GATE` must name the new run before it
+#     `metal_dispatch.METAL_DRIVER_ROUTE_GATE` must name the new stamp before it
 #     starts, because every leg records that file's bytes.
 #
 # EXIT STATUS: 0 every leg released; 1 any leg failed, was refused, skipped without
@@ -193,8 +193,12 @@
 #       <stamp> [probe-root] [complex-probe] [lanes]
 #
 # <stamp> names the run directory: results/dispatch_metal_route_<stamp>/, which is
-# what `metal_dispatch.METAL_DRIVER_ROUTE_GATE` must equal and what
-# `recut_driver_dispatch_record.py --backend metal --run` reads.
+# what `recut_driver_dispatch_record.py --backend metal --run` reads. The recut
+# accepts only `metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE,
+# <architecture>)`: the constant's stamp followed by the GPU architecture every leg
+# recorded, e.g. `2026-10-05_perarch_applegpu_g13s` for the constant
+# `dispatch_metal_route_2026-10-05_perarch` on an Apple M1 Max. The architecture is
+# the one the round's fleet recorded in results/metal_environment_<stamp>/start.json.
 #
 # LANES is `--lanes N`, else the fourth positional argument, else $LANES, else 1.
 # `--dry-run` (or DRY_RUN=1) prints the plan -- order, lanes, each leg's state,

@@ -537,8 +537,22 @@ DRIVER = PACKAGE / "driver.py"
 #: parameterised rows, 194 distinct labels; the board it cuts
 #: (`fusion_matrix_cuda_2026-09-25_roundb`) reads 352 / 597 in dispatch, 532 served --
 #: unchanged from the ``_2026-09-23_sparse_b`` and ``_2026-09-24_hoist`` boards.
+#: THE DEFAULT MOVED AGAIN 2026-10-06, to ``cuda_predicate_coverage_2026-10-06_092``, the
+#: first CUDA census cut on release bytes. Against ``_2026-09-25_roundb`` 60 of its 131 subjects
+#: changed and one was added (`cuda_kernels/test_single_arm_launches.py`): the 2026-09-27
+#: composer edits (`arms.py`, `registry.py`: the mirror-fill family on `fill_B`/`fill_D` and
+#: the off-diagonal `update_E` launchers), the neutral-wording pass, and test edits since,
+#: `test_complex_no_pml.py`'s release-host rule among them, so this tree's 132 subject files
+#: hash to ``9945e4ff...`` and :func:`subject_pin` refused the old default by name. The
+#: battery digest moved with it (``71fb17c5...`` -> ``ac59bd40...``). Same corpus and basis:
+#: 60 + 134 rows, 179 measured, the 15 unmeasured rows recovered by 24 of 25 matched
+#: parameterised rows, 194 distinct labels. Row for row against ``_2026-09-25_roundb``:
+#: every predicate answer and every selection on the slots both carry is unchanged; 79 of
+#: the 194 rows gain `fill_B` and `fill_D`, selected to the mirror-fill family. The board it
+#: cuts (`fusion_matrix_cuda_2026-10-06_092`) reads 352 / 597 in dispatch, 532 served, 29
+#: products bound and 3 withheld -- unchanged from the ``_2026-09-25_roundb`` board.
 CENSUS = RESULTS / (os.environ.get("MEEP_GPU_CUDA_CENSUS")
-                    or "cuda_predicate_coverage_2026-09-25_roundb")
+                    or "cuda_predicate_coverage_2026-10-06_092")
 
 #: The composer modules the cells come from. Their PRESENCE is what makes a selection
 #: readable, so it is asserted rather than assumed: without them the census's

@@ -195,21 +195,19 @@ NOT_A_WELD_LEDGER_ENTRY = {
 #: ``fastpath.py`` fails the test rather than being read from the level the ledger
 #: has stopped using.
 #:
-#: ``driver_dispatch`` IS NOT HELD TO THE SIX, and this note used to say the
+#: ``driver_dispatch`` IS NOT HELD TO THE NINE, and this note used to say the
 #: opposite — "HELD TO ALL NINE, WITH NO CARVE-OUT" — which had already been
-#: overtaken by :data:`NOT_A_WELD` on 2026-09-11 and is now wrong at the level as
-#: well. What is true: that block pins ``meep_gpu/`` source (``fastpath.py``,
-#: ``driver.py``, ``fields.py``, ``fastpath_cuda.py``, three ``cuda_kernels`` files
-#: and every released arm's product module), so its digests are CHECKED on exactly a
-#: weld's terms and nothing about the byte tier is relaxed for it. What it has no
-#: live answer for is the six: the migration moved its route-campaign facts into the
-#: dated ``_route_run_before_capability_records_2026_10_01`` block and left
-#: ``runs: {}``, because the record it carried was cut for an earlier route campaign
-#: than the code cites (its own contract tests are on
-#: ``tools/ci/pending_certification.txt`` saying so). Reading the history block to
-#: satisfy a floor would assert a claim the record withdraws. The 0.9.1 route recut
-#: writes ``runs["8.6"]``, and on that day this entry rejoins the six by being a
-#: weld rather than by an edit here.
+#: overtaken by :data:`NOT_A_WELD` on 2026-09-11. What is true: that block pins
+#: ``meep_gpu/`` source (``fastpath.py``, ``driver.py``, ``fields.py``,
+#: ``fastpath_cuda.py``, three ``cuda_kernels`` files and every released arm's product
+#: module), so its digests are CHECKED on exactly a weld's terms and nothing about the
+#: byte tier is relaxed for it. It is not a weld, so neither these nine nor the weld
+#: status rule apply to it. Its route runs carry their own fields
+#: (``fastpath.DISPATCH_RUN_FIELDS``) under ``runs[<cc>]``, and the record is checked
+#: through them by :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`:
+#: a live run, every live run PASS, every pin matching the tree, and no route-run field
+#: beside the digests. That is the same rule the Triton and Metal contracts hold their
+#: records to.
 REQUIRED_METADATA = ("recorded_utc", "host", "artifact_sha256", "subnormal_policy",
                      "records", "legs", "verdict_read_from", "kernels",
                      "kernel_module")
@@ -317,7 +315,11 @@ NOT_A_WELD = {
         "measured. Its source digests ARE checked, on the same terms as a weld's; "
         "what it has no business carrying is a host, an artifact digest or a gate "
         "timestamp, because no single gate produced it: "
-        "recut_driver_dispatch_record.py cuts it from a five-leg campaign.",
+        "recut_driver_dispatch_record.py cuts it from a five-leg campaign. Its "
+        "verdict is its route runs', filed under runs[<cc>], and the record is "
+        "checked through them, not by the weld status rule, by "
+        "test_cuda_weld_contract.py::"
+        "test_the_dispatch_record_stands_on_a_live_passing_route_run",
 }
 
 
@@ -360,10 +362,9 @@ def _weld_runs(record=None, welded=None):
 
     THE DENOMINATOR IS :func:`_weld_entries`, 54 of the ledger's 55 checked entries,
     and the one it leaves out is ``driver_dispatch`` — named in :data:`NOT_A_WELD`
-    with the reason, and carrying ``runs: {}`` by the migration's own decision. See
-    the note at :data:`REQUIRED_METADATA` for why reading its dated history block
-    instead would assert a claim the record withdraws. Its digests stay in every
-    byte-level denominator.
+    with the reason. Its route runs hold route-campaign fields, not a weld's, and are
+    checked by :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`.
+    Its digests stay in every byte-level denominator.
     """
     welded = _weld_entries(record) if welded is None else welded
     rows, recordless = [], []
@@ -872,11 +873,16 @@ def test_every_citation_in_an_exclusion_names_a_test_that_exists():
     exclusion would have gone on reading as covered. It now names file and
     function, and both must resolve.
 
+    THE SWEEP IS OVER BOTH EXCLUSION TABLES, :data:`NOT_A_WELD_LEDGER_ENTRY` and
+    :data:`NOT_A_WELD`, and the walker's reasons, as the Triton contract's sweep is
+    over both of its own. ``NOT_A_WELD`` joined it when ``driver_dispatch``'s reason
+    began citing the test that checks its route runs.
+
     Parsed rather than imported, so this stays a laptop-cheap structural check.
     """
     cited = set()
-    for reasons in (NOT_A_WELD_LEDGER_ENTRY.values(), walk.RULE_REASONS.values(),
-                    walk.DELEGATED_COVERAGE.values()):
+    for reasons in (NOT_A_WELD_LEDGER_ENTRY.values(), NOT_A_WELD.values(),
+                    walk.RULE_REASONS.values(), walk.DELEGATED_COVERAGE.values()):
         for reason in reasons:
             cited |= set(re.findall(r"(test_[a-z0-9_]+\.py)::(test_[a-z0-9_]+)",
                                     reason))
@@ -1148,13 +1154,34 @@ def test_the_status_is_the_one_the_tree_supports():
     a fact about the tree, so it is checked here. The consequence that matters is
     the one direction this makes impossible: an entry cannot be stamped PASS
     while a pin it carries has moved.
+
+    THE DENOMINATOR IS THE WELDS, :func:`_weld_entries`, as for every other weld
+    rule in this file. ``driver_dispatch`` is named in :data:`NOT_A_WELD`: its
+    verdict is its route runs', and it is checked through them by
+    :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`, which
+    refuses a ``status`` beside its digests. Asking it for one here would ask for
+    the field that test refuses.
     """
     record = _record()
     assert "PASS:" in record["_what_status_means"], (
         "the record no longer defines its own status vocabulary — this test is "
         "checking a rule that is no longer written down")
+    welded = _weld_entries(record)
+    assert len(welded) >= WELD_RUN_RECORD_FLOOR, (
+        f"only {len(welded)} weld entries carry a status to check, was "
+        f"{WELD_RUN_RECORD_FLOOR}")
+    wrong = _status_problems(welded)
+    assert not wrong, wrong
+
+
+def _status_problems(welded):
+    """``{weld: why}`` for every weld whose ``status`` the tree does not support.
+
+    Factored out of :func:`test_the_status_is_the_one_the_tree_supports` so that
+    :func:`test_the_weld_status_rule_refuses_a_status_the_tree_does_not_support`
+    can drive the same rule over a synthetic ledger and watch it refuse."""
     wrong = {}
-    for name, entry in sorted(_entries(record).items()):
+    for name, entry in sorted(welded.items()):
         status, moved = entry.get("status"), _measured_drift(name, entry)
         if status not in ("PASS", "DRIFTED"):
             wrong[name] = f"status {status!r} is neither PASS nor DRIFTED"
@@ -1162,7 +1189,38 @@ def test_the_status_is_the_one_the_tree_supports():
             wrong[name] = f"PASS, but {len(moved)} pinned file(s) moved: {sorted(moved)[:3]}"
         elif status == "DRIFTED" and not moved:
             wrong[name] = "DRIFTED, but every pinned file matches — rebind it"
-    assert not wrong, wrong
+    return wrong
+
+
+def test_the_weld_status_rule_refuses_a_status_the_tree_does_not_support():
+    """ARMED, over a synthetic ledger: the status test above fails on this tree until
+    the residue re-gate, so it has to be watched refusing what it is meant to refuse.
+
+    Five welds pinning one file, either at its live digest or at a digest it does not
+    have. A weld still needs PASS or DRIFTED, and the one the tree supports: a weld
+    with no status, a PASS over a moved pin and a DRIFTED over the tree are refused;
+    a PASS over the tree and a DRIFTED over a moved pin are not. And the denominator
+    is the welds: the shipped record's ``driver_dispatch`` is left out by
+    :data:`NOT_A_WELD`, as by every other weld rule here, and nothing else is."""
+    pin = "meep_gpu/fastpath.py"
+    live = _raw_digest(REPO / pin)
+    moved = "e" * 64 if live == "f" * 64 else "f" * 64
+    welded = {
+        "a_pass_over_the_tree": {"status": "PASS", "source_sha256": {pin: live}},
+        "a_drifted_over_a_moved_pin": {"status": "DRIFTED",
+                                       "source_sha256": {pin: moved}},
+        "a_weld_with_no_status": {"source_sha256": {pin: live}},
+        "a_pass_over_a_moved_pin": {"status": "PASS", "source_sha256": {pin: moved}},
+        "a_drifted_over_the_tree": {"status": "DRIFTED", "source_sha256": {pin: live}},
+    }
+    wrong = _status_problems(welded)
+    assert set(wrong) == {"a_weld_with_no_status", "a_pass_over_a_moved_pin",
+                          "a_drifted_over_the_tree"}, wrong
+    assert wrong["a_weld_with_no_status"] == "status None is neither PASS nor DRIFTED"
+    record = _record()
+    left_out = set(_entries(record)) - set(_weld_entries(record))
+    assert left_out == set(NOT_A_WELD) & set(_entries(record)), left_out
+    assert "driver_dispatch" in left_out, sorted(left_out)
 
 
 def test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest():
@@ -1202,6 +1260,123 @@ def test_no_entry_backfills_a_code_digest_beside_a_stale_source_digest():
                     live.read_text(encoding="utf-8")) != digest:
                 offenders[f"{name}:{path}"] = "code_sha256 no longer recomputes"
     assert not offenders, offenders
+
+
+# ---------------------------------------------------------------------------
+# THE ROUTE RECORD: checked through its runs, not as a weld
+# ---------------------------------------------------------------------------
+#
+# The same rule, in the same words, as the other two weld contracts. What differs
+# per suite is only where this suite declares the record a non-weld, how it spells a
+# run's key, and which route-run fields its shape check reads.
+
+#: This ledger's dispatch record, and the table that declares it a non-weld.
+DISPATCH_RECORD = "driver_dispatch"
+DISPATCH_RECORD_DECLARED_BY = NOT_A_WELD
+
+#: The key the armed control files a planted route run under: a compute capability.
+PLANTED_RUN_KEY = "8.6"
+
+
+def _dispatch_shape_reasons(entry):
+    """Why the record is not in the per-capability shape, read against the
+    ROUTE-run fields, which name ``status``; the weld run fields do not."""
+    return fastpath.retired_shape_reasons(entry, run_fields=fastpath.DISPATCH_RUN_FIELDS)
+
+
+def _tree_digest(name):
+    """The live raw digest of a path the record pins, resolved as this suite's drift
+    check resolves it."""
+    return _raw_digest(REPO / name)
+
+
+def _dispatch_record_problems(record):
+    """What ``weld_record_walk.route_record_problems`` reports for this ledger's
+    dispatch record, from this suite's own measurements: liveness by
+    ``fastpath.live_capabilities``, drift by :func:`_measured_drift` (the raw tier,
+    as for a weld), and shape by :func:`_dispatch_shape_reasons`."""
+    entry = record[DISPATCH_RECORD]
+    return walk.route_record_problems(
+        entry, live=fastpath.live_capabilities(entry),
+        moved=sorted(_measured_drift(DISPATCH_RECORD, entry)),
+        stranded=_dispatch_shape_reasons(entry))
+
+
+def test_the_dispatch_record_stands_on_a_live_passing_route_run():
+    """The dispatch record is not a weld: it stands on its route runs and the tree.
+
+    ``driver_dispatch`` pins the bytes of the dispatch wiring, and no single gate
+    produced it, so the weld status rule does not apply to it. Its verdict is the
+    route campaign's: ``recut_driver_dispatch_record.py`` files each run under
+    ``runs[<key>]``, one per environment, with that run's ``status``. The rule is the
+    same in the three weld contracts (``weld_record_walk.route_record_problems``):
+
+      (a) at least one run is live (``fastpath.live_capabilities``), so an empty
+          ``runs``, or one whose every run binds bytes that have since moved, fails;
+      (b) every live run reads ``status`` PASS;
+      (c) every file the record pins in the raw tier matches the tree. A run stays
+          live after the files move, because it binds the record's digests and not
+          the tree, so liveness alone cannot say the record describes what ships;
+      (d) the route-run fields, ``status`` among them, appear only under
+          ``runs[<key>]``. A status beside the digests would be a second answer to
+          what the route campaign measured, and is refused.
+
+    Cleared by a route campaign that releases on these bytes and a recut that files
+    its run; never by writing a status beside the digests.
+    """
+    record = _record()
+    assert DISPATCH_RECORD in DISPATCH_RECORD_DECLARED_BY, (
+        f"{DISPATCH_RECORD} is no longer declared a non-weld, so the weld rules would "
+        f"apply to it as well as this one; declare it, or retire this test")
+    assert isinstance(record.get(DISPATCH_RECORD), dict), (
+        f"the ledger carries no {DISPATCH_RECORD} record")
+    problems = _dispatch_record_problems(record)
+    assert not problems, (
+        f"{DISPATCH_RECORD}: {problems} - run the route campaign on these bytes and "
+        f"cut its run with parity/meep_gpu/recut_driver_dispatch_record.py; never "
+        f"write a status beside the digests")
+
+
+def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
+    """ARMED, on this ledger's own record, because the test above fails until a route
+    campaign has run on these bytes, and a rule watched only while it fails has not
+    been watched refusing what it is meant to refuse.
+
+    The control first: a copy of the record re-pinned to the tree, holding one live
+    run that reads PASS, is accepted, so the rule can pass. Then four plants on that
+    control, each refused by its own clause and by nothing else: an entry-level
+    ``status`` (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes
+    other than the record's, so that no run is live (a), and the live run reading
+    FAIL (b). The stale run is what holds liveness to ``fastpath.live_capabilities``:
+    a check that read every recorded run as live would accept it."""
+    record = _record()
+    source = {name: _tree_digest(name)
+              for name in record[DISPATCH_RECORD]["source_sha256"]}
+    bound = fastpath.bound_digest(dict(record[DISPATCH_RECORD], source_sha256=source))
+
+    def problems_with(**fields):
+        planted = json.loads(json.dumps(record))
+        planted[DISPATCH_RECORD].update({"source_sha256": source, fastpath.RUNS: {
+            PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": bound}}})
+        planted[DISPATCH_RECORD].update(fields)
+        return _dispatch_record_problems(planted)
+
+    control = problems_with()
+    assert control == [], control
+    stated = problems_with(status="PASS")
+    assert len(stated) == 1 and "beside the digests" in stated[0], stated
+    assert "'status'" in stated[0], stated
+    emptied = problems_with(**{fastpath.RUNS: {}})
+    assert len(emptied) == 1 and emptied[0].startswith("no live run"), emptied
+    other_bytes = "0" * 64
+    assert other_bytes != bound
+    stale = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": other_bytes}}})
+    assert len(stale) == 1 and stale[0].startswith("no live run"), stale
+    failed = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "FAIL", "bound_sha256": bound}}})
+    assert len(failed) == 1 and failed[0].startswith(
+        f"{fastpath.RUNS}[{PLANTED_RUN_KEY!r}] reads status 'FAIL', not PASS"), failed
 
 
 # ---------------------------------------------------------------------------
@@ -1313,11 +1488,10 @@ def test_every_cuda_entry_names_both_canonical_policies():
     policy on one architecture and a one-element ``legs`` reports both.
 
     DENOMINATOR NARROWED 0.9.1, by one entry: ``_entries()`` -> :func:`_weld_runs` /
-    :func:`_weld_entries`, which drops ``driver_dispatch``. Both halves read fields
-    it no longer carries — the migration moved its policy into the dated history
-    block and left ``runs: {}`` — and it has been named in :data:`NOT_A_WELD` with
-    that reason since 2026-09-11. The floors are what stop the narrowing becoming a
-    slide: 54 entries and 54 records, asserted.
+    :func:`_weld_entries`, which drops ``driver_dispatch``. It is not a weld, and has
+    been named in :data:`NOT_A_WELD` since 2026-09-11; its route runs are checked by
+    :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`. The floors are
+    what stop the narrowing becoming a slide: 54 entries and 54 records, asserted.
     """
     rows, recordless = _weld_runs()
     _assert_the_run_tier_is_walkable(rows, recordless)
@@ -1424,8 +1598,7 @@ def test_the_records_line_names_a_campaign_directory():
     way to be followed at all.
 
     DENOMINATOR NARROWED by the same one entry as the policy test above —
-    ``driver_dispatch``, whose records line moved into the dated history block with
-    the rest of its route-campaign facts; see :data:`REQUIRED_METADATA`.
+    ``driver_dispatch``, which is not a weld; see :data:`REQUIRED_METADATA`.
     """
     rows, recordless = _weld_runs()
     _assert_the_run_tier_is_walkable(rows, recordless)
@@ -1519,9 +1692,14 @@ def test_no_cuda_entry_is_left_in_the_shape_the_run_records_replaced():
     on everywhere else. The exemptions are the two tables that exist —
     :data:`NOT_A_WELD_LEDGER_ENTRY` and :data:`NOT_A_WELD` — because an entry with
     no run behind it has no record to file. MEASURED 2026-10-01: 54 of 54 weld
-    entries clean, ``driver_dispatch`` clean as well (``runs: {}`` is an empty
-    container, not the old shape), and one entry reports — the migration's own
-    stamp, which pins nothing and is named in NOT_A_WELD_LEDGER_ENTRY.
+    entries clean, ``driver_dispatch`` clean as well (it held ``runs: {}`` that day,
+    an empty container, not the old shape; it now holds the 0.9.1 route run under
+    ``runs["8.6"]``), and one entry reports — the migration's own stamp, which pins
+    nothing and is named in NOT_A_WELD_LEDGER_ENTRY. ``driver_dispatch``'s own fields
+    are the route-run fields, not :data:`fastpath.RUN_FIELDS`, so its shape is checked
+    against ``fastpath.DISPATCH_RUN_FIELDS`` by
+    :func:`test_the_dispatch_record_stands_on_a_live_passing_route_run`, which refuses
+    a ``status`` beside its digests.
 
     THE SLOT CONTENTS ARE CHECKED TOO, and nothing else checks them.
     ``bind_capability`` refuses a foreign key at WRITE time, so a ledger written by

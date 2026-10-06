@@ -1562,6 +1562,93 @@ def metal_frontend_version() -> Optional[str]:
         return None
 
 
+#: Where ``MTLCreateSystemDefaultDevice`` lives.
+_METAL_FRAMEWORK = "/System/Library/Frameworks/Metal.framework/Metal"
+
+_APPLE_GPU: Optional[Dict[str, Optional[str]]] = None
+
+
+def apple_gpu_identity() -> Dict[str, Optional[str]]:
+    """This host's Apple GPU as Metal names it: ``name`` and ``architecture``.
+
+    ``architecture`` is ``MTLDevice.architecture.name`` (macOS 14 and later), the
+    unit Apple compiles GPU code for: ``applegpu_g13s`` on an M1 Max. It separates
+    GPU generations that share a Metal GPU family (M3 and M4 are both Apple9), and
+    it is the fact of a Metal environment that torch and the Metal frontend cannot
+    show: every Mac on one macOS build reports the same frontend whatever its GPU.
+
+    Read once per process through the Objective-C runtime with ``ctypes``, so it
+    needs neither torch nor PyObjC. Every message send goes through a prototype
+    typed for that selector: on arm64 ``objc_msgSend`` must be called with the
+    callee's exact signature. Never raises; a fact that cannot be read is ``None``
+    and ``error`` says why.
+    """
+    global _APPLE_GPU
+    if _APPLE_GPU is not None:
+        return dict(_APPLE_GPU)
+    out: Dict[str, Optional[str]] = {"name": None, "architecture": None, "error": None}
+    try:
+        import ctypes  # noqa: PLC0415
+        import ctypes.util  # noqa: PLC0415
+        import sys  # noqa: PLC0415
+
+        if sys.platform != "darwin":
+            out["error"] = f"not macOS ({sys.platform})"
+        else:
+            objc = ctypes.CDLL(ctypes.util.find_library("objc"))
+            metal = ctypes.CDLL(_METAL_FRAMEWORK)
+            objc.sel_registerName.restype = ctypes.c_void_p
+            objc.sel_registerName.argtypes = [ctypes.c_char_p]
+            objc.objc_autoreleasePoolPush.restype = ctypes.c_void_p
+            objc.objc_autoreleasePoolPush.argtypes = []
+            objc.objc_autoreleasePoolPop.restype = None
+            objc.objc_autoreleasePoolPop.argtypes = [ctypes.c_void_p]
+            metal.MTLCreateSystemDefaultDevice.restype = ctypes.c_void_p
+            metal.MTLCreateSystemDefaultDevice.argtypes = []
+            send = ctypes.cast(objc.objc_msgSend, ctypes.c_void_p).value
+
+            def typed(restype: Any, *argtypes: Any) -> Any:
+                return ctypes.CFUNCTYPE(restype, ctypes.c_void_p, ctypes.c_void_p,
+                                        *argtypes)(send)
+
+            sel = objc.sel_registerName
+            send_id = typed(ctypes.c_void_p)
+            send_utf8 = typed(ctypes.c_char_p)
+            send_responds = typed(ctypes.c_byte, ctypes.c_void_p)
+            send_void = typed(None)
+
+            def text(obj: Any) -> Optional[str]:
+                raw = send_utf8(obj, sel(b"UTF8String")) if obj else None
+                return None if raw is None else raw.decode("utf-8", "replace")
+
+            pool = objc.objc_autoreleasePoolPush()
+            device = None
+            try:
+                device = metal.MTLCreateSystemDefaultDevice()
+                if not device:
+                    out["error"] = "MTLCreateSystemDefaultDevice returned no device"
+                else:
+                    out["name"] = text(send_id(device, sel(b"name")))
+                    if send_responds(device, sel(b"respondsToSelector:"),
+                                     sel(b"architecture")):
+                        architecture = send_id(device, sel(b"architecture"))
+                        out["architecture"] = (text(send_id(architecture, sel(b"name")))
+                                               if architecture else None)
+                    else:
+                        out["error"] = ("this MTLDevice has no architecture property "
+                                        "(it needs macOS 14 or later)")
+            finally:
+                if device:
+                    send_void(device, sel(b"release"))
+                objc.objc_autoreleasePoolPop(pool)
+    except Exception as exc:  # noqa: BLE001 - an unreadable identity is recorded, not raised
+        out["error"] = repr(exc)
+    if out["architecture"] is None and out["error"] is None:
+        out["error"] = "Metal named no architecture for this device"
+    _APPLE_GPU = dict(out)
+    return out
+
+
 def module_sha256(name: str) -> str:
     """sha256 of one module file in this package, by bare file name."""
     import hashlib  # noqa: PLC0415

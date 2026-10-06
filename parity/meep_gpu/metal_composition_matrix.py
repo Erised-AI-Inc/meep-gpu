@@ -48,8 +48,8 @@ rather than silent defaults:
   reading one of the others' would licence an arm from a record that never measured
   this call.
 
-:func:`prepare_environment` sets all five and RETURNS what it set, so an artifact
-can record it.
+:func:`prepare_environment` sets all five and RETURNS what is IN FORCE, so an
+artifact records the file its loaders read.
 """
 
 from __future__ import annotations
@@ -62,10 +62,13 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 API_ROOT = os.path.abspath(os.path.join(HERE, os.pardir, os.pardir))
 
-#: The probe artifacts this host has measured, newest first. A missing file is
-#: skipped rather than fatal — the caller learns which one was used from the
-#: dict :func:`prepare_environment` returns, and a row that needed an absent probe
-#: fails its expectation loudly rather than passing as "nothing admitted".
+#: The probe artifacts the evidence archive holds, newest first: the fallback for a
+#: process whose environment names no probe (the package tests, on the host that
+#: holds the archive). A missing file is skipped rather than fatal — the caller
+#: learns which file is in force from the dict :func:`prepare_environment` returns,
+#: and a row that needed an absent probe fails its expectation loudly rather than
+#: passing as "nothing admitted". A certification round never reaches this list:
+#: ``recut_metal_gates.sh`` cuts and exports all four probes before its first gate.
 COMPLEX_PROBE_CANDIDATES: Tuple[str, ...] = (
     "parity/meep_gpu/results/metal_complex_audit_2026-08-16/complex_expansion_probe.json",
     "parity/meep_gpu/results/metal_complex_2026-08-15/complex_expansion_probe.json",
@@ -99,32 +102,36 @@ def _first_existing(candidates: Sequence[str]) -> Optional[str]:
 
 
 def prepare_environment() -> Dict[str, Optional[str]]:
-    """Set the policy and every probe path; return exactly what was set."""
+    """Set the policy and every probe path; return the path IN FORCE for each.
+
+    A probe already named in the environment wins (``setdefault``): that is how a
+    certification round hands each gate the probe it cut. Only an unset variable is
+    filled from the archive candidates. The returned dict names, per variable, the
+    path the environment holds after this call — the file every loader
+    (``complex_fields.load_expansion_probe`` and its siblings) will read — or
+    ``None`` when no probe is available. RETURNING THE CANDIDATE INSTEAD made two
+    defects: a gate's record named a dated archive file while its loaders read the
+    round's own probe, and on a Mac without the archive the gates that refuse on a
+    ``None`` here refused although the round had exported every probe.
+    """
     os.environ.setdefault("MEEP_GPU_SUBNORMAL_POLICY", "flush")
-    complex_probe = _first_existing(COMPLEX_PROBE_CANDIDATES)
-    beta_probe = _first_existing(BETA_PROBE_CANDIDATES)
-    folded_complex_probe = _first_existing(FOLDED_COMPLEX_PROBE_CANDIDATES)
-    cylindrical_complex_probe = _first_existing(
-        CYLINDRICAL_COMPLEX_PROBE_CANDIDATES)
-    if cylindrical_complex_probe:
-        os.environ.setdefault(
-            "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
-            cylindrical_complex_probe)
-    if complex_probe:
-        os.environ.setdefault("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE", complex_probe)
-    if beta_probe:
-        os.environ.setdefault("MEEP_GPU_METAL_EXPANSION_PROBE", beta_probe)
-    if folded_complex_probe:
-        os.environ.setdefault("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
-                              folded_complex_probe)
-    return {
-        "MEEP_GPU_SUBNORMAL_POLICY": os.environ.get("MEEP_GPU_SUBNORMAL_POLICY"),
-        "MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE": complex_probe,
-        "MEEP_GPU_METAL_EXPANSION_PROBE": beta_probe,
-        "MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE": folded_complex_probe,
-        "MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE":
-            cylindrical_complex_probe,
-    }
+    candidates = (
+        ("MEEP_GPU_METAL_COMPLEX_EXPANSION_PROBE", COMPLEX_PROBE_CANDIDATES),
+        ("MEEP_GPU_METAL_EXPANSION_PROBE", BETA_PROBE_CANDIDATES),
+        ("MEEP_GPU_METAL_FOLDED_COMPLEX_EXPANSION_PROBE",
+         FOLDED_COMPLEX_PROBE_CANDIDATES),
+        ("MEEP_GPU_METAL_CYLINDRICAL_COMPLEX_EXPANSION_PROBE",
+         CYLINDRICAL_COMPLEX_PROBE_CANDIDATES),
+    )
+    in_force: Dict[str, Optional[str]] = {
+        "MEEP_GPU_SUBNORMAL_POLICY": os.environ.get("MEEP_GPU_SUBNORMAL_POLICY")}
+    for name, paths in candidates:
+        found = _first_existing(paths)
+        if found:
+            os.environ.setdefault(name, found)
+        # An empty value is "no probe" to every loader, so it reads as None here.
+        in_force[name] = os.environ.get(name) or None
+    return in_force
 
 
 # ---------------------------------------------------------------------------

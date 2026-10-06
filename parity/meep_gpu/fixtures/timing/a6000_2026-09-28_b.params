@@ -1,0 +1,45 @@
+# The 2026-09-28 A6000 ladder (ladder_2026-09-28_b), as timing_ladder.py parameters.
+STAMP=2026-09-28_b
+GPU=0
+REFUSE_GPUS=4,5
+PLATFORM=linux
+MPI_IMPL=openmpi
+PHYSICAL_CORES=48
+LOGICAL_CPUS=96
+MEMORY_TOTAL_GB=1007
+TREE_SRC=/home/user/meep_gpu_target_2026-09-27_flip
+TREE_LAYOUT=development
+TREE_MODE=snapshot
+DRIVERS_MODE=copy
+SNAPSHOT_EXCLUDE=__pycache__ *.pyc
+EXTRA_PYTHONPATH={harness}/results/triton_fusedpair_2026-08-09/scripts,{harness}/results/triton_wholestep_2026-08-09/scripts
+RUN_ROOT=/home/user/go_live_2026-09-28_timing
+PYTHON=/home/user/miniforge3/envs/meep_gpu_meep_133_oracle/bin/python
+MPIRUN=/home/user/miniforge3/envs/meep_gpu_meep_133_oracle/bin/mpirun
+MEEP_CONFIG_LOG=/home/user/meep_gpu_validation/meep_133/src/meep-1.33.0/config.log
+LIBCUDA_STUB=/home/user/triton_libcuda_stub
+CORPUS_ROOT=/home/user/meep_gpu_validation/meep_133/src/meep-1.33.0/python
+ACCOUNT=user
+ACCOUNT_MAX=0
+CAP=2
+PASSES=3
+TIERS=preflight bindprobe priority bindcheck
+CASES=pml_3d
+PRIORITY_RES=20,32,48
+PROBE_RES=32
+PREFLIGHT_RES=12
+BINDING=probe
+ARRAY_CONTROL=extract
+FLAGS_BOUND=--map-by package --bind-to core
+FLAGS_UNBOUND=--bind-to none
+FLAGS_OVER=--use-hwthread-cpus --bind-to none
+GPU_FLAGS=--repeats 6 --target-seconds 2.0 --monitors attached --memory-budget-bytes 30000000000
+GATE_GPU_METRIC=load1
+GATE_MEEP_METRIC=busy
+GATE_HOLD_GPU_S=120
+GATE_HOLD_MEEP_S=30
+GATE_CPU_MAX=10
+GATE_MEM_MIN_GB=200
+EXPECT_LAUNCHED=default:pml_3d=triton
+EXPECT_LAUNCHED=cuda:pml_3d=cuda
+CONTROLS=none

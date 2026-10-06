@@ -69,7 +69,7 @@ GATE = (REPO / "parity" / "meep_gpu"
 #: device or code digest ``weld_survives_edit`` could clear that edit through. The note
 #: above describes the 08-26 artifact.
 ARTIFACT = (REPO / "parity" / "meep_gpu" / "results"
-            / "metal_cylindrical_real_fused_magnetic_pair_2026-09-25_night"
+            / "metal_cylindrical_real_fused_magnetic_pair_2026-10-02_arch3"
             / "gate.json")
 CENSUS = (REPO / "parity" / "meep_gpu" / "results"
           / "metal_coverage_tranche6_2026-08-19")

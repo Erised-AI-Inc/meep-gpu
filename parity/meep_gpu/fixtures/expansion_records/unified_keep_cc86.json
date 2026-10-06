@@ -1,0 +1,572 @@
+{
+ "backend": "cupy",
+ "candidates": {
+  "host_flushing": false,
+  "policy": "keep",
+  "requirement": "the candidate arms must be cut under the same subnormal policy as the platform bytes they are scored against",
+  "semantics": "IEEE-754 float32 with subnormals kept: exact integer-arithmetic fma32/mul32 for the fused arm, host float32 arithmetic for the vectorized arms"
+ },
+ "detail": {
+  "c8_mul_c8": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 1088,
+   "matches": {
+    "FMA_V1": true,
+    "FMA_V2_diagnostic": false,
+    "NAIVE": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "FMA_V2_diagnostic": 1391,
+    "NAIVE": 1088
+   }
+  },
+  "c8_mul_c8_imaginary_coefficient_left": [
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.08695957809686661j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.14634662866592407j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.08592626452445984j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.06283185631036758j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 4,
+     "NAIVE": 0
+    }
+   }
+  ],
+  "c8_mul_c8_parity_coefficient_left": {
+   "classified": "AMBIGUOUS_BOTH",
+   "discriminates": false,
+   "licensable_arms_disagreement_words": 0,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": true,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 0,
+    "PLANEWISE_diagnostic": 32
+   },
+   "operand_shape": "python_int scalar x complex64 array \u2014 stepping.py:1450-1451's own spelling",
+   "spelling_deltas": {
+    "array_left": 0,
+    "numpy_scalar_left": 0,
+    "python_int_scalar_left": 0
+   },
+   "spellings_agree": true,
+   "vectors": 4608
+  },
+  "c8_mul_f4_field_left": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 74,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": false,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 74,
+    "PLANEWISE_diagnostic": 103
+   }
+  },
+  "c8_mul_python_float_field_left": [
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.5
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": -0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.1
+   }
+  ],
+  "c8_scalar_broadcast_diagnostic": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 1293,
+   "matches": {
+    "FMA_V1": true,
+    "FMA_V2_diagnostic": false,
+    "NAIVE": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "FMA_V2_diagnostic": 1578,
+    "NAIVE": 1293
+   }
+  },
+  "f4_mul_c8_coefficient_left": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 74,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": false,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 74,
+    "PLANEWISE_diagnostic": 103
+   }
+  },
+  "python_float_left": [
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.5
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": -0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 6,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 6,
+     "PLANEWISE_diagnostic": 91
+    },
+    "scalar": 0.1
+   }
+  ]
+ },
+ "environment": {
+  "backend": "cupy",
+  "compute_capability": "8.6",
+  "cuda_runtime_version": 11080,
+  "cupy_version": "13.5.1",
+  "device_name": "NVIDIA RTX A6000",
+  "keyed_on": [
+   "backend",
+   "machine",
+   "cupy_version"
+  ],
+  "machine": "x86_64",
+  "numpy_version": "2.2.6",
+  "python_version": "3.10.20"
+ },
+ "patterns": {
+  "c8_mul_c8": "FMA_V1",
+  "c8_mul_c8_imaginary_coefficient_left": "AMBIGUOUS_BOTH",
+  "c8_mul_c8_parity_coefficient_left": "AMBIGUOUS_BOTH",
+  "c8_mul_f4_field_left": "FMA_V1",
+  "c8_mul_python_float_field_left": "FMA_V1",
+  "f4_mul_c8_coefficient_left": "FMA_V1",
+  "python_float_left": "FMA_V1"
+ },
+ "subnormal_policy": {
+  "cache_dir": "<cache-root>/cupy_cache_ftz_stripped_unified_expansion",
+  "cache_preexisting": false,
+  "dependence": "the FMA_V1 classification and every license derived from it hold UNDER THE STRIPPED IEEE-KEEP POLICY ONLY \u2014 the ship configuration wherever the default request match_meep resolves to 'keep' (arm64, or any host with no MEEP to measure); on x86 with MEEP imported it resolves to 'flush' and the flush stamp's dependence applies instead. Bytes cut under the other policy differ in the subnormal range. Scoring a flushed device against these KEPT candidates is what produced the 54/48/125-word NEITHER of job 2327 \u2014 a broken comparison, not a platform that matches no arm (results/complex_expansion_flush_coincidence_2026-08-15/). Every orientation in this record DISCRIMINATES under the policy it was cut under, measured candidate-against-candidate on these vectors: the two licensable arms are 1088 words apart on c8_mul_c8 under both policies, 128 (flush) / 74 (keep) apart on c8_mul_f4_field_left and f4_mul_c8_coefficient_left, and 128-96 (flush) / 6 (keep) apart on python_float_left across its four scalars; measure_expansion_record refuses to emit a record whose operand classes are blind. Before 2026-08-15 all three zero-imaginary orientations were 0 of 4560 words apart under flush \u2014 every row that separated the arms there fed the device a subnormal OPERAND, which flush destroys \u2014 and this sentence recorded that as a property of the platform rather than of the vectors (_NORMAL_UNDERFLOWING_ZR is the class that repaired it).",
+  "ftz_removed": 1,
+  "match_meep": null,
+  "measured": {
+   "cupy": {
+    "agrees": true,
+    "word": "0x4000"
+   },
+   "expected_word": "0x4000",
+   "host": {
+    "agrees": true,
+    "word": "0x4000"
+   },
+   "operand_word": "0x4000",
+   "operation": "float32 x * 1.0"
+  },
+  "mechanism": "cupy.cuda.compiler.compile_using_nvrtc wrapped; '-ftz=true' (appended unconditionally by _compile_with_cache_cuda, cupy/cuda/compiler.py:552, CuPy 13.5.1) filtered from every NVRTC option tuple; private policy-suffixed CUPY_CACHE_DIR because the cache key is computed above the seam (results/device_subnormal_policy_2026-08-11/, jobs 2324-2326; certified for this gate's expansion by job 2328)",
+  "nvrtc_calls": 1,
+  "policy": "ieee_keep_ftz_stripped",
+  "requested": "keep",
+  "resolved": "keep",
+  "resolved_from": "argument",
+  "triton": {
+   "llir_compiles": 0,
+   "llir_defines": 0,
+   "llir_groups_extended": 0,
+   "llir_groups_minted": 0,
+   "ptx_audited": 0,
+   "ptx_compiles": 0,
+   "ptx_violations": 0,
+   "ptx_with_ftz": 0,
+   "reflect_flag_absent": 0,
+   "reflect_rewrites": 0
+  },
+  "unattained": []
+ },
+ "vectors": {
+  "c8_mul_c8": 2075,
+  "c8_mul_c8_imaginary_coefficient_left": 2184,
+  "c8_mul_c8_parity_coefficient_left": 4608,
+  "c8_mul_f4_field_left": 2792,
+  "c8_mul_python_float_field_left": 2792,
+  "f4_mul_c8_coefficient_left": 2792,
+  "python_float_left": 2792
+ }
+}

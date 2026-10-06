@@ -290,30 +290,12 @@ def _probe_single_precision_meep():
             f"{answer.stderr.strip()[-200:]})")
 
 
-def _probe_certified_metal_toolchain():
-    import numpy  # noqa: F401,PLC0415  NumPy before PyTorch (INSTALL.md, OpenMP)
-    from meep_gpu import metal_dispatch  # noqa: PLC0415
-
-    toolchain = metal_dispatch.metal_toolchain()
-    block = metal_dispatch.environment_block(None, toolchain)
-    refused = [f"{name} {block.get(key)}" for name, key, verdict in (
-        ("PyTorch", "torch", "torch_certified"),
-        ("Metal frontend", "metal_frontend", "frontend_certified"))
-        if block.get(verdict) is False]
-    if not refused:
-        return None
-    return (" and ".join(refused) + " not on the certified list; the test asserts that "
-            "the Metal kernels dispatch, which an uncertified toolchain refuses by "
-            "design")
-
-
 _PROBES = {
     "evidence_archive": _probe_evidence_archive,
     "torch": _probe_torch,
     "meep": _probe_meep,
     "mps_device": _probe_mps_device,
     "single_precision_meep": _probe_single_precision_meep,
-    "certified_metal_toolchain": _probe_certified_metal_toolchain,
 }
 
 

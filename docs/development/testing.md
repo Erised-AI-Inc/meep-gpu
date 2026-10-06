@@ -8,16 +8,17 @@ one at a time:
     python -m pytest meep_gpu/ -q
     python -m pytest parity/meep_gpu/ -q
 
-| Suite | What it tests | Size in this release, 2026-09-28 |
+| Suite | What it tests | Size as of 0.9.0, 2026-09-28 |
 |---|---|---|
 | <code>meep_gpu/</code> | The package: the array path, the lift, the planner, and every kernel table's predicates and emitters | 13,816 tests collected, of which 362 belong to the certification suite; 27 minutes on one Apple laptop with MEEP and PyTorch, 6 minutes with neither |
 | <code>parity/meep_gpu/</code> | The harness: the gates' helpers, the record writers, the timing and census tools | 695 tests collected, of which 1 belongs to the certification suite; about 1 minute on the same laptop |
 
-On that laptop, with MEEP and PyTorch installed, the default run of the package
-suite read 12,921 passed, 0 failed and 532 skipped by a declared resource, and the
-harness suite 682 passed, 0 failed and 12 skipped. [What a run of the suites shows in this
-preview](#what-a-run-of-the-suites-shows-in-this-preview) gives the same
-runs with a double-precision MEEP and with neither MEEP nor a GPU library.
+On that laptop, as of 0.9.0, with MEEP and PyTorch installed, the default run of
+the package suite read 12,921 passed, 0 failed and 532 skipped by a declared
+resource, and the harness suite 682 passed, 0 failed and 12 skipped. [What a run of
+the suites shows in this preview](#what-a-run-of-the-suites-shows-in-this-preview)
+gives the counts of 0.9.2 in continuous integration, with a double-precision MEEP and
+with neither MEEP nor a GPU library.
 
 The suites run on a host with no GPU. A test that needs a device, a device
 library or MEEP skips when it is absent, and says so.
@@ -97,21 +98,34 @@ too, so a run of one module while editing can show a failure listed in
 <code>tools/ci/pending_certification.txt</code>. That failure is expected, and
 it is not fixed by regenerating a ledger.
 
-The records in this release were cut before the published files were finalized:
-every record that pins a file the release edited no longer matches it. So the
-certification suite fails until the
-[certification round](certification.md) has run on the published
-files. Its failures are reported, not skipped and not marked as expected
-failures, and <code>tools/ci/check_failures.py</code> accepts exactly those
-listed in <code>tools/ci/pending_certification.txt</code>. A failure of the
+The [certification round](certification.md) has run on the files of this
+release, and every record that pins a file is bound to those files, except the two
+fused-product timing records: their two tests fail until a timing campaign on
+these files re-cuts them. Those failures are reported, not skipped and not marked
+as expected failures, and <code>tools/ci/check_failures.py</code> accepts exactly
+those listed in <code>tools/ci/pending_certification.txt</code>. A failure of the
 default run is never on that list: it is a defect, or a resource the test does
 not declare.
 
 ## What a run of the suites shows in this preview
 
-Measured on 2026-09-28 on one Apple silicon host, one suite at a time, on a
-build of this release made before its last edits, whose code differs from the
-published files only in comments, docstrings, the text of messages and record
+On the code of 0.9.2, in a continuous-integration run on GitHub's Ubuntu runners,
+one job per environment (2026-10-06). The run preceded the release's last edits,
+which touch only documentation, the names of two workflow steps, one harness
+docstring, the variable names of one harness test and two timing fixtures:
+
+| Environment | Package suite (`meep_gpu`) | Harness suite (`parity/meep_gpu`) | Certification suite (`-m certification`) |
+|---|---|---|---|
+| no MEEP and no GPU library, Python 3.10 and 3.12 (one job each, the same counts) | 12,379 passed, 0 failed, 1,372 skipped | 1,158 passed, 0 failed, 66 skipped | 2 failed, 341 passed, 18 skipped; both failures listed in `tools/ci/pending_certification.txt` |
+| conda-forge MEEP 1.33.0 (double precision), no GPU library, Python 3.12 | 12,798 passed, 0 failed, 953 skipped | 1,172 passed, 0 failed, 52 skipped | the same 2 failed, 341 passed, 18 skipped |
+
+<code>tools/ci/check_failures.py</code> passed in all three jobs: 2 failures of
+13,880 tests run without MEEP and of 14,313 with it, both declared; every skip
+was by a declared resource.
+
+As of 0.9.0: measured on 2026-09-28 on one Apple silicon host, one suite at a
+time, on a build of 0.9.0 made before its last edits, whose code differs from the
+0.9.0 files only in comments, docstrings, the text of messages and record
 notes, the names of two tests, one provenance string and one synthetic test
 value. The fixes that make the suites pass on Linux and under Python 3.10 came
 after it: they change the two digest helpers, one harness probe and six test
@@ -124,18 +138,18 @@ test short:
 | conda-forge MEEP 1.33.0 (double precision), no GPU library | 12,405 passed, 0 failed, 936 skipped, of 13,341 run | 679 passed, 0 failed, 15 skipped, of 694 run | the same 44 |
 | neither MEEP nor a GPU library | 11,985 passed, 0 failed, 1,356 skipped, of 13,341 run | 662 passed, 0 failed, 32 skipped, of 694 run | the same 44 |
 
-The package suite collects 13,815 tests and the harness suite 695; the 362 and 1
-not run by default are the certification suite. Without PyTorch, three package
-modules (115 tests) skip whole at collection and report one result each, so the
-package suite reports 13,341 results there. Every skip names its resource; 444
-of them in the package suite are tests that read the evidence archive of the
-certification campaigns, which this repository does not carry. The 44 failures of
-the certification suite are record contracts: 40 state that a record no longer
-matches the published files (a digest, a weld or a fingerprint that moved, or a
-dispatch record cut before dispatch became the default), and 4 are contracts of the
-two timing records that disagree with those records in the source the release
-was made from as well. The examples and the installation check pass on the same
-files.
+In 0.9.0 the package suite collected 13,815 tests and the harness suite 695; the
+362 and 1 not run by default were the certification suite. Without PyTorch, three
+package modules (115 tests) skipped whole at collection and reported one result
+each, so the package suite reported 13,341 results there. Every skip named its
+resource; 444 of them in the package suite were tests that read the evidence
+archive of the certification campaigns, which this repository does not carry.
+The 44 failures of
+the certification suite in 0.9.0 were record contracts: 40 stated that a record no
+longer matched the 0.9.0 files (a digest, a weld or a fingerprint that moved, or a
+dispatch record cut before dispatch became the default), and 4 were contracts of the
+two timing records. The rounds of 0.9.1 and 0.9.2 cleared all but the two timing
+tests. The examples and the installation check passed on the same files.
 
 <code>tools/ci/pending_certification.txt</code> is the authority for which
 failures are expected; <code>tools/ci/check_failures.py</code> reads it.
@@ -152,13 +166,22 @@ why:
 | <code>evidence_archive</code> | <code>parity/meep_gpu/results/</code> holds the evidence archive of the certification campaigns and carries its marker file, <code>EVIDENCE_ARCHIVE.json</code> ([The evidence archive](#the-evidence-archive)). The archive is not part of this repository, and a directory without the marker, such as one a gate run created, is not the archive |
 | <code>torch</code> | PyTorch is installed |
 | <code>meep</code> | MEEP is installed |
-| <code>mps_device</code> | PyTorch is installed and reports a usable Apple GPU (MPS) |
+| <code>mps_device</code> | PyTorch is installed and reports a usable Apple GPU (MPS). A test that asserts the Metal kernels dispatch needs nothing more: every Apple GPU is supported, and by default they dispatch on it in any environment, certified or not. Run the suite without <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code> in the shell: no conftest pins it, and it refuses an environment that is not certified or cannot be judged |
 | <code>single_precision_meep</code> | MEEP is a single-precision build: the test compares with MEEP at single-precision bounds, or asserts that MEEP returns float32 arrays |
-| <code>certified_metal_toolchain</code> | PyTorch and the Metal frontend are a certified pair: the test asserts that the Metal kernels dispatch, which an uncertified pair refuses by design |
 
 A listed test whose resource is present runs as before; the list relaxes no
 test. The session summary counts the skips by resource, and names any entry of
 the list that matches no collected test.
+
+The timing ladder's tests (<code>parity/meep_gpu/test_timing_*.py</code>,
+<code>test_bench_timing_case.py</code>, <code>test_bench_meep_identical_case.py</code>,
+<code>test_build_3d_comparison_pairing.py</code>,
+<code>test_identical_case_table.py</code>) need no GPU and run in seconds. The ones
+that build a simulation declare <code>meep</code> or
+<code>single_precision_meep</code> on the test itself and run MEEP in a child
+process: the single-precision ones pin the geometry digest of <code>pml_3d</code>
+at resolution 12 to the 2026-09-28 digest of record, and time one rank of MEEP at
+resolution 6 against the package's own lift of the same simulation.
 
 ### The evidence archive
 
@@ -198,7 +221,11 @@ writes it.
 A test, gate or benchmark that can run for more than about a minute prints a
 flushed line per unit of work: which case of how many, the elapsed time, and the
 number the case produced. Run long pytest cases with <code>-s</code>. A run
-whose only signal is its exit code cannot be told from a hang.
+whose only signal is its exit code cannot be told from a hang. The timing ladder
+is the long-run example to copy: one flushed line per row start and end in
+<code>progress.log</code>, the ledger appended as each row lands, a host trace
+every few seconds, and <code>--resume</code> to continue an interrupted run
+([Running the timing ladder](timing.md)).
 
 ## Conventions
 

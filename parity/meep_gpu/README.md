@@ -14,11 +14,17 @@ out and how to point its drivers at a machine.
 | `gate_*.py` | Device gates. Each runs a kernel family on a GPU beside the array path and writes `gate.json`. |
 | `probe_*.py`, `measure_*.py`, `replay_*.py`, `stress_*.py` | Measurements and diagnostics behind a gate or a coverage figure. |
 | `recut_metal_gates.sh`, `run_metal_dispatch_campaign.sh` | Drivers of the Metal gate fleet and of the Metal route campaign (`docs/development/certification.md`). |
+| `rounds/`, `build_metal_round_inputs.py` | One directory per certification round on another machine: its driver, and the manifest of the evidence-archive inputs its gates read (the bundles themselves are not committed). The Metal one is packed, verified and unpacked by `build_metal_round_inputs.py`. |
 | `build_*_fusion_matrix.py`, `build_3d_comparison.py` | Builders of the coverage boards and the throughput table from recorded rows. |
 | `rebind_*.py`, `recut_*.py`, `mint_*.py`, `seed_*.py`, `record_*.py` | Writers of the ledgers under `meep_gpu/*_kernels/`. |
 | `benchmark_*.py`, `bench_*.py` | Throughput drivers. |
+| `timing_ladder.py`, `timing_host.py`, `timing_records.py` | The identical-case timing ladder: the GPU routes and stock MEEP interleaved on one host behind a quiet gate, its host readers and its recorders (`docs/development/timing.md`). |
+| `timing_cases.py` | The timing cases, each defined once and built by both benches. |
+| `bench_meep_identical_case.py`, `bench_timing_case.py`, `digest_harness_lift.py`, `gpu_array_control.py` | Stock MEEP on a timing case; `bench_fused_products.py` on a case of `timing_cases.py`; the geometry digest of the package's own lift; the array-path control as its own process. |
+| `build_identical_case_table.py`, `audit_timing_validity.py` | The table of a ladder, from its ledger; a read-only audit of its windows, passes and host state. |
 | `test_*.py` | Tests of the harness itself. |
-| `build_meep_133_macos.sh`, `meep-sigma-reader.patch` | Source build of MEEP 1.33.0 (single precision) on macOS, see below. |
+| `build_meep_133_linux.sh`, `build_meep_133_macos.sh`, `meep-sigma-reader.patch` | Source build of the reference MEEP 1.33.0 (single precision), see below. |
+| `build_meep_133_native.sh` | A native-tuned MEEP build with its build record, a timing control only. |
 
 Runs write to `results/` in this directory. That tree is not tracked and is not
 part of this repository. Ledgers and messages cite artifacts by their path under
@@ -32,6 +38,9 @@ evidence archive").
 Some ledger records cite a path that begins with two directories above
 `parity/`. Those two directories name the root of the tree the record was written
 in, and correspond to the root of this repository.
+
+Commit hashes in the records name the pre-publication development history, which is
+not part of this repository; records bind files by sha256.
 
 ## Pointing the drivers at a machine
 
@@ -52,6 +61,12 @@ environment sets a variable with that prefix
 
 Drivers that accepted `RUN_ROOT`, `ROOT`, `PYTHON` or `PY` still do; the variables
 above supply the defaults.
+
+The timing ladder reads its parameters from `MGPU_TIMING_<KEY>` variables as well
+as from flags and a `--params` file (`MGPU_TIMING_GPU`, `MGPU_TIMING_RUN_ROOT`, ...;
+`timing_ladder.py --dry-run` lists every key with the source of its value). Its
+interpreter falls back to `MGPU_SITE_PYTHON` and its run root to
+`$MGPU_SITE_STAGING_ROOT/timing`.
 
 **`KMP_DUPLICATE_LIB_OK`.** Leave it unset in your shell, as INSTALL.md says.
 The harness was developed in an environment that loaded two OpenMP runtimes, and
@@ -91,22 +106,31 @@ host, is:
   (`python -u gate_<family>.py ... > <round>/gate.log 2>&1`), so that the log is
   the status of a run in progress.
 
-## Building MEEP 1.33.0 on macOS
+## Building the reference MEEP
 
-`build_meep_133_macos.sh` builds MEEP 1.33.0 from the release tarball, in single
-precision and with MPI, into a Conda environment (`MEEP_ENV_NAME`, default
-`meep133`, under `CONDA_ROOT`). It is a development helper for macOS, not a
-general installer. Before PyTorch is installed into that environment, make its
-OpenBLAS the pthreads build, as INSTALL.md ("Building MEEP in single precision")
-shows, so that a process holds one OpenMP runtime.
+`build_meep_133_linux.sh` and `build_meep_133_macos.sh` build the MEEP every
+certification is measured against: 1.33.0 from the release tarball, in single
+precision and with MPI, into a new Conda environment (`MEEP_ENV_NAME`, default
+`meep-gpu-ref`, under `CONDA_ROOT`), installed without a solve from the platform's lock
+files under `environments/locks/` (the environment the kernels were certified in on
+that platform, with the certified GPU libraries). Each refuses to build unless the new
+prefix holds exactly the lock's conda packages, and refuses to finish unless what it
+built is what it claims to be, the last check being
+`tools/compare_reference_environment.py --require-reference`. `MEEP_REFERENCE_SOLVE=1`
+solves instead and labels the result as not the reference.
+`environments/locks/README.md` says what each lock reproduces and when it is re-cut.
+docs/development/certification.md says when a round uses them, and INSTALL.md
+("Building MEEP in single precision") how they are run.
 
-With `MEEP_SIGMA_PATCH=1` it applies `meep-sigma-reader.patch` before building.
+The macOS script, alone, takes an opt-in patch:
+with `MEEP_SIGMA_PATCH=1` it applies `meep-sigma-reader.patch` before building.
 The patch adds `fields.get_susceptibility_sigma` and three related readers to
 MEEP. The package uses them, when the MEEP it runs beside has them, to read the
 per-point susceptibility strength of structured dispersive media directly; three
 refusal messages of `meep_gpu/from_meep.py` name this build as one way to lift a
 case they refuse. Stock MEEP lifts uniform dispersive media and axis-aligned
-structured dispersive cells without the patch.
+structured dispersive cells without the patch. A patched build changes MEEP's
+source, so it is not the certification reference: build that without the patch.
 
 ## References in comments
 

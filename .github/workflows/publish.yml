@@ -1,0 +1,48 @@
+# Publishes the sdist and wheel to PyPI through trusted publishing (OpenID
+# Connect), so no API token is stored in the repository or on PyPI. The
+# publisher registered on PyPI is bound to this file's name, publish.yml, to
+# the repository Erised-AI-Inc/meep-gpu, and to the GitHub environment named
+# pypi; renaming any of the three means editing the publisher on PyPI too.
+#
+# Runs when a release tag such as v0.9.2 is pushed, or by hand from the Actions
+# tab. A version that PyPI has already seen can never be uploaded again, so the
+# version in pyproject.toml must be bumped before the next tag.
+
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # must match the environment name entered on PyPI
+    permissions:
+      id-token: write          # the OIDC token PyPI verifies
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

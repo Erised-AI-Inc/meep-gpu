@@ -24,19 +24,13 @@
 #                              (mp.is_single_precision() is True): the test
 #                              compares with MEEP at single-precision bounds, or
 #                              asserts that MEEP returns float32 arrays.
-#   certified_metal_toolchain  PyTorch and the Metal frontend of this Mac are a
-#                              certified pair: the test asserts that the Metal
-#                              kernels dispatch, which an uncertified pair
-#                              refuses by design.
 #
 # How each list was derived: the evidence_archive tests fail without the
 # archive and pass with it (one run of each list on the development tree,
 # which holds the archive); torch, meep and single_precision_meep from runs in
 # environments without PyTorch, without MEEP (the package suite and the
-# harness suite), and with a double-precision MEEP;
-# certified_metal_toolchain from one run under PyTorch 2.14.0, which is not
-# certified; mps_device from a run without PyTorch, for a test whose own skip
-# did not declare its resource.
+# harness suite), and with a double-precision MEEP; mps_device from a run
+# without PyTorch, for a test whose own skip did not declare its resource.
 
 [evidence_archive]
 meep_gpu.cuda_kernels.test_ade_update_p::test_the_mirror_admission_record_is_self_consistent
@@ -81,6 +75,7 @@ meep_gpu.cuda_kernels.test_special_kz_bfast_admission::test_the_mutation_battery
 meep_gpu.cuda_kernels.test_special_kz_bfast_admission::test_the_record_reproduces_the_artifacts_numbers
 meep_gpu.cuda_kernels.test_special_kz_bfast_admission::test_the_special_kz_record_carries_the_measured_inert_mutation
 meep_gpu.cuda_kernels.test_step_curl_pml_real::test_the_chi_admission_is_the_run_that_produced_it
+meep_gpu.test_capability_records::test_the_quoted_family_block_is_the_artifact_of_its_own_run
 meep_gpu.test_cuda_complex_fused_hd_pair::test_no_row_of_either_cell_carries_a_standing_withdraw
 meep_gpu.test_cuda_complex_fused_hd_pair::test_the_two_cells_are_the_ones_the_board_calls_unbuilt
 meep_gpu.test_cuda_cylindrical_fused_hd_pair::test_the_cell_this_product_claims_is_the_boards_eighteen_rows
@@ -323,6 +318,7 @@ meep_gpu.test_triton_cylindrical_real_fused_magnetic_pair::test_the_released_art
 meep_gpu.test_triton_cylindrical_real_fused_magnetic_pair::test_this_cell_is_disjoint_from_the_complex_cylindrical_one
 meep_gpu.test_triton_folded_beta_fused_electric_pair::test_the_gates_no_device_legs_all_pass_here
 meep_gpu.test_triton_folded_beta_fused_magnetic_pair::test_the_gates_no_device_legs_all_pass_here
+meep_gpu.test_triton_folded_complex_fused_magnetic_pair::test_the_module_has_a_fingerprints_weld_that_pins_these_bytes
 meep_gpu.test_triton_folded_complex_fused_pair::test_the_gates_no_device_legs_all_pass_here
 meep_gpu.test_triton_folded_dispersive_fused_pair::test_the_gates_corpus_leg_lands_on_the_cell_the_board_scored
 meep_gpu.test_triton_folded_fused_hd_pair::test_the_arbitration_join_in_the_reason_is_the_boards_own
@@ -333,6 +329,7 @@ meep_gpu.test_triton_folded_fused_pair::test_the_gates_corpus_leg_agrees_with_th
 meep_gpu.test_triton_folded_fused_pair::test_the_released_artifact_is_in_the_tree_and_says_it_released
 meep_gpu.test_triton_folded_offdiag_fused_ade_chain::test_the_board_pins_read_by_ast[gate_bound]
 meep_gpu.test_triton_fused_hd_pair::test_the_lift_basis_is_the_cell_the_seam_record_prices
+meep_gpu.test_triton_offdiag_update_e::test_an_entry_naming_this_module_pins_the_import_record_of_its_own_run
 meep_gpu.test_triton_residual_probe_discipline::test_the_predicate_battery_covers_admissions_and_refusals_for_every_family
 meep_gpu.test_withdraw_hoist::test_the_recorded_measurement_matches_the_artifact
 parity.meep_gpu.test_cuda_dynamic_loop_arity::test_the_corpus_arity_census_is_rederived_from_the_artifacts
@@ -634,28 +631,3 @@ meep_gpu.test_metal_complex_fused_hd_pair::test_one_complete_driver_step_is_bit_
 [single_precision_meep]
 meep_gpu.test_driver_vs_meep::test_a_mirror_folded_real_run_matches_cpu_meep
 meep_gpu.test_driver_vs_meep::test_real_field_mode_matches_cpu_meep_in_its_own_default_mode
-
-[certified_metal_toolchain]
-meep_gpu.test_metal_dispatch::test_a_fold_whose_fills_carry_no_kernel_refuses_the_whole_plan
-meep_gpu.test_metal_dispatch::test_a_fused_label_with_no_absorb_declaration_refuses_rather_than_dispatching
-meep_gpu.test_metal_dispatch::test_a_pending_family_is_refused_through_its_constituents
-meep_gpu.test_metal_dispatch::test_an_unadmitted_fused_label_refuses_the_whole_plan_by_name
-meep_gpu.test_metal_dispatch::test_the_default_residency_the_composition_installs_is_held
-meep_gpu.test_metal_dispatch::test_the_record_carries_the_residency_the_composition_installed
-meep_gpu.test_metal_dispatch::test_the_record_names_the_table_and_the_route_gate
-meep_gpu.test_metal_dispatch::test_the_subnormal_block_records_this_tables_policy_and_executors
-meep_gpu.test_metal_held_fallback::test_a_mid_run_mutation_completes_identically_and_holds_again
-meep_gpu.test_metal_held_fallback::test_a_misspelled_mode_refuses_by_name_before_the_policy_install
-meep_gpu.test_metal_held_fallback::test_a_tail_refusal_after_the_hold_was_armed_hands_the_host_its_arrays_back
-meep_gpu.test_metal_held_fallback::test_close_with_a_live_hold_leaves_a_release_that_tolerates_no_fields
-meep_gpu.test_metal_held_fallback::test_every_public_driver_mutator_works_under_a_hold_or_is_refused_identically
-meep_gpu.test_metal_held_fallback::test_explicit_shipped_still_ships
-meep_gpu.test_metal_held_fallback::test_rule_a_a_synced_pass_outside_the_door_set_refuses_to_the_array_path
-meep_gpu.test_metal_held_fallback::test_rule_b_an_engine_owned_mirror_that_cannot_be_sealed_refuses
-meep_gpu.test_metal_held_fallback::test_rule_b_names_seals_a_dead_hold_left_and_the_array_path_raises_on_them
-meep_gpu.test_metal_held_fallback::test_rule_c_a_partial_release_is_refused_by_name_rather_than_read_stale
-meep_gpu.test_metal_held_fallback::test_the_default_with_the_variable_unset_is_held
-meep_gpu.test_metal_held_fallback::test_the_full_release_strips_every_guard_and_is_safe_twice_and_after_close
-meep_gpu.test_metal_held_fallback::test_the_reset_layer_keeps_barriered_names_truthful_and_leaves_with_the_barrier
-meep_gpu.test_prefer_gpu::test_a_gpu_driver_on_an_mps_host_dispatches_metal
-meep_gpu.test_prefer_gpu::test_the_entry_points_on_an_mps_host

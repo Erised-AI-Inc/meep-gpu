@@ -18,7 +18,12 @@ row per LEG). Groups, in the repository's order for a new decision engine:
 * SHAPE / SERIALIZATION -- deterministic bytes, no wall clock, ``--check``, and the ONE
   name a record may be written under: the one ``dispatch_preference.record_path`` gives
   the compute capability its admitted rows stamp;
-* REALISTIC -- the shipped records recut byte-for-byte from the rows on disk.
+* REALISTIC -- the shipped records recut byte-for-byte from the rows on disk, and,
+  without the rows, what each shipped record must be to be consulted: cut for its table
+  and architecture, every row read accounted for, every key answering the consult on the
+  program the record names as its numbers say, band edges of at least the cutter's
+  minimum rows, and every product the table releases timed on it and priced or left
+  unpriced for a stated reason.
 """
 
 from __future__ import annotations
@@ -1287,17 +1292,227 @@ def _rows_on_disk(table):
     return all(os.path.exists(root) for root in roots)
 
 
+def _released(table):
+    """What ``table`` may dispatch on the shipped route: ``{fused label: route cases}``
+    and ``{fused label: the single arms it may substitute}``, from the two tables the
+    dispatch path itself reads, so the record is held to the release and not to a list
+    typed beside it."""
+    from meep_gpu import fastpath, fastpath_cuda  # noqa: PLC0415
+    if table == "cuda":
+        return (fastpath_cuda.CUDA_RELEASED_FUSED_ARMS,
+                fastpath_cuda.CUDA_FUSED_ARM_CONSTITUENTS)
+    return fastpath.RELEASED_FUSED_ARMS, fastpath.FUSED_ARM_CONSTITUENTS
+
+
+def _key_rows(record):
+    return [row for entry in record["keys"].values() for row in entry["measurements"]]
+
+
+#: The cutter's refusals (``cut.admission_refusal``) that say no timing of this table
+#: was made at all -- the bench row is not a timing, is another table's row, or is a
+#: host smoke row -- as against a device timing that failed a floor or cannot be priced
+#: alone. An excluded row of the first kind accounts for a case without measuring it.
+_NOT_A_TIMING = ("verdict ", "a row of the ", "a host smoke row")
+
+
+def test_the_reasons_read_as_no_timing_are_the_ones_the_cutter_writes():
+    """The release check below reads three of the cutter's refusals as "nothing was
+    timed". Pinned against the cutter itself, so a reworded refusal cannot quietly turn
+    that check into one that counts an untimed case as timed."""
+    row = bench_row()
+    assert cut.admission_refusal(row, "triton", False) is None
+    for spoiled, table in ((row, "cuda"),
+                           (dict(row, verdict="SKIP-NOT-THIS-LEG"), "triton"),
+                           (dict(row, prefer_gpu=False), "triton")):
+        assert cut.admission_refusal(spoiled, table, False).startswith(_NOT_A_TIMING)
+    failed = dict(row, floors=dict(row["floors"], spread_within_gate=False))
+    assert not cut.admission_refusal(failed, "triton", False).startswith(_NOT_A_TIMING)
+
+
 @pytest.mark.parametrize("table", ["triton", "cuda"])
 def test_the_shipped_record_names_what_it_was_cut_from(table):
-    record = dp.load_record(shipped(table), expect_table=table)
-    assert record["cut"]["table"] == table
-    assert record["cut"]["by"] == "parity/meep_gpu/cut_timing_record.py"
+    """Cut by the cutter, from the evidence tree, for THIS table on THIS architecture.
+
+    The consult refuses a record of another table and answers ``no_record`` for another
+    capability; a record shipped under this table's file name that prices another table
+    or another card would be a file the package reads and never applies. The rows ran
+    on one device, the cutter's own rule (``one_program``): ``host`` may list that
+    device more than once, under different library versions.
+    """
+    path = shipped(table)
+    record = dp.load_record(path, expect_table=table)
+    assert record["cut"]["table"] == record["table"] == table, record["cut"]
+    assert record["cut"]["by"] == cut.CUT_BY, record["cut"]
     assert all(root.startswith("results/") for root in record["inputs"]["roots"])
-    assert all(row["artifact"].startswith("results/")
-               for entry in record["keys"].values() for row in entry["measurements"])
-    assert record["rows"]["admitted"] >= 20
-    measured = [e for e in record["keys"].values() if e["status"] == "measured"]
-    assert len(measured) >= 4
+    assert all(row["artifact"].startswith("results/") for row in _key_rows(record))
+    capability, = dp.record_capabilities(record)   # the reader admits exactly one
+    assert dp.record_path(table, capability,
+                          root=os.path.join(REPO_API, "meep_gpu")) == path, (
+        f"{path} is named for {SHIPPED_CAPABILITY} and its rows ran on {capability}")
+    devices = {str(host.get("device")) for host in record["host"]}
+    assert len(devices) == 1, record["host"]
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_the_shipped_record_accounts_for_every_row_it_read(table):
+    """Every row read is a duplicate, a baseline leg, admitted, or excluded with a reason.
+
+    A row the record read and accounts for nowhere is evidence that vanished without a
+    reason: it cannot be told apart from a row the cutter lost. Each admitted row is
+    priced by exactly one key or prices nothing because its plan held several products
+    (``attribution``); a priced row carries its unpriced partners under ``co_fused``.
+    """
+    record = dp.load_record(shipped(table), expect_table=table)
+    rows = record["rows"]
+    files = {item["path"]: item["rows"] for item in record["inputs"]["files"]}
+    assert sum(files.values()) == rows["read"], (files, rows)
+    assert rows["read"] == (rows["duplicates"] + rows["baseline_legs"] + rows["admitted"]
+                            + rows["excluded"]), rows
+    assert len(record["excluded"]) == rows["excluded"], (len(record["excluded"]), rows)
+    for item in record["excluded"]:
+        assert isinstance(item.get("reason"), str) and item["reason"], item
+        assert item["artifact"] in files, item
+    priced = [(row["artifact"], row["line"]) for row in _key_rows(record)]
+    assert all(artifact in files for artifact, _line in priced)
+    assert len(priced) == len(set(priced)), "an admitted row priced two keys"
+    left_out = {(item["artifact"], item["line"]) for item in record["excluded"]}
+    assert not set(priced) & left_out, "a row is both priced and excluded"
+    for key, entry in record["keys"].items():
+        assert entry["rows"] == len(entry["measurements"]), key
+    unpriced = rows["admitted"] - len(priced)
+    partners = sum(len(row["co_fused"]) for row in _key_rows(record))
+    assert unpriced >= 0, (rows, len(priced))
+    not_attributed = record["attribution"]["not_attributed"]
+    if unpriced == 0:
+        assert not_attributed == partners, (not_attributed, partners)
+    else:   # a plan that priced nothing held two products or more
+        assert not_attributed - partners >= 2 * unpriced, (not_attributed, partners)
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_every_shipped_key_answers_the_consult_as_its_numbers_say(table):
+    """The record exists to be consulted, so every key is asked, at both band edges, on
+    the program the record names.
+
+    A measured key answers ``vetoed`` exactly when its rows say slower beyond spread and
+    ``not_vetoed`` otherwise; an unmeasured key answers ``no_record`` and says why. A
+    measured band's edges are corroborated sizes -- at least
+    ``cut.MIN_ROWS_PER_KEY`` rows each, whatever ``min_rows`` the record was cut with,
+    because a single session sets no band boundary -- each size inside it carries the
+    band's verdict (a band neither vetoes over a size that cleared nor clears over a
+    size whose every row was slower), and a class's bands tile its measured sizes end
+    to end. A record whose every answer is ``no_record`` behaves exactly like no file
+    at all, so at least one answer is a verdict.
+
+    ON THE PROGRAM THE RECORD NAMES, NOT ON THE TREE. The consult is handed the
+    record's own repair route and emitter digests, so this asks whether the record can
+    answer, not whether this tree still runs what it timed. When ``deposit_repair.py``
+    or a fused-pair emitter has moved since the cut, every consult on the tree answers
+    ``no_record`` (another repair route, another emitter) and the record vetoes nothing
+    there; that comparison is not made here, and belongs with the round that wires the
+    consult into dispatch (the module is unwired, and the gap between a change and the
+    re-cut after it is the state its docstring expects).
+    """
+    record = dp.load_record(shipped(table), expect_table=table)
+    min_rows = record["rules"]["min_rows_per_key"]
+    assert min_rows >= cut.MIN_ROWS_PER_KEY, (
+        f"the record was cut with min_rows {min_rows}: a band edge resting on fewer "
+        f"than {cut.MIN_ROWS_PER_KEY} rows is one session's noise, and the band's "
+        f"interior is interpolated from it")
+    capability, = dp.record_capabilities(record)
+    verdicts = 0
+    classes = {}
+    for key, entry in sorted(record["keys"].items()):
+        band = entry["band"]
+        classes.setdefault(key.rsplit("|", 1)[0], []).append(
+            (band["lo_cells"], band["hi_cells"], key))
+        sizes = {}
+        for row in entry["measurements"]:
+            assert band["lo_cells"] <= row["cells"] <= band["hi_cells"], (key, row["case"])
+            sizes.setdefault(row["cells"], []).append(row)
+        if entry["status"] == "measured":
+            for edge in (band["lo_cells"], band["hi_cells"]):
+                assert len(sizes.get(edge, ())) >= min_rows, (
+                    f"{key}: band edge {edge:,} carries {len(sizes.get(edge, ()))} "
+                    f"row(s), fewer than {min_rows}")
+            for size, held in sizes.items():
+                assert (dp.least_margin(held) > 0.0) is entry["slower_beyond_spread"], (
+                    f"{key}: the rows at {size:,} cells do not carry the band's verdict "
+                    f"(slower_beyond_spread {entry['slower_beyond_spread']})")
+        want = ("no_record" if entry["status"] != "measured"
+                else "vetoed" if entry["slower_beyond_spread"] else "not_vetoed")
+        for cells in (band["lo_cells"], band["hi_cells"]):
+            # the record's own route and emitters: see "on the program the record names"
+            verdict = dp.consult(
+                record, table=table, capability=capability, candidate=entry["product"],
+                displaces=entry["displaces"],
+                run_shape={"dimensions": entry["dimensions"], "grid_shape": [cells, 1, 1],
+                           "complex_storage": entry["storage"] == "complex",
+                           "susceptibilities": entry["susceptibilities"]},
+                bracketed=entry["bracketed"], mode="measured",
+                repair_route=record["route"], subject_sha256=dp.compared_emitters(record),
+                validated=True)
+            assert (verdict.outcome, verdict.key) == (want, key), verdict.as_dict()
+            if want == "no_record":
+                assert verdict.reason == "key_unmeasured", verdict.as_dict()
+            else:
+                verdicts += 1
+    for spelled, bands in classes.items():
+        bands.sort()
+        for (_lo, hi, first), (lo, _hi, second) in zip(bands, bands[1:]):
+            assert lo == hi + 1, f"{first} and {second} leave {hi + 1}..{lo - 1} unsaid"
+        # and nothing is extrapolated: the class reaches exactly its measured sizes
+        measured = {row["cells"] for _lo, _hi, key in bands
+                    for row in record["keys"][key]["measurements"]}
+        assert {bands[0][0], bands[-1][1]} <= measured, (
+            f"{spelled} reaches {bands[0][0]:,}..{bands[-1][1]:,} and its rows measured "
+            f"{sorted(measured)}")
+    assert verdicts > 0, "no key answers a consult with a verdict: the record vetoes " \
+                         "nothing and clears nothing"
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_every_product_the_table_releases_is_accounted_for_in_its_record(table):
+    """Every product the table may dispatch was timed on this table, and is priced or
+    left unpriced for a stated reason.
+
+    The record exists to veto a released product that is slower than the singles it
+    displaces, and it can veto only what was timed. The release decision iterates the
+    keys of ``RELEASED_FUSED_ARMS`` / ``CUDA_RELEASED_FUSED_ARMS``; their case lists name
+    the route cases that drove each product, and the bench drives those cases. So every
+    released case is in the record, and holds a DEVICE TIMING of this table: a priced
+    row, or a row excluded after it was timed (a floor failed, two tables served the
+    plan) -- not only rows that say nothing was timed (``_NOT_A_TIMING``), which is what
+    a record cut from part of a campaign's trees holds for the cases another tree ran.
+    Every released product is a key, or the unpriced partner of a priced product on an
+    admitted row (``co_fused``), or a product whose every case was timed and excluded
+    by name. In the other direction every key prices a released product of this table
+    over arms that product may substitute: a key whose labels the dispatch path no
+    longer spells can never be asked for.
+    """
+    record = dp.load_record(shipped(table), expect_table=table)
+    released, constituents = _released(table)
+    priced = {row["case"] for row in _key_rows(record)}
+    left_out = {item["case"] for item in record["excluded"]}
+    unrecorded = sorted({(arm, case) for arm, cases in released.items() for case in cases
+                         if case not in priced | left_out})
+    assert unrecorded == [], f"released and absent from the record: {unrecorded}"
+    timed_out = {item["case"] for item in record["excluded"]
+                 if not item["reason"].startswith(_NOT_A_TIMING)}
+    untimed = sorted({(arm, case) for arm, cases in released.items() for case in cases
+                      if case not in priced | timed_out})
+    assert untimed == [], (f"released, and the record holds no timing of this table for "
+                           f"them, only rows that say none was made: {untimed}")
+    keyed = {entry["product"] for entry in record["keys"].values()}
+    partnered = {partner["product"] for row in _key_rows(record)
+                 for partner in row["co_fused"]}
+    silent = sorted(arm for arm, cases in released.items()
+                    if arm not in keyed and arm not in partnered
+                    and not set(cases) <= timed_out)
+    assert silent == [], silent
+    for key, entry in record["keys"].items():
+        assert entry["product"] in released, (key, "not released on this table")
+        assert set(entry["displaces"]) <= set(constituents[entry["product"]]), key
 
 
 @pytest.mark.requires_resource("fused-timing-rows")

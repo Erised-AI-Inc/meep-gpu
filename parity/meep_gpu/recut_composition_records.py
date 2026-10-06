@@ -327,14 +327,17 @@ BUDGET_NOT_STATED = (
 
 #: The same, for the policy, and for the same reason.
 #:
-#: ``seed_triton_welds.policy_line`` is the shared spelling and is asked FIRST; it
-#: answers for seven of the nine families, and returns ``None`` for
-#: cylindrical_complex and no_pml_constitutive, whose artifacts stamp
-#: ``subnormal_policy: null`` (measured on the 09-23 fleet). The campaign row records
+#: ``seed_triton_welds.policy_line`` is the shared spelling and is asked FIRST. On the
+#: 09-23 fleet it answered for seven of the nine families and returned ``None`` for
+#: cylindrical_complex and no_pml_constitutive, whose artifacts stamped
+#: ``subnormal_policy: null``; their 2026-10-03 artifacts stamp the policy under
+#: ``summary.subnormal_policy`` and ``policy``, which it now reads, so this string is
+#: for an artifact that states no attained policy anywhere. The campaign row records
 #: what the driver REQUESTED, which is not what the gate attained, so it is not
 #: substituted here: a record claiming a policy no stamp attests is the forgery this
-#: tool exists to avoid. Refusing instead would make those two families unbindable in
-#: every round -- the same dead end as the step budget.
+#: tool exists to avoid. Refusing instead would make such a family unbindable in
+#: every round -- the same dead end as the step budget. Spellings that DISAGREE are
+#: different: they raise ``PolicyStampConflict`` and the re-cut refuses that family.
 POLICY_NOT_STATED = (
     "not stated by this gate's artifact: it writes no resolved subnormal_policy "
     "stamp, so this family's record makes no claim about the policy it ran under. "
@@ -1250,7 +1253,7 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
     a narrower map would shrink a 22-arm weld's coverage without any digest moving.
     """
     fastpath = _fastpath()
-    from seed_triton_welds import policy_line  # noqa: PLC0415
+    from seed_triton_welds import PolicyStampConflict, policy_line  # noqa: PLC0415
 
     key = fastpath.FAMILY_RECERT_GATE
     roots: List[Tuple[str, Path]] = []
@@ -1397,7 +1400,14 @@ def family_recert(root_rels: List[str], why: str, supersede: Sequence[str],
         hosts[family] = host
 
         budget, budget_from = _step_budget(payload)
-        policy = policy_line(payload)
+        # A CONTRADICTION IS NOT AN ABSENCE. ``None`` means the artifact states no
+        # attained policy and is recorded as POLICY_NOT_STATED; spellings that disagree
+        # are a defect in the run's own record and stop the re-cut by name.
+        try:
+            policy = policy_line(payload)
+        except PolicyStampConflict as exc:
+            problems.append(f"{family}: policy refused: {exc}")
+            continue
         record = {
             "artifact_sha256": digest,
             "certified_under_subnormal_policy": policy or POLICY_NOT_STATED,

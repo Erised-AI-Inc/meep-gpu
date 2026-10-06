@@ -58,10 +58,18 @@ MEEP, and compares them. It must end with
 `OK: MEEP and meep-gpu work together on this host's GPU.` (on Route 3,
 `OK: MEEP and meep-gpu work together on the NumPy reference.` followed by a
 sentence). A line starting `FAILED:` gives one reason and names the section of
-INSTALL.md to read.
+INSTALL.md to read. On a Mac outside the certified environment the Metal
+kernels run uncertified and the check still ends `OK:`: its GPU line reads
+`supported (every Apple GPU is); NOT certified: the records name another` on
+another Apple GPU, and a `NOTE:` says the Mac's environment is supported but
+not the certified one.
 [The installation check](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#the-installation-check)
-says how to read the rest of its output. Then run the
-[first lifted simulation](first-lift.md).
+says how to read the rest of its output. Its last step compares MEEP and the
+environment with the certification reference of its platform, package by package; that
+is informational, since an environment made from these files is not the reference, and
+fails the check only with `--require-reference`
+([The certification reference environment](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#the-certification-reference-environment)).
+Then run the [first lifted simulation](first-lift.md).
 
 ## Facts that decide which route fits
 
@@ -83,9 +91,16 @@ says how to read the rest of its output. Then run the
   `OMP: Error #15`. The Route 2 environment avoids it. Do not set
   `KMP_DUPLICATE_LIB_OK`
   ([One OpenMP runtime on an Apple silicon Mac](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#one-openmp-runtime-on-an-apple-silicon-mac)).
-- **Certified identities.** Compiled kernels run on NVIDIA compute capability
-  8.6 (Triton 3.1.0, or the hand-written CUDA table) and on Apple PyTorch 2.10.0
-  with Metal frontend 32023.850.10. Anything else runs the array path
+- **Supported and certified hardware.** The NVIDIA kernels are certified on
+  compute capability 8.6 (Triton 3.1.0, or the hand-written CUDA table), and
+  supported on compute capability 7.0 to 9.0 (Triton 3.1): on a supported device
+  or toolchain that is not certified they run by default, uncertified, and say
+  so; outside that range the run takes the array path. The Metal kernels are supported on every Apple GPU, M1
+  through M5 and later, and run on each by default. They are certified on one
+  environment: GPU architecture `applegpu_g13s` (Apple M1 Max), PyTorch 2.10.0,
+  Metal frontend `metalfe-32023.850.10`, fast math off. Any other Apple GPU,
+  PyTorch version or macOS build runs them uncertified and says so.
+  `MEEP_GPU_ALLOW_UNCERTIFIED=0` restricts every table to its certified identities
   ([GPUs that are not on the certified list](https://github.com/Erised-AI-Inc/meep-gpu/blob/main/INSTALL.md#gpus-that-are-not-on-the-certified-list)).
 - **The harness is not needed.** Using the package needs nothing under
   `parity/`: that directory is the certification and benchmark harness, and it is
@@ -117,10 +132,12 @@ back, and a bare <code>lift_simulation(sim)</code> or
 question specifically.
 
 **It is a hardware probe, not a certification.** It says nothing about whether
-dispatch will run or which kernels would serve: a Torch or Metal frontend outside
-the certified pair resolves <code>"metal"</code> here and is then refused by
-name at the first step, leaving the run on the host CPU. For that, run a step
-and read what ran — see [Reading what ran](reading-what-ran.md).
+dispatch will run, which kernels would serve, or whether they are certified: a
+Mac outside the certified environment resolves <code>"metal"</code> here as the
+certified one does, and its kernels then run uncertified or, under
+<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, are refused by name at the first
+step, leaving the run on the host CPU. For that, run a step and read what ran —
+see [Reading what ran](reading-what-ran.md).
 
 ## Build this manual
 

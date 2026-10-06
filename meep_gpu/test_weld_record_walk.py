@@ -441,3 +441,64 @@ def test_the_unbound_placeholder_is_reported_as_itself(tmp_path):
 
     plain = walk.compare(found, resolve, raw, lambda _: None, lambda _: None)
     assert len(plain) == 1 and plain[0][2].startswith("recorded 000000000000 live ")
+
+
+# ---------------------------------------------------------------------------
+# THE ROUTE RECORD
+# ---------------------------------------------------------------------------
+#
+# Synthetic records, with liveness passed in as the contracts pass
+# ``fastpath.live_capabilities``: these legs pin the rule, the contracts pin the
+# ledgers.
+
+
+def _route_record(**runs):
+    return {"source_sha256": {"meep_gpu/fastpath.py": A}, walk.RUNS: dict(runs)}
+
+
+def test_a_route_record_with_no_live_run_fails_whatever_its_runs_say():
+    """An empty ``runs``, a missing one and one whose every run is stale all fail (a)."""
+    for record in (_route_record(), {"source_sha256": {}},
+                   _route_record(**{"8.6": {"status": "PASS", "bound_sha256": B}})):
+        problems = walk.route_run_problems(record, live=())
+        assert len(problems) == 1 and "no live run" in problems[0], problems
+        assert walk.route_record_problems(record, live=(), moved=(),
+                                          stranded=()) == problems
+
+
+def test_a_live_route_run_that_did_not_pass_fails_and_a_stale_one_is_not_read():
+    record = _route_record(**{"8.6": {"status": "FAIL", "bound_sha256": B},
+                              "9.0": {"status": "PASS", "bound_sha256": C}})
+    problems = walk.route_run_problems(record, live=("8.6",))
+    assert problems == ["runs['8.6'] reads status 'FAIL', not PASS: a route run that "
+                        "did not release licenses nothing"], problems
+    # The FAIL run is history once it is not live, and a live PASS run carries the record.
+    assert walk.route_run_problems(record, live=("9.0",)) == []
+    # A live run with no status at all is not a PASS.
+    unstated = _route_record(**{"8.6": {"bound_sha256": B}})
+    assert "reads status None" in walk.route_run_problems(unstated, live=("8.6",))[0]
+
+
+def test_the_route_record_rule_adds_the_tree_and_the_shape_in_order():
+    record = _route_record(**{"8.6": {"status": "PASS", "bound_sha256": B}})
+    assert walk.route_record_problems(record, live=("8.6",), moved=(), stranded=()) == []
+    moved = walk.route_record_problems(record, live=("8.6",),
+                                       moved=["meep_gpu/fastpath.py"], stranded=())
+    assert moved == ["1 pinned file(s) moved since the record was cut: "
+                     "['meep_gpu/fastpath.py']"], moved
+    stranded = "run fields beside the digests: ['status']"
+    everything = walk.route_record_problems(dict(record, runs={}), live=(),
+                                            moved=["meep_gpu/fastpath.py"],
+                                            stranded=[stranded])
+    assert [problem.split(" ")[0] for problem in everything] == ["no", "1", "run"]
+    assert everything[-1] == stranded
+
+
+def test_the_tree_and_the_shape_clauses_cannot_be_left_out():
+    """A default of nothing would let a contract skip (c) or (d) and still read as
+    having checked them."""
+    import inspect
+
+    parameters = inspect.signature(walk.route_record_problems).parameters
+    assert all(parameters[name].default is inspect.Parameter.empty
+               for name in ("record", "live", "moved", "stranded"))

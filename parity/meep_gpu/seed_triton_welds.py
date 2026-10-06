@@ -80,6 +80,7 @@ for _path in (str(_API), str(_HERE)):
 
 import rebind_triton_welds  # noqa: E402
 from meep_gpu import fastpath                            # noqa: E402
+from meep_gpu import subnormal_policy as _subnormal_policy  # noqa: E402
 from meep_gpu.code_identity import code_digest_of_path  # noqa: E402
 
 LEDGER = _API / "meep_gpu" / "triton_kernels" / "fingerprints.json"
@@ -145,7 +146,129 @@ def curated_for(directory: str, imported: dict, fresh: dict | None = None) -> li
     return sorted(set(keys))
 
 
-def policy_line(fresh: dict) -> str | None:
+#: WHERE A GATE ARTIFACT STATES THE POLICY ITS OWN PROCESS INSTALLED, in the order
+#: the line is read from. Enumerated over every ``gate.json`` of the 2026-10-03 Triton
+#: round (three fleet roots, the stencil welds, the unified flush run, the composition
+#: and bit-identity runs): the gates do not share one spelling, and until this table
+#: the reader knew only the first row, so nine released runs -- seven of them cited by
+#: dispatch arms -- could not be bound. Each row is a STAMP BLOCK, the dict
+#: ``subnormal_policy.policy_stamp()`` or the install report returns; a dict counts as
+#: a stamp only where it carries ``resolved`` or ``requested``, which is how ``policy``
+#: is told apart: it is the stamp in ``no_pml_constitutive`` and a launch-configuration
+#: dict (block size, warps, the REQUESTED policy) in the fused-pair probes.
+#:
+#: A STAMP ANSWERS ONLY WITH ``resolved``, AND ONLY WHEN IT WAS INSTALLED.
+#: ``policy_stamp()`` fills ``resolved`` before anything is installed -- it is then a
+#: preference, and the stamp says so with ``installed: False`` and ``policy:
+#: "none_installed"`` -- and ``requested`` is the question, never the answer. Such a
+#: stamp, and one whose ``resolved`` names something other than ``keep`` or ``flush``,
+#: DENIES that a policy was attained: it is a statement (so it blocks the
+#: ``_mixed_policy`` exception), it never answers, and any other location that does
+#: answer beside it is a contradiction. A string at a stamp path is a stamp NAME
+#: (``subnormal_policy: "keep"``): compared through :data:`STAMP_NAME_POLICY`, never an
+#: answer.
+#:
+#: The top-level ``subnormal_policy`` row comes first and keeps the line it always
+#: produced, so every record this reader could already write is written byte for byte
+#: as before. A line read from any other row says where it was read from.
+POLICY_STAMP_BLOCKS = (
+    ("subnormal_policy",),
+    ("subnormal_policy_stamp",),            # complex_ade, complex_no_pml_stored_e
+    ("summary", "subnormal_policy"),        # cylindrical_complex
+    ("policy",),                            # no_pml_constitutive
+    ("policy_stamp",),                      # the complex conductive / cylindrical probes
+    ("environment", "subnormal_policy_stamp"),
+    ("subnormal_policy", "stamp"),
+    ("subnormal_policy_at_start",),         # folded_offdiag, taken before the first leg
+    ("subnormal", "subnormal_policy"),      # nonlinear, offdiag: the leg's own re-stamp
+    ("synthetic", "subnormal", "subnormal_policy"),  # bfast
+    ("subnormal_policy_install",),          # the bit-identity probe's install report
+)
+
+#: A bare string naming the policy the gate INSTALLED: the four no-PML gates write
+#: ``subnormal_policy_installed = "keep"`` on the line after a strict
+#: ``install_subnormal_policy("keep")`` returned, and record no stamp block at all.
+POLICY_INSTALLED_NAMES = (("subnormal_policy_installed",),)
+
+#: REQUESTS, read only to cross-check. ``policy.subnormal_policy`` is the probe's
+#: ``--subnormal-policy`` argument and ``subnormal_policy_requested`` the stencil
+#: gate's; a request is not an attainment, so neither ever answers. An explicit
+#: ``keep`` or ``flush`` resolves to itself (``subnormal_policy.policy_resolution``),
+#: so one that differs from the attained policy is a contradiction; ``match_meep`` is
+#: a question the resolution answers and is compared with nothing.
+POLICY_REQUESTS = (("policy", "subnormal_policy"), ("subnormal_policy_requested",))
+
+#: STAMP NAMES, read only to cross-check, through :data:`STAMP_NAME_POLICY`. The
+#: gates spell the mechanism (``ieee_keep_ftz_stripped``) where the record wants the
+#: policy (``keep``), and one block spells ``policy: keep`` above a stamp spelling
+#: ``ieee_keep_ftz_stripped`` -- the same claim in two vocabularies, so names are
+#: compared by the policy they mean and never as strings. A name outside the table
+#: says nothing comparable and is not compared. ``verdict.subnormal_policy`` is the
+#: bit-identity gate's verdict line and ``subnormal.policy`` the folded off-diagonal
+#: leg's own name for what it ran under.
+POLICY_STAMP_NAMES = (("summary", "certified_under_subnormal_policy"),
+                      ("verdict", "subnormal_policy"),
+                      ("subnormal", "policy"))
+STAMP_NAME_POLICY = {
+    _subnormal_policy.CUPY_KEEP_POLICY_NAME: _subnormal_policy.KEEP,
+    _subnormal_policy.FLUSH_POLICY_NAME: _subnormal_policy.FLUSH,
+    _subnormal_policy.KEEP: _subnormal_policy.KEEP,
+    _subnormal_policy.FLUSH: _subnormal_policy.FLUSH,
+}
+
+#: NOT READ, and why. ``policy_stamps`` holds BOTH policies of a probe that cuts each
+#: in one run (its keep install is copied into the top-level block, which is read);
+#: ``environment.subnormal_policy_stamps`` is the same two-policy record kept inside
+#: the environment block. ``expansion``, ``expansion_probe``, ``expansion_license``,
+#: ``unified_licenses`` and ``no_device_legs`` describe the expansion-probe artifact
+#: the gate LOADED from disk to license an arm: their stamps are another run's policy,
+#: not this one's. ``policies`` and ``rows[].policy`` are not read for the same reason
+#: as ``policy_stamps``: in the one gate that writes them (cylindrical_fused_magnetic_pair,
+#: a probe that cuts both policies in one run) they list each leg's policy, ``keep``
+#: and ``flush`` side by side by design, and the run's own install is the top-level
+#: block.
+POLICY_NOT_READ = ("policy_stamps", "environment.subnormal_policy_stamps", "policies",
+                   "rows[].policy", "expansion", "expansion_probe", "expansion_license",
+                   "unified_licenses", "no_device_legs")
+
+#: THE DECLARED EXCEPTION. Three entries carry ``_mixed_policy``: their gate never
+#: installs a policy, so the CuPy oracle flushed while Triton kept, and their records
+#: say so in exactly this string. ``test_triton_weld_contract.POLICY_UNNAMED_BUDGET``
+#: admits it per weld, on every architecture, until the gate installs a policy.
+MIXED_POLICY_FIELD = "_mixed_policy"
+MIXED_POLICY_LINE = "NOT INSTALLED - see _mixed_policy"
+
+
+class PolicyStampConflict(ValueError):
+    """The artifact's own statements of its policy contradict each other, or contradict
+    the entry it would be bound into. Refused by name: a record that picked one of two
+    answers would describe a run the artifact does not."""
+
+
+def _at(node, path):
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node
+
+
+def _where(path) -> str:
+    return ".".join(path)
+
+
+def _policy(value) -> str | None:
+    """``value`` when it is literally ``keep`` or ``flush``, else ``None`` (a dict or a
+    list in a policy slot is not a name, and must not reach a set lookup)."""
+    return value if isinstance(value, str) and value in _subnormal_policy.POLICIES else None
+
+
+def _meant(value) -> str | None:
+    """The policy a stamp NAME means (:data:`STAMP_NAME_POLICY`), or ``None``."""
+    return STAMP_NAME_POLICY.get(value) if isinstance(value, str) else None
+
+
+def policy_line(fresh: dict, entry: dict | None = None) -> str | None:
     """The policy this run was cut under, NAMED, in the shape the contract reads.
 
     ``test_every_triton_weld_names_the_policy_it_was_cut_under`` requires the string
@@ -153,31 +276,159 @@ def policy_line(fresh: dict) -> str | None:
     whole ``subnormal_policy`` object satisfied nothing: the resolved name is one key
     inside it. Reading `resolved` and reporting the stamp beside it is what the
     accepted entries do, so a seeded weld is indistinguishable from a rebound one.
+
+    EVERY SPELLING IS READ AND THEY MUST AGREE. The attained policy is read from each
+    stamp block (:data:`POLICY_STAMP_BLOCKS`) and installed-name string
+    (:data:`POLICY_INSTALLED_NAMES`) the artifact carries; requests and stamp names
+    are read beside them as cross-checks. Two statements naming different policies
+    raise :class:`PolicyStampConflict` naming both, rather than letting table order
+    pick one.
+
+    ONLY AN INSTALLED ``resolved`` ANSWERS. A stamp answers with its ``resolved`` key
+    alone; ``requested`` is a cross-check. A stamp taken before any install
+    (``installed: False`` or ``policy: "none_installed"``) or whose ``resolved`` names
+    neither policy is a DENIAL: it counts as stated, never answers, and an answer
+    found anywhere else beside it is refused as a contradiction.
+
+    Returns ``None`` when the artifact states no attained ``keep`` or ``flush`` at all,
+    unless ``entry`` declares :data:`MIXED_POLICY_FIELD` and the artifact states
+    nothing about a policy anywhere this reader looks: that is the declared exception,
+    and the line is :data:`MIXED_POLICY_LINE`, exactly as the existing records spell
+    it. A location whose value is ``null`` counts as absent (the 2026-09-23 fleet
+    wrote ``subnormal_policy: null`` for gates that stamped nothing), so it neither
+    answers nor blocks the exception. An entry that declares the exception for a run
+    that DID state a policy is
+    refused: the binder may not edit the declaration, and a record naming ``keep``
+    beside an entry that says it may not claim ``keep`` contradicts itself.
     """
-    block = fresh.get("subnormal_policy")
-    if not isinstance(block, dict):
-        # A WELD MUST NAME THE POLICY IT WAS CUT UNDER, and "?" is not a name: the
-        # contract test greps this line for `keep` or `flush`, and a placeholder
-        # would clear the presence check while failing the naming one -- a red the
-        # seeding round could not explain. Refuse instead, by returning None.
-        return None
-    resolved = block.get("resolved") or block.get("requested")
-    if not resolved:
-        return None
-    stamp = block.get("policy") or "?"
-    # ABSENT AND EMPTY ARE DIFFERENT MEASUREMENTS. The keep policy is attainable only
-    # with an `ftz_stripped` CuPy cache, so "carries no ftz token" is a claim about
-    # the run; an artifact whose stamp recorded no cache directory at all supports
-    # neither that claim nor its opposite, and says so.
-    if "cache_dir" not in block:
-        token = "the run recorded no CuPy cache directory"
-    else:
-        cache = str(block.get("cache_dir") or "")
-        token = ("the CuPy cache directory carries ftz_stripped" if "ftz_stripped"
-                 in cache else "the CuPy cache directory carries no ftz token")
-    return (f"{resolved} (installed by the gate before its first device compile: "
-            f"requested={block.get('requested', '?')} resolved={resolved}; stamp "
-            f"{stamp}; {token})")
+    policies = set(_subnormal_policy.POLICIES)
+    attained: list[tuple[str, str]] = []       # (where, keep|flush): answers
+    checks: list[tuple[str, str]] = []         # (where, keep|flush): cross-checks
+    denials: list[str] = []                    # stamps saying no policy was attained
+    stated: list[str] = []                     # every enumerated location present
+    primary = None                             # (path, block, resolved)
+
+    for path in POLICY_STAMP_BLOCKS:
+        block = _at(fresh, path)
+        if block is None:
+            continue
+        if isinstance(block, str):
+            # A stamp NAME where a stamp block is usually written: a statement, and
+            # compared by what it means, but never an answer.
+            stated.append(_where(path))
+            meant = _meant(block)
+            if meant is not None:
+                checks.append((_where(path), meant))
+            continue
+        if not isinstance(block, dict) or not ("resolved" in block
+                                               or "requested" in block):
+            # ``policy`` as a launch-configuration dict, or a block that names no
+            # resolution: present, but not a stamp.
+            if path != ("policy",):
+                stated.append(_where(path))
+            continue
+        stated.append(_where(path))
+        resolved = block.get("resolved")
+        uninstalled = (block.get("installed") is False
+                       or block.get("policy") == _subnormal_policy.UNINSTALLED_POLICY_NAME)
+        if uninstalled or (resolved is not None and _policy(resolved) is None):
+            denials.append(
+                f"{_where(path)} (installed={block.get('installed', '?')!r}, "
+                f"policy={block.get('policy', '?')!r}, resolved={resolved!r})")
+            continue
+        requested = _policy(block.get("requested"))
+        if requested is not None:
+            checks.append((f"{_where(path)}.requested", requested))
+        if resolved is None:
+            # A request with no answer: compared, never read as the attained policy.
+            continue
+        attained.append((_where(path), resolved))
+        meant = _meant(block.get("policy"))
+        if meant is not None:
+            checks.append((f"{_where(path)}.policy", meant))
+        if primary is None:
+            primary = (path, block, resolved)
+
+    for path in POLICY_INSTALLED_NAMES:
+        name = _at(fresh, path)
+        if name is None:
+            continue
+        stated.append(_where(path))
+        if _policy(name) is None:
+            raise PolicyStampConflict(
+                f"{_where(path)}={name!r} names no attained policy (one of "
+                f"{sorted(policies)}), so the artifact's statement of what it "
+                f"installed cannot be read")
+        attained.append((_where(path), name))
+
+    for path in POLICY_REQUESTS:
+        name = _at(fresh, path)
+        if name is None:
+            continue
+        stated.append(_where(path))
+        if _policy(name) is not None:
+            checks.append((_where(path), name))
+
+    for path in POLICY_STAMP_NAMES:
+        name = _at(fresh, path)
+        if name is None:
+            continue
+        stated.append(_where(path))
+        meant = _meant(name)
+        if meant is not None:
+            checks.append((_where(path), meant))
+
+    named = {policy for _where_, policy in attained + checks}
+    if len(named) > 1:
+        raise PolicyStampConflict(
+            "the artifact's policy spellings disagree: "
+            + ", ".join(f"{where}={policy}" for where, policy in attained + checks))
+    if denials and attained:
+        raise PolicyStampConflict(
+            f"the artifact both denies and states an attained policy: "
+            f"{', '.join(denials)} says none was installed, while "
+            + ", ".join(f"{where}={policy}" for where, policy in attained)
+            + " answers; a record cannot pick one of the two")
+
+    declared = (entry or {}).get(MIXED_POLICY_FIELD)
+    if isinstance(declared, str) and declared.strip():
+        if stated:
+            raise PolicyStampConflict(
+                f"the entry declares {MIXED_POLICY_FIELD} (its gate installs no "
+                f"policy) but this run states one at {stated}; the declaration and "
+                f"the run disagree, and retiring a declaration is a reviewed change "
+                f"to the entry, not something a binder does")
+        return MIXED_POLICY_LINE
+
+    if primary is not None:
+        path, block, resolved = primary
+        stamp = block.get("policy") or "?"
+        # ABSENT AND EMPTY ARE DIFFERENT MEASUREMENTS. The keep policy is attainable
+        # only with an `ftz_stripped` CuPy cache, so "carries no ftz token" is a claim
+        # about the run; an artifact whose stamp recorded no cache directory at all
+        # supports neither that claim nor its opposite, and says so.
+        if "cache_dir" not in block:
+            token = "the run recorded no CuPy cache directory"
+        else:
+            cache = str(block.get("cache_dir") or "")
+            token = ("the CuPy cache directory carries ftz_stripped" if "ftz_stripped"
+                     in cache else "the CuPy cache directory carries no ftz token")
+        where = "" if path == POLICY_STAMP_BLOCKS[0] else f"; read from {_where(path)}"
+        return (f"{resolved} (installed by the gate before its first device compile: "
+                f"requested={block.get('requested', '?')} resolved={resolved}; stamp "
+                f"{stamp}; {token}{where})")
+    if attained:
+        # A WELD MUST NAME THE POLICY IT WAS CUT UNDER, and only an installed name is
+        # left: the gate recorded no stamp, so the mechanism and the cache directory
+        # are unstated and the line says so instead of supplying them.
+        where, resolved = attained[0]
+        return (f"{resolved} (the gate's own {where}={resolved!r}; the run recorded no "
+                f"policy stamp, so neither the mechanism nor a CuPy cache directory is "
+                f"stated)")
+    # "?" is not a name: the contract test greps this line for `keep` or `flush`, and
+    # a placeholder would clear the presence check while failing the naming one -- a
+    # red the seeding round could not explain. Refuse instead, by returning None.
+    return None
 
 
 def main(argv=None) -> int:
@@ -274,8 +525,14 @@ def main(argv=None) -> int:
             refused.append((sub.name, identity))
             continue
         # ONE SPELLING, and it is the rebind tool's. A seeded entry and a rebound one
-        # must be indistinguishable, which two f-strings do not stay.
-        policy = policy_line(fresh)
+        # must be indistinguishable, which two f-strings do not stay. No entry is
+        # passed: a seed runs only where the key does not exist, so no declaration
+        # can apply.
+        try:
+            policy = policy_line(fresh)
+        except PolicyStampConflict as exc:
+            refused.append((sub.name, f"policy refused: {exc}"))
+            continue
         if policy is None:
             refused.append((sub.name, "records no subnormal_policy the weld can name "
                                       "-- a weld that does not say `keep` or `flush` "

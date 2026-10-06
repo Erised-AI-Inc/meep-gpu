@@ -58,8 +58,13 @@ API_ROOT = Path(__file__).resolve().parent.parent
 #: RE-CUT AGAIN 2026-09-25 at `_2026-09-25_night`: the citation re-point moved the cell's import
 #: closure; the `_2026-09-25_night` fleet re-gated it (`metal_fused_hd_pair_nonlinear_2026-09-25_night`, released,
 #: zero drift), the host fingerprints were re-cut, and `_b` is the board cut on that ledger.
+#: RE-CUT AGAIN at `_2026-10-05_092_g13s`: the 0.9.2 round re-gated the three Metal
+#: welds that pin `fastpath.py` on the release bytes, rebound them and re-cut the
+#: Metal dispatch record. This board was cut on that ledger, its gate bindings
+#: repointed to the runs the ledger welds: `_2026-10-04_g13s`, and `_2026-10-05_092_g13s`
+#: for the two re-gated families it binds.
 CELLS_BOARD = (API_ROOT / "parity" / "meep_gpu" / "results"
-               / "fusion_matrix_metal_2026-09-25_night_b" / "fusion_matrix.json")
+               / "fusion_matrix_metal_2026-10-05_092_g13s" / "fusion_matrix.json")
 #: The two slots this seam spans, and the two arm labels a nonlinear run selects on
 #: them -- the cell the board files these two corpus rows under.
 CELL_ARMS: Tuple[str, str] = ("nonlinear PML magnetic", "nonlinear PML curl")
@@ -302,8 +307,15 @@ def test_the_two_pin_registries_agree_on_the_nonlinear_cell():
     ledger = json.loads((API_ROOT / "meep_gpu" / "metal_kernels"
                          / "fingerprints.json").read_text(encoding="utf-8"))
     entry = ledger[bound["fingerprint"]]
-    assert entry["artifact_sha256"] == hashlib.sha256(
-        artifact.read_bytes()).hexdigest(), (key, entry["artifact_sha256"][:12])
+    # THE WELD'S RUNS, one per GPU architecture (``metal_runs``): the cell is bound to
+    # the run of one of them, and a weld with no live run names no run at all.
+    from meep_gpu import metal_runs  # noqa: PLC0415
+
+    welded = {name: run.get("artifact_sha256")
+              for name, run in metal_runs.live_runs(entry).items()}
+    assert welded, f"{bound['fingerprint']} has no live run"
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() in welded.values(), (
+        key, {name: str(value)[:12] for name, value in welded.items()})
 
 
 # ---------------------------------------------------------------------------

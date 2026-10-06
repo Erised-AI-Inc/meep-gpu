@@ -1,0 +1,572 @@
+{
+ "backend": "cupy",
+ "candidates": {
+  "host_flushing": true,
+  "policy": "flush",
+  "requirement": "the candidate arms must be cut under the same subnormal policy as the platform bytes they are scored against",
+  "semantics": "hardware .ftz: subnormal float32 INPUTS flushed to sign-preserving zero (the DAZ half), then the exact result formed in unbounded precision and ROUNDED TO 24 SIGNIFICANT BITS WITH UNBOUNDED EXPONENT, round-to-nearest-even; if THAT value is nonzero and below 2**-126 the result is a sign-preserving zero, otherwise the ordinary float32 rounding is delivered \u2014 IEEE 754-2019 \u00a77.5's AFTER-rounding tininess, and note that the unbounded exponent is load-bearing: this is not a rounding onto the subnormal grid, and it is not a test on the delivered word. The manual and the silicon agree on this rule. Intel SDM Vol. 1 \u00a710.2.3.3 makes FTZ the masked response to the underflow condition and \u00a74.9.1.5 defines that condition on 'the result of rounding with unbounded exponent ... non-zero and tiny'; measured, 37,439 independently constructed vectors on two executors (x86 mulss/vfmadd213ss under MXCSR, and PTX mul.rn.ftz.f32/fma.rn.ftz.f32 on an RTX A6000) agree with each other 37439/37439 and with this rule on all 37439, against 10 disagreements for a test on the exact value and 18 for a test on the delivered word. The PTX ISA is SILENT on what the test is applied to and settles nothing either way"
+ },
+ "detail": {
+  "c8_mul_c8": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 1088,
+   "matches": {
+    "FMA_V1": true,
+    "FMA_V2_diagnostic": false,
+    "NAIVE": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "FMA_V2_diagnostic": 1391,
+    "NAIVE": 1088
+   }
+  },
+  "c8_mul_c8_imaginary_coefficient_left": [
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.08695957809686661j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08695957809686661j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.14634662866592407j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.14634662866592407j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.08592626452445984j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.08592626452445984j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "(-0-0.06283185631036758j)",
+    "coefficient_real_sign": -1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "-0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   },
+   {
+    "classified": "AMBIGUOUS_BOTH",
+    "coefficient": "0.06283185631036758j",
+    "coefficient_real_sign": 1.0,
+    "discriminates": false,
+    "licensable_arms_disagreement_words": 0,
+    "matches": {
+     "FMA_V1": true,
+     "FMA_V2_diagnostic": false,
+     "NAIVE": true
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "FMA_V2_diagnostic": 16,
+     "NAIVE": 0
+    }
+   }
+  ],
+  "c8_mul_c8_parity_coefficient_left": {
+   "classified": "AMBIGUOUS_BOTH",
+   "discriminates": false,
+   "licensable_arms_disagreement_words": 0,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": true,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 0,
+    "PLANEWISE_diagnostic": 128
+   },
+   "operand_shape": "python_int scalar x complex64 array \u2014 stepping.py:1450-1451's own spelling",
+   "spelling_deltas": {
+    "array_left": 0,
+    "numpy_scalar_left": 0,
+    "python_int_scalar_left": 0
+   },
+   "spellings_agree": true,
+   "vectors": 4608
+  },
+  "c8_mul_f4_field_left": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 128,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": false,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 128,
+    "PLANEWISE_diagnostic": 121
+   }
+  },
+  "c8_mul_python_float_field_left": [
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 96,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 96,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.5
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": -0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.1
+   }
+  ],
+  "c8_scalar_broadcast_diagnostic": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 1293,
+   "matches": {
+    "FMA_V1": true,
+    "FMA_V2_diagnostic": false,
+    "NAIVE": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "FMA_V2_diagnostic": 1578,
+    "NAIVE": 1293
+   }
+  },
+  "f4_mul_c8_coefficient_left": {
+   "classified": "FMA_V1",
+   "discriminates": true,
+   "licensable_arms_disagreement_words": 128,
+   "matches": {
+    "FMA_V1": true,
+    "NAIVE": false,
+    "PLANEWISE_diagnostic": false
+   },
+   "mismatch_words": {
+    "FMA_V1": 0,
+    "NAIVE": 128,
+    "PLANEWISE_diagnostic": 121
+   }
+  },
+  "python_float_left": [
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 96,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 96,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.5
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": -0.35
+   },
+   {
+    "classified": "FMA_V1",
+    "discriminates": true,
+    "licensable_arms_disagreement_words": 128,
+    "matches": {
+     "FMA_V1": true,
+     "NAIVE": false,
+     "PLANEWISE_diagnostic": false
+    },
+    "mismatch_words": {
+     "FMA_V1": 0,
+     "NAIVE": 128,
+     "PLANEWISE_diagnostic": 109
+    },
+    "scalar": 0.1
+   }
+  ]
+ },
+ "environment": {
+  "backend": "cupy",
+  "compute_capability": "8.6",
+  "cuda_runtime_version": 11080,
+  "cupy_version": "13.5.1",
+  "device_name": "NVIDIA RTX A6000",
+  "keyed_on": [
+   "backend",
+   "machine",
+   "cupy_version"
+  ],
+  "machine": "x86_64",
+  "numpy_version": "2.2.6",
+  "python_version": "3.10.20"
+ },
+ "patterns": {
+  "c8_mul_c8": "FMA_V1",
+  "c8_mul_c8_imaginary_coefficient_left": "AMBIGUOUS_BOTH",
+  "c8_mul_c8_parity_coefficient_left": "AMBIGUOUS_BOTH",
+  "c8_mul_f4_field_left": "FMA_V1",
+  "c8_mul_python_float_field_left": "FMA_V1",
+  "f4_mul_c8_coefficient_left": "FMA_V1",
+  "python_float_left": "FMA_V1"
+ },
+ "subnormal_policy": {
+  "cache_dir": "<cache-root>/.ue_flush",
+  "cache_preexisting": false,
+  "dependence": "bytes cut under this policy are the configuration a MEEP comparison ON AN X86 HOST is against \u2014 stock MEEP flushes float32 subnormals there (initialize() -> setup() -> set_zero_subnormals(true), src/mympi.cpp:188, compiled under #if HAVE_IMMINTRIN_H). They are NOT comparable in the subnormal range with the same family's ieee_keep_ftz_stripped record; the case counts, step counts, mutation splits and refusal sets are, and that is what a cross-policy comparison checks. THE EXPANSION EVIDENCE THIS POLICY CARRIES, because flush is where it was thinnest: every orientation discriminates here \u2014 measured candidate-against-candidate on this record's own vectors, the two licensable arms are 1088 words apart on c8_mul_c8, 128 apart on c8_mul_f4_field_left and f4_mul_c8_coefficient_left, and 128-96 apart on python_float_left across its four scalars. That last range read 128-64 until the FTZ candidate emulation stopped testing tininess on the DELIVERED float32 word and started testing it on the result rounded to 24 significant bits with UNBOUNDED exponent, which is what IEEE 754 \u00a77.5, the Intel SDM (Vol. 1 \u00a74.9.1.5 with \u00a710.2.3.3) and the measured hardware all say: at scalar 0.5 the tie rows used to be rounded up onto the smallest normal by both arms, and once they underflow as the hardware underflows them the arms split on the sign of the resulting zero on 32 further rows (all zr=0x80FFFFFF). The correction RAISED this probe's discriminating power; it did not lower it. The intermediate rule installed on 2026-08-15, which tested the EXACT value before rounding, produces these same numbers \u2014 measured, it moves 0 of 75,308 candidate words across every pattern and scalar cut here \u2014 so this range does not distinguish the two, and the hardware measurement does. Before 2026-08-15 all three zero-imaginary orientations were 0 of 4560 words apart under this policy, because every row that separated the arms there fed the device a subnormal OPERAND and flush destroys those on first use; _NORMAL_UNDERFLOWING_ZR (all-normal operands, underflowing PRODUCT) is the class that survives flush and separates them, and measure_expansion_record refuses to emit a record whose operand classes are measurably blind.",
+  "ftz_removed": 0,
+  "match_meep": null,
+  "measured": {
+   "cupy": {
+    "agrees": true,
+    "word": "0x0"
+   },
+   "expected_word": "0x0",
+   "host": {
+    "agrees": true,
+    "word": "0x0"
+   },
+   "operand_word": "0x4000",
+   "operation": "float32 x * 1.0"
+  },
+  "mechanism": "meep_gpu.subnormal_policy.install_subnormal_policy('flush'): the host FPU through mp.set_zero_subnormals(True) and MEASURED with backends.subnormals_flushed(); CuPy natively (13.5.1 appends '-ftz=true' to every NVRTC compile at cupy/cuda/compiler.py:552) with CUB removed from the reduction path by CUPY_ACCELERATORS='' before the CuPy import, because CUB is a prebuilt binary neither -ftz nor any in-process switch reaches; Triton by injecting denormal-fp-math-f32 into the llir stage and AUDITING every generated PTX instruction, refusing the compile on any audited f32 arithmetic instruction that lacks .ftz",
+  "nvrtc_calls": 0,
+  "policy": "meep_x86_flush",
+  "requested": "flush",
+  "resolved": "flush",
+  "resolved_from": "argument",
+  "triton": {
+   "llir_compiles": 0,
+   "llir_defines": 0,
+   "llir_groups_extended": 0,
+   "llir_groups_minted": 0,
+   "ptx_audited": 0,
+   "ptx_compiles": 0,
+   "ptx_violations": 0,
+   "ptx_with_ftz": 0,
+   "reflect_flag_absent": 0,
+   "reflect_rewrites": 0
+  },
+  "unattained": []
+ },
+ "vectors": {
+  "c8_mul_c8": 2075,
+  "c8_mul_c8_imaginary_coefficient_left": 2184,
+  "c8_mul_c8_parity_coefficient_left": 4608,
+  "c8_mul_f4_field_left": 2792,
+  "c8_mul_python_float_field_left": 2792,
+  "f4_mul_c8_coefficient_left": 2792,
+  "python_float_left": 2792
+ }
+}

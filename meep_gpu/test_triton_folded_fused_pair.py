@@ -806,7 +806,15 @@ def test_the_module_claims_identity_ONLY_through_the_weld_that_measured_it():
     # match, because a digest edited to match the tree is an assertion where a
     # measurement belongs.
     assert "RELEASED 2026-08-21" in source
-    assert "run_farcarryD6" in weld["records"] or "run_farcarryD5" in weld["records"]
+    # The run line lives in the per-architecture record since 0.9.1, which carries
+    # the earlier runs on the same architecture forward as PRIOR RECORD lines. Only
+    # the records that still bind this entry's bytes are read: a record whose
+    # bytes moved describes another file and may not supply the run line.
+    from meep_gpu import fastpath  # noqa: PLC0415
+    records = " ".join(str(weld["runs"][cc].get("records", ""))
+                       for cc in fastpath.live_capabilities(weld))
+    assert records, "no architecture's record binds the bytes this weld pins"
+    assert "run_farcarryD6" in records or "run_farcarryD5" in records
 
     # AND THE BOUND THAT DID NOT MOVE: a weld licenses a claim, not a dispatch.
     # THE VOCABULARY MOVED, THE CLAIM DID NOT. Until 2026-08-27 these modules

@@ -215,10 +215,15 @@ expect MEEP itself to be the faster choice is in
 ## Compiled kernels run by default
 
 Compiled-kernel dispatch is on by default for a driver built with
-<code>prefer_gpu=True</code>, which a default lift is. On a certified host, the
-example above runs compiled kernels on every sub-step a certified kernel covers,
-and the array path on the rest. To force the array path for the whole run, set
-one environment variable before it starts:
+<code>prefer_gpu=True</code>, which a default lift is. On a supported NVIDIA
+GPU (compute capability 7.0 to 9.0), and on any Apple GPU (every one is
+supported), the example above runs compiled kernels on every sub-step a
+certified kernel covers, and the array path on the rest; outside the certified
+set an NVIDIA or Apple GPU runs the kernels uncertified, and says so
+([Certification on an NVIDIA GPU](../guides/kernel-dispatch.md#certification-on-an-nvidia-gpu),
+[Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
+To force the array path for the whole run, set one environment variable before
+it starts:
 
 ```bash
 MEEP_GPU_DISPATCH=0 python examples/quickstart.py

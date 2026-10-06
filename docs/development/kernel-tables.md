@@ -5,7 +5,10 @@
 The array path is the numerical oracle and remains the fallback for every
 configuration. Compiled kernels replace it slot by slot, inside
 <code>driver.step()</code>, by default wherever a released arm covers the
-configuration on a certified host; <code>MEEP_GPU_DISPATCH=0</code> turns
+configuration on a host its kernel table admits (a supported NVIDIA host,
+compute capability 7.0 to 9.0 with Triton 3.1, or any Apple GPU, every one of
+which is supported; outside the certified identity, labelled uncertified);
+<code>MEEP_GPU_DISPATCH=0</code> turns
 dispatch off. Three tables dispatch through the driver's own consults:
 
 | Table | What exists | Runtime status |

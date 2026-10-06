@@ -108,7 +108,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 HERE = Path(__file__).resolve().parent
 
@@ -180,7 +180,7 @@ API_ROOT = HERE.parents[1]
 #: so a stale default would cut silently. Cut on the round-3 tree, 60 + 119 + 24 rows
 #: measured, 0 of 94 subjects moved against the final tree.
 CENSUS = RESULTS / (os.environ.get("MEEP_GPU_METAL_CENSUS")
-                    or "metal_coverage_2026-09-25_night")
+                    or "metal_coverage_2026-10-02_arch3")
 RECLOSE = RESULTS / "metal_coverage_special_kz_reclose_2026-08-19"
 
 #: ``device.MAX_BUFFER_BINDINGS``. Read from the package rather than spelled, so a
@@ -201,6 +201,10 @@ try:
 except Exception:  # pragma: no cover - the ceiling is the one number we refuse to guess
     raise SystemExit("meep_gpu.metal_kernels.device is not importable; the binding "
                      "ceiling cannot be read and this script refuses to assume it")
+
+# THE RUN RECORDS, one per GPU architecture: a weld's artifact and timestamp are
+# read from its live runs, never from top-level fields the ledger no longer carries.
+from meep_gpu import metal_runs  # noqa: E402
 
 # SERVED IN DISPATCH, measured rather than asserted. This board wrote a literal
 # ``0`` until 2026-08-29; see ``dispatch_reachability`` for why a constant is the
@@ -2326,7 +2330,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_fused_hd_pair_nonlinear_2026-09-25_night"),
+             "binding": ("gate", "metal_fused_hd_pair_nonlinear_2026-10-04_g13s"),
              "driven_rows": ("lift/rows.jsonl", "metal_fused_hd_pair_nonlinear_gate"),
              "fingerprint": "metal_fused_hd_pair_nonlinear_device_gate"},
         ),
@@ -2408,7 +2412,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_beta_complex_fused_hd_pair_2026-09-25_night"),
+             "binding": ("gate", "metal_beta_complex_fused_hd_pair_2026-10-04_g13s"),
              "driven_rows": ("lift/rows.jsonl", "gate"),
              "fingerprint": "metal_beta_complex_fused_hd_pair_device_gate"},
         ),
@@ -2439,7 +2443,7 @@ PRODUCTS: Dict[str, dict] = {
              "row_clauses": (
                  ("no_standing_electric_withdraw", _no_standing_electric_withdraw),
              ),
-             "binding": ("gate", "metal_beta_real_fused_hd_pair_2026-09-25_night"),
+             "binding": ("gate", "metal_beta_real_fused_hd_pair_2026-10-04_g13s"),
              "driven_rows": ("lift/rows.jsonl", "gate"),
              "fingerprint": "metal_beta_real_fused_hd_pair_device_gate"},
         ),
@@ -3858,21 +3862,21 @@ E_TO_P_RELEASE_FINGERPRINT = "metal_fused_ade_chain_device_gate"
 # census `metal_coverage_2026-09-24_round3`: 327 of 597 in dispatch, 531 served, the
 # same as `_2026-09-20_restrict` -- a transport change moves no dispatch decision.
 RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
-    "fused_magnetic_pair": ("gate", "metal_fused_magnetic_pair_2026-09-25_night"),
+    "fused_magnetic_pair": ("gate", "metal_fused_magnetic_pair_2026-10-04_g13s"),
     "nonlinear_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-09-25_night"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
     "beta_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-09-25_night"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
     "bfast_fused_magnetic_pair":
-        ("gate", "metal_below_the_cut_fused_pairs_2026-09-25_night"),
+        ("gate", "metal_below_the_cut_fused_pairs_2026-10-04_g13s"),
     "complex_fused_magnetic_pair":
-        ("gate", "metal_complex_fused_magnetic_pair_2026-09-25_night"),
+        ("gate", "metal_complex_fused_magnetic_pair_2026-10-04_g13s"),
     # BOUND TO THE ROUTING ROUND'S OWN GATE, which ran AFTER the routing edits
     # (results/folded_routing_metal_2026-08-27/, verdict PASS, released=True,
     # 122/122 rows, 0 stale of 92 recorded sources). No re-run was needed for this
     # family or for `folded_fused_pair`.
     "folded_fused_magnetic_pair": (
-        "gate", "metal_folded_fused_magnetic_pair_2026-09-25_night"),
+        "gate", "metal_folded_fused_magnetic_pair_2026-10-04_g13s"),
     "folded_complex_fused_magnetic_pair":
         ("fingerprint", "metal_folded_complex_fused_magnetic_pair_device_gate"),
     "cylindrical_complex_fused_magnetic_pair":
@@ -3889,20 +3893,20 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `gate_reported_source_sha256.gate` in that artifact IS cb1a646cbfb8 — the value
     # the floor named as unmatched — so the re-run is bound to the moved script.
     "cylindrical_real_fused_magnetic_pair":
-        ("gate", "metal_cylindrical_real_fused_magnetic_pair_2026-09-25_night"),
+        ("gate", "metal_cylindrical_real_fused_magnetic_pair_2026-10-05_092_g13s"),
     # ADDED 2026-08-31 WITH THE PRODUCT, bound through its GATE ARTIFACT rather than
     # through fingerprints.json for the reason the rows above give: the gate artifact
     # records every module the gate PROCESS imported, which is a LARGER set of bytes
     # than a fingerprint entry -- and on this product that matters, because the claim
     # rests on TWO modules (the family and `coefficient_pack.py`) rather than one.
     "cylindrical_real_fused_electric_pair":
-        ("gate", "metal_cylindrical_real_fused_electric_pair_2026-09-25_night"),
+        ("gate", "metal_cylindrical_real_fused_electric_pair_2026-10-04_g13s"),
     # ADDED 2026-08-31 WITH THE PRODUCT, bound through its GATE ARTIFACT for the same
     # reason: the claim rests on TWO modules (the family and `coefficient_pack.py`)
     # and on the cylindrical-complex EXPANSION PROBE the gate's leg 0 binds, and a
     # gate artifact records every module the process imported.
     "cylindrical_complex_fused_electric_pair":
-        ("gate", "metal_cylindrical_fused_electric_pair_2026-09-25_night"),
+        ("gate", "metal_cylindrical_fused_electric_pair_2026-10-04_g13s"),
     # ADDED 2026-08-27 and bound through its GATE ARTIFACT rather than through
     # fingerprints.json, because writing that weld record is reserved in this round.
     # The gate artifact records every module the gate PROCESS imported, so this binds
@@ -3921,17 +3925,17 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # release against a `source_sha256.txt` that disagrees with the gate script it
     # just executed, and editing the script is exactly that disagreement.
     "folded_beta_complex_fused_magnetic_pair": (
-        "gate", "metal_folded_beta_complex_fused_magnetic_pair_2026-09-25_night"),
+        "gate", "metal_folded_beta_complex_fused_magnetic_pair_2026-10-04_g13s"),
     "folded_fused_pair": (
-        "gate", "metal_folded_fused_pair_2026-09-25_night"),
+        "gate", "metal_folded_fused_pair_2026-10-04_g13s"),
     "fused_dispersive_pair": (
-        "gate", "metal_fused_dispersive_pair_2026-09-25_night"),
+        "gate", "metal_fused_dispersive_pair_2026-10-04_g13s"),
     # ADDED 2026-08-28 WITH THE PRODUCT, bound through its GATE ARTIFACT rather than
     # through `fingerprints.json`: writing a weld record is reserved this round, and
     # the gate artifact binds a LARGER set of bytes anyway -- every module the gate
     # PROCESS imported, 91 paths.
     "fused_electric_pair": (
-        "gate", "metal_fused_electric_pair_2026-09-25_night"),
+        "gate", "metal_fused_electric_pair_2026-10-04_g13s"),
     "fused_ade_chain": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
     "fused_ade_chain_dispersive": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
     "folded_fused_ade_chain": ("fingerprint", E_TO_P_RELEASE_FINGERPRINT),
@@ -3946,7 +3950,7 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # because these gates name their artifact after the product rather than
     # `gate.json`.
     "complex_fused_ade_chain": (
-        "gate", "metal_complex_fused_ade_chain_2026-09-25_night"),
+        "gate", "metal_complex_fused_ade_chain_2026-10-04_g13s"),
     # RE-GATED 2026-08-21, and the re-gate is what this cut's credit rests on.
     # The 2026-08-20T5 artifact no longer binds: a sibling round added a
     # `_boundary_kinds is None` refusal to `complex_no_pml_conductive._base_reasons`
@@ -3959,7 +3963,7 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `conductive_tail_drops_the_condinv_pass` defect on the SAME bytes
     # (`../metal_complex_conductive_fused_pair_2026-08-21_flip/pair.json`).
     "complex_conductive_fused_pair": (
-        "gate", "metal_complex_conductive_fused_pair_2026-09-25_night"),
+        "gate", "metal_complex_conductive_fused_pair_2026-10-05_092_g13s"),
     # THE SEVEN PRODUCTS OF THE 2026-08-30 TRANCHE, all bound to the ONE gate that
     # measures them. `gate_metal_tranche7_fused_pairs.py` runs four legs per family
     # -- identity, mutation, deposit and the binding ceiling -- so a single artifact
@@ -3979,19 +3983,19 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # board could not be cut. The gate was given the two lines every sibling gate
     # has and RE-RUN; no record was edited to make this bind.
     "beta_fused_electric_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "complex_fused_electric_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "folded_complex_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "folded_beta_complex_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "folded_beta_real_fused_magnetic_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "folded_beta_real_fused_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     "folded_fused_dispersive_pair": (
-        "gate", "metal_tranche7_fused_pairs_2026-09-25_night"),
+        "gate", "metal_tranche7_fused_pairs_2026-10-04_g13s"),
     # THE TWO PRODUCTS OF THE 2026-09-01 CUT, bound through the ONE gate that
     # measures both (`gate_metal_no_pml_fused_electric_pairs.py`, six legs per the
     # module docstring: identity, separate_control, mutation, deposit,
@@ -4002,9 +4006,9 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `fingerprints.json` (`metal_no_pml_fused_electric_pairs_device_gate`), so
     # the two routes together check both path sets.
     "no_pml_fused_electric_pair": (
-        "gate", "metal_no_pml_fused_electric_pairs_2026-09-25_night"),
+        "gate", "metal_no_pml_fused_electric_pairs_2026-10-04_g13s"),
     "no_pml_conductive_fused_electric_pair": (
-        "gate", "metal_no_pml_fused_electric_pairs_2026-09-25_night"),
+        "gate", "metal_no_pml_fused_electric_pairs_2026-10-04_g13s"),
     # THE FOUR PRODUCTS OF THE RESIDUE ROUND, bound to the ONE gate that measures
     # them (`gate_metal_residue_fused_pairs.py`, re-cut at residue2 after the
     # no_pml gate script's final edit invalidated the first cut's manifest —
@@ -4016,13 +4020,13 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # family modules, `coefficient_pack.py`, both certified curl emitters and
     # `launch.py`.
     "bfast_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-09-25_night"),
+        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
     "conductive_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-09-25_night"),
+        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
     "beta_complex_fused_electric_pair": (
-        "gate", "metal_residue_fused_pairs_2026-09-25_night"),
+        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
     "beta_complex_fused_magnetic_pair": (
-        "gate", "metal_residue_fused_pairs_2026-09-25_night"),
+        "gate", "metal_residue_fused_pairs_2026-10-04_g13s"),
     # THE FOUR STENCIL WELDS, bound to the ONE gate that measures them
     # (`gate_metal_offdiag_stencil_welds.py`): identity against the array path,
     # identity against the CERTIFIED DEVICE KERNELS each weld replaces, mutation
@@ -4032,13 +4036,13 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # modules, `offdiag_weld_common.py`, `coefficient_pack.py`, both certified
     # curl emitters, both certified off-diagonal emitters and `launch.py`.
     "offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-09-25_night"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
     "folded_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-09-25_night"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
     "complex_no_pml_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-09-25_night"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
     "folded_complex_offdiag_fused_electric_pair": (
-        "gate", "metal_offdiag_stencil_welds_2026-09-25_night"),
+        "gate", "metal_offdiag_stencil_welds_2026-10-04_g13s"),
     # THE FOURTH SEAM'S FIRST PRODUCT, added 2026-09-06 with its release and bound
     # through its GATE ARTIFACT rather than through fingerprints.json, for the reason
     # every `gate` row above gives: the artifact records every module the gate PROCESS
@@ -4047,16 +4051,16 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # `ScratchWeldPairPlan` choreography it reuses), both certified emitters in
     # `shaders.py` and `launch.py`. It is ALSO welded in `fingerprints.json`
     # (`metal_fused_hd_pair_device_gate`), so the two routes check both path sets.
-    "fused_hd_pair": ("gate", "metal_fused_hd_pair_2026-09-25_night"),
+    "fused_hd_pair": ("gate", "metal_fused_hd_pair_2026-10-04_g13s"),
     "folded_fused_hd_pair": ("gate",
-                             "metal_folded_fused_hd_pair_2026-09-25_night"),
+                             "metal_folded_fused_hd_pair_2026-10-04_g13s"),
     # ADDED 2026-09-06 WITH THE PRODUCT, bound through its GATE ARTIFACT: the claim
     # rests on the family module, `fused_hd_pair.py` (whose `h_cell_function` it
     # lifts), `cylindrical_real.py` (whose scan text and curl it lifts and launches)
     # and `offdiag_weld_common.py` (whose scratch-twin registration it reuses), and a
     # gate artifact records every module the process imported.
     "cylindrical_real_fused_hd_pair":
-        ("gate", "metal_cylindrical_real_fused_hd_pair_2026-09-25_night"),
+        ("gate", "metal_cylindrical_real_fused_hd_pair_2026-10-04_g13s"),
     # ADDED 2026-09-06 WITH THE PRODUCT, bound through its GATE ARTIFACT from the
     # post-wire fleet re-cut: the wiring edited bytes the pre-wire gate imported
     # (launch.py, the product module's WELD_OWED), so the pre-wire stamp
@@ -4067,9 +4071,9 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # WELD_OWED and its register_arms), so the recorded digests disagree with the
     # tree until the gate is re-run.
     "complex_fused_hd_pair":
-        ("gate", "metal_complex_fused_hd_pair_2026-09-25_night"),
+        ("gate", "metal_complex_fused_hd_pair_2026-10-04_g13s"),
     "cylindrical_complex_fused_hd_pair":
-        ("gate", "metal_cylindrical_complex_fused_hd_pair_2026-09-25_night"),
+        ("gate", "metal_cylindrical_complex_fused_hd_pair_2026-10-04_g13s"),
     # EVERY H->D FAMILY IS BOUND TO `metal_<family>_2026-09-10_cells`, a DIRECTORY
     # whose `gate.json` is the artifact. Those eleven runs were cut on 2026-09-10
     # because the withheld-credit answer landed in parity/meep_gpu/h_to_d_seam.py, a
@@ -4080,18 +4084,18 @@ RELEASE_BINDING: Dict[str, Tuple[str, str]] = {
     # here. (The 2026-09-08_close round they replace had run both policies and bound
     # the flush leg by file; the keep leg recorded the refusal.)
     "conductive_fused_hd_pair": (
-        "gate", "metal_conductive_fused_hd_pair_2026-09-25_night"),
+        "gate", "metal_conductive_fused_hd_pair_2026-10-04_g13s"),
     # THE THREE FAMILIES FIRST EARNED ON 2026-09-08, re-cut with the rest on
     # 2026-09-10. Two of them (beta complex, beta real) also price a SECOND cell from
     # the same artifact's lift records -- see their `cells` tables in PRODUCTS.
     "beta_complex_fused_hd_pair": (
-        "gate", "metal_beta_complex_fused_hd_pair_2026-09-25_night"),
+        "gate", "metal_beta_complex_fused_hd_pair_2026-10-04_g13s"),
     "beta_real_fused_hd_pair": (
-        "gate", "metal_beta_real_fused_hd_pair_2026-09-25_night"),
+        "gate", "metal_beta_real_fused_hd_pair_2026-10-04_g13s"),
     "folded_complex_fused_hd_pair": (
-        "gate", "metal_folded_complex_fused_hd_pair_2026-09-25_night"),
+        "gate", "metal_folded_complex_fused_hd_pair_2026-10-04_g13s"),
     "bfast_fused_hd_pair": (
-        "gate", "metal_bfast_fused_hd_pair_2026-09-25_night"),
+        "gate", "metal_bfast_fused_hd_pair_2026-10-04_g13s"),
 }
 
 
@@ -4121,7 +4125,7 @@ def _assert_every_credit_is_bound_to_released_bytes() -> Tuple[Dict[str, Any], D
                 raise SystemExit(f"fingerprints.json carries no {key!r} entry")
             return ({API_ROOT / rel: want
                      for rel, want in (entry.get("source_sha256") or {}).items()},
-                    entry.get("status"), entry.get("recorded_utc"), None)
+                    entry.get("status"), _live_recorded_utc(entry, key), None)
         # `key` is either a results DIRECTORY (whose artifact is `gate.json`)
         # or an explicit `directory/artifact.json`. Both forms are accepted so
         # a gate that names its artifact after its product can still be bound.
@@ -4203,12 +4207,24 @@ def _assert_every_credit_is_bound_to_released_bytes() -> Tuple[Dict[str, Any], D
                             f"{who}: fingerprints.json carries no "
                             f"{cell['fingerprint']!r} entry")
                     got = hashlib.sha256(artifact.read_bytes()).hexdigest()
-                    if entry.get("artifact_sha256") not in (None, got):
+                    # THE RUN THAT CERTIFIED THIS CELL IS ONE OF THE ENTRY'S LIVE RUNS,
+                    # one per GPU architecture since the per-architecture records. A
+                    # comparison against a top-level field that no longer exists would
+                    # read None and pass without comparing anything, so an entry with
+                    # no live run recording an artifact refuses by name.
+                    welded = {name: run.get("artifact_sha256") for name, run in
+                              metal_runs.live_runs(entry).items()}
+                    if not any(welded.values()):
+                        raise SystemExit(
+                            f"{who}: the ledger's {cell['fingerprint']} has no live run "
+                            f"recording an artifact_sha256 ({welded}), so nothing says "
+                            f"which run certified this cell")
+                    if got not in welded.values():
                         raise SystemExit(
                             f"{who}: the ledger's {cell['fingerprint']} welds "
-                            f"{str(entry.get('artifact_sha256'))[:12]} and this cell "
-                            f"is bound to {got[:12]}; two registries disagree about "
-                            f"which run certified this cell")
+                            f"{ {name: str(value)[:12] for name, value in welded.items()} } "
+                            f"and this cell is bound to {got[:12]}; two registries "
+                            f"disagree about which run certified this cell")
             cell_bindings[who] = {"bound_by": kind, "key": key, "status": status,
                                   "files_checked": len(digests),
                                   "cell": list(cell["cell"]),
@@ -4229,6 +4245,21 @@ def _assert_every_credit_is_bound_to_released_bytes() -> Tuple[Dict[str, Any], D
         for who, detail in sorted(cell_bindings.items()):
             print(f"      {who:64s} {detail['key']}", flush=True)
     return out, cell_bindings
+
+
+def _live_recorded_utc(entry: Mapping[str, Any], key: str) -> Dict[str, Any]:
+    """``{architecture: recorded_utc}`` over the entry's live runs. Refuses with none.
+
+    The run's timestamp lives in ``runs[<architecture>]`` since the per-architecture
+    records (``meep_gpu.metal_runs``); an entry with no live run has no run whose time
+    could be quoted, and saying ``None`` would read as an unrecorded time rather than
+    as a missing certification.
+    """
+    runs = metal_runs.live_runs(entry)
+    if not runs:
+        raise SystemExit(f"fingerprints.json's {key!r} has no live run "
+                         f"({metal_runs.shape_reasons(entry) or 'every run is stale'})")
+    return {name: run.get("recorded_utc") for name, run in runs.items()}
 
 
 def _assert_the_credited_bytes_are_the_released_ones() -> Dict[str, str]:
@@ -4269,13 +4300,14 @@ def _assert_the_credited_bytes_are_the_released_ones() -> Dict[str, str]:
         raise SystemExit(
             "the bytes this cut credits are NOT the bytes the E->P gate certified:"
             + "".join(f"\n    {line}" for line in drift))
+    recorded_utc = _live_recorded_utc(entry, E_TO_P_RELEASE_FINGERPRINT)
     print(f"  RELEASE BINDING: {len(recorded)} files match "
           f"{E_TO_P_RELEASE_FINGERPRINT} ({entry.get('status')}, "
-          f"{entry.get('recorded_utc')})", flush=True)
+          f"{recorded_utc})", flush=True)
     return {"fingerprint": E_TO_P_RELEASE_FINGERPRINT,
             "files_checked": len(recorded),
             "status": entry.get("status"),
-            "recorded_utc": entry.get("recorded_utc")}
+            "recorded_utc": recorded_utc}
 
 
 def main() -> int:

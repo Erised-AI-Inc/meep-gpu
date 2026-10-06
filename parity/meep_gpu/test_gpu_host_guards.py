@@ -7,6 +7,10 @@ cannot take "the lift succeeded" as "the lift is mine":
 
 * the three NVIDIA gates refuse a non-smoke run on a host with no CUDA device, where
   the same lift would produce Apple GPU drivers (or raise);
+* the NVIDIA route gate also refuses a non-smoke leg on a card the table under test
+  does not certify (``capability_admission``, and on the Triton table the Triton
+  version), where the default would dispatch it uncertified, and a leg started with
+  ``MEEP_GPU_ALLOW_UNCERTIFIED`` exported;
 * the Metal route gate and the Metal bench refuse a host whose GPU is not an Apple
   one, and check ``driver.gpu == "metal"`` after every lift, so a reference lift
   cannot be compared or timed as a fused leg;
@@ -19,7 +23,8 @@ cannot take "the lift succeeded" as "the lift is mine":
   refused on a host with no GPU route, and every row records what the lift resolved.
 
 Every test stubs the host fact (``backends.cupy_available`` /
-``backends.available_gpu``) and lifts nothing, so the file runs on any host. Each
+``backends.available_gpu``, and the route gate's card and Triton readers or the
+modules they import) and lifts nothing, so the file runs on any host. Each
 refusal is checked for landing BEFORE the gate's output directory exists.
 """
 
@@ -118,6 +123,224 @@ def test_the_nvidia_guard_is_not_reached_by_a_smoke_run(monkeypatch):
         source = inspect.getsource(gate.main)
         assert "nvidia_host_refusal(" in source, gate.__name__
         assert spelling in source, (gate.__name__, spelling)
+
+
+# ---------------------------------------------------------------------------
+# The NVIDIA route gate starts only on a card the table under test certifies
+# ---------------------------------------------------------------------------
+
+def _admitted(table):
+    admitted = fastpath.capability_admission(table)["admitted"]
+    assert admitted, f"the {table} table admits no compute capability to start a leg on"
+    return admitted
+
+
+def _certified_triton_version():
+    validated = fastpath.validated_triton_versions()
+    assert validated, "the Triton ledger certifies no Triton version"
+    return validated[0]
+
+
+def _supported_uncertified_capability():
+    """A capability both NVIDIA tables support and neither admits. Derived, never typed."""
+    admitted = set(_admitted("triton")) | set(_admitted(fastpath.CUDA_TABLE))
+    for major, minor in ((7, 0), (7, 5), (8, 0), (8, 6), (8, 9), (9, 0)):
+        spelled = f"{major}.{minor}"
+        if spelled not in admitted and all(
+                fastpath.capability_supported(spelled, table) is True
+                for table in ("triton", fastpath.CUDA_TABLE)):
+            return spelled
+    raise AssertionError(f"every candidate is admitted ({sorted(admitted)}); add one")
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_a_card_the_table_certifies_may_start_a_route_leg(table):
+    for capability in _admitted(table):
+        assert fused_route.uncertified_card_refusal(
+            table, capability, _certified_triton_version()) is None, capability
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_a_supported_card_the_table_does_not_certify_is_refused(table):
+    """The default would dispatch it, uncertified; the leg is refused before it starts."""
+    capability = _supported_uncertified_capability()
+    refusal = fused_route.uncertified_card_refusal(
+        table, capability, _certified_triton_version())
+    assert refusal is not None
+    assert refusal.startswith(f"REFUSING: this route leg drives the {table} table on "
+                              f"compute capability {capability}, which that table's "
+                              "records do not certify"), refusal
+    assert f"capability_admission({table!r}) admits" in refusal, refusal
+    assert "steps 1 to 3" in refusal, refusal
+
+
+@pytest.mark.parametrize("table", ["triton", "cuda"])
+def test_a_card_that_cannot_be_read_is_refused(table):
+    refusal = fused_route.uncertified_card_refusal(
+        table, None, _certified_triton_version())
+    assert refusal is not None and "could not be read" in refusal, refusal
+
+
+def test_the_card_is_judged_by_the_table_under_test_alone(monkeypatch):
+    """A card one table admits starts that table's legs and not the other's."""
+    capability = _admitted("triton")[0]
+    admitted = {"triton": (capability,), fastpath.CUDA_TABLE: ()}
+    monkeypatch.setattr(fastpath, "capability_admission",
+                        lambda table="triton": {"admitted": admitted[table]})
+    version = _certified_triton_version()
+    assert fused_route.uncertified_card_refusal("triton", capability, version) is None
+    refusal = fused_route.uncertified_card_refusal("cuda", capability, version)
+    assert refusal is not None and "drives the cuda table" in refusal, refusal
+
+
+def test_the_triton_table_also_needs_a_certified_triton_version():
+    """The Triton table's identity is the card AND the Triton version; hand-CUDA reads none."""
+    capability = _admitted("triton")[0]
+    for version in ("0.0.0", None):
+        refusal = fused_route.uncertified_card_refusal("triton", capability, version)
+        assert refusal is not None and "with Triton" in refusal, (version, refusal)
+        assert "validated_triton_versions()" in refusal, refusal
+    cuda_capability = _admitted(fastpath.CUDA_TABLE)[0]
+    assert fused_route.uncertified_card_refusal("cuda", cuda_capability, None) is None
+
+
+def _route_main(monkeypatch, tmp_path, leg, *extra, capability, version="certified"):
+    """Run the route gate's ``main`` up to its first write, with the card stubbed.
+
+    The uncertified switch is removed from the environment, as a route leg runs; a
+    test that wants it exported sets it after this.
+    """
+    _cuda(monkeypatch, True)
+    monkeypatch.delenv(fastpath.UNCERTIFIED_SWITCH, raising=False)
+    _keep(monkeypatch, fused_route, "BACKEND", "TABLE_PREFERENCE")
+    _keep(monkeypatch, e2e, "PREFER_GPU", "_PROGRESS_PATH")
+    asked = {}
+
+    def card(gpu_id):
+        asked["gpu_id"] = gpu_id
+        return capability
+
+    def triton_version():
+        asked["triton"] = True
+        return _certified_triton_version() if version == "certified" else version
+
+    monkeypatch.setattr(fused_route, "card_capability", card)
+    monkeypatch.setattr(fused_route, "installed_triton_version", triton_version)
+    out = tmp_path / leg
+    monkeypatch.setattr(sys, "argv", ["gate_dispatch_fused_route.py", "--out", str(out),
+                                      *extra])
+    return out, asked
+
+
+@pytest.mark.parametrize("backend,leg", [("triton", "shipped"), ("cuda", "cuda_shipped")])
+def test_the_route_gate_refuses_an_uncertified_card_before_its_leg_exists(
+        monkeypatch, capsys, tmp_path, backend, leg):
+    out, asked = _route_main(monkeypatch, tmp_path, leg, "--backend", backend,
+                             "--gpu-id", "3",
+                             capability=_supported_uncertified_capability())
+    assert fused_route.main() == 2
+    err = capsys.readouterr().err
+    assert f"REFUSING: this route leg drives the {backend} table" in err, err
+    assert asked["gpu_id"] == 3, "the card read must be the one the legs lift onto"
+    assert not out.exists(), "the refusal must land before the leg directory exists"
+
+
+@pytest.mark.parametrize("backend,leg", [("triton", "shipped"), ("cuda", "cuda_shipped")])
+def test_the_route_gate_starts_on_a_certified_card(monkeypatch, capsys, tmp_path,
+                                                    backend, leg):
+    """Past the admission check: the next guard, a previous run's rows, is what stops it.
+
+    The hand-CUDA legs do not read the Triton version (``cuda_alone`` has withheld
+    Triton by then).
+    """
+    out, asked = _route_main(monkeypatch, tmp_path, leg, "--backend", backend,
+                             capability=_admitted(backend)[0])
+    out.mkdir()
+    (out / "cases.jsonl").write_text("", encoding="utf-8")
+    assert fused_route.main() == 5
+    err = capsys.readouterr().err
+    assert "already holds a previous run's cases.jsonl" in err, err
+    assert "REFUSING: this route leg" not in err, err
+    assert asked.get("triton", False) is (backend == "triton"), asked
+
+
+def test_the_route_gate_refuses_an_uncertified_triton_on_a_certified_card(
+        monkeypatch, capsys, tmp_path):
+    out, _ = _route_main(monkeypatch, tmp_path, "shipped",
+                         capability=_admitted("triton")[0], version="0.0.0")
+    assert fused_route.main() == 2
+    err = capsys.readouterr().err
+    assert "drives the triton table with Triton 0.0.0" in err, err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("value", ["1", "0", ""])
+@pytest.mark.parametrize("backend,leg", [("triton", "shipped"), ("cuda", "cuda_shipped")])
+def test_the_route_gate_refuses_an_exported_uncertified_switch(
+        monkeypatch, capsys, tmp_path, backend, leg, value):
+    """On a certified card too: ``=1`` would compose the other table uncertified.
+
+    ``0`` is not the default either, and any other value takes the array path, so
+    every set value is refused and a leg runs with the switch unset.
+    """
+    out, _ = _route_main(monkeypatch, tmp_path, leg, "--backend", backend,
+                         capability=_admitted(backend)[0])
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+    assert fused_route.main() == 2
+    err = capsys.readouterr().err
+    assert f"REFUSING: {fastpath.UNCERTIFIED_SWITCH}={value!r} is set" in err, err
+    assert not out.exists(), "the refusal must land before the leg directory exists"
+
+
+def test_a_smoke_route_run_is_never_asked_about_the_card(monkeypatch, capsys, tmp_path):
+    """``--smoke`` lifts the NumPy reference, which consults no kernel table.
+
+    So neither the card nor the uncertified switch is asked, even when it is exported.
+    """
+    out, asked = _route_main(monkeypatch, tmp_path, "shipped", "--smoke",
+                             capability=None, version=None)
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "1")
+
+    def must_not_be_asked(*_args, **_kwargs):
+        raise AssertionError("a smoke run consulted the card admission or the switch")
+
+    monkeypatch.setattr(fused_route, "uncertified_card_refusal", must_not_be_asked)
+    monkeypatch.setattr(fused_route, "uncertified_switch_refusal", must_not_be_asked)
+    out.mkdir()
+    (out / "cases.jsonl").write_text("", encoding="utf-8")
+    assert fused_route.main() == 5
+    assert asked == {}, asked
+    assert "already holds a previous run's" in capsys.readouterr().err
+
+
+# The two readers the tests above stub, run against stand-in ``cupy`` and ``triton``
+# modules, so a reader that asked another device, or misread either, fails here.
+
+def test_the_card_reader_reads_the_device_it_is_given(monkeypatch):
+    asked = []
+
+    def properties(gpu_id):
+        asked.append(gpu_id)
+        return {"major": 8, "minor": 9}
+
+    cupy = SimpleNamespace(cuda=SimpleNamespace(
+        runtime=SimpleNamespace(getDeviceProperties=properties)))
+    monkeypatch.setitem(sys.modules, "cupy", cupy)
+    assert fused_route.card_capability(3) == "8.9"
+    assert asked == [3], asked
+
+    def unreadable(gpu_id):
+        raise RuntimeError("no such device")
+
+    cupy.cuda.runtime.getDeviceProperties = unreadable
+    assert fused_route.card_capability(3) is None
+
+
+def test_the_triton_reader_reads_the_importable_version(monkeypatch):
+    monkeypatch.setitem(sys.modules, "triton", SimpleNamespace(__version__="3.1.1"))
+    assert fused_route.installed_triton_version() == "3.1.1"
+    monkeypatch.setitem(sys.modules, "triton", None)  # import triton raises
+    assert fused_route.installed_triton_version() is None
 
 
 # ---------------------------------------------------------------------------

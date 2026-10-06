@@ -25,9 +25,11 @@
 # from PyPI can replace 2.10.0 in this environment. INSTALL.md, section
 # "One OpenMP runtime on an Apple silicon Mac".
 #
-# The second half of the certified identity is the Metal frontend of macOS,
-# version 32023.850.10. It belongs to the operating system and cannot be
-# installed; tools/check_install.py reports the one this Mac has.
+# The rest of the certified environment belongs to the Mac: its GPU
+# architecture (applegpu_g13s, an M1 Max) and the Metal frontend of macOS,
+# version 32023.850.10. Neither can be installed. Every Apple GPU is supported:
+# on another GPU or macOS build the Metal kernels run, labelled uncertified.
+# tools/check_install.py reports this Mac's.
 #
 # The Metal Toolchain component of Xcode is not required.
 name: meep-gpu

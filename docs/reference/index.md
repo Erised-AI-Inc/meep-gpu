@@ -20,7 +20,8 @@ by a lift for an unstable dispersive pole
 ([Refusals a caller catches](public-api.md#refusals-a-caller-catches)).
 
 The [Glossary](glossary.md) defines the terms the manual and the package's
-messages use: array path, kernel table, sub-step, dispatch, certified identity.
+messages use: array path, kernel table, sub-step, dispatch, supported GPU,
+certified identity.
 
 If the starting point is an existing <code>mp.Simulation</code>, read
 [MEEP user entry points](../getting-started/meep-entry-points.md)

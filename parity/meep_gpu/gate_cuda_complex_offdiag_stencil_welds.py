@@ -58,7 +58,14 @@ THE BAR
 * **S1 repeated** ``SCHEDULE_REPEATS`` times from the same seed, because the finding
   the in-place weld's record made was that its answer DEPENDED ON THE BLOCK SCHEDULE
   and a single run cannot see that.
-* **S2: identical at EVERY thread-block size.**
+* **S2: identical at EVERY thread-block size the compiled kernel can launch**, and
+  the block size dispatch launches among them for every fixture. A size whose launch
+  the device refuses for want of resources is recorded by name, with the refusal.
+  The register count, and with it the largest launchable block, is the compiler's:
+  on an RTX A6000 (measured 2026-10-02) the folded kernel with all six off-diagonal
+  rows takes 64 registers a thread under NVRTC 11.6.55, exactly the 65,536 a
+  1024-thread block may hold, and 69 under NVRTC 11.8.89, the compiler the CUDA 11.8
+  runtime ships, which caps its block at 896 threads. Dispatch launches 256.
 * **Both float32 subnormal policies**, each in its own process with its own CuPy
   cache directory.
 * **Launch counts from two independent counters** -- a proxy over the shipped compile
@@ -223,7 +230,38 @@ COMPLEX_PROBE_RECORD_FLUSH = ("parity/meep_gpu/results/expansion_probe_2026-08-1
                               "expansion_probe_flush.json")
 
 
-def licences(policy: str) -> Dict[str, Any]:
+def architecture_reasons(record: Dict[str, Any],
+                         device_capability: Optional[str]) -> List[str]:
+    """Why an expansion record may not license THIS card, or ``[]``.
+
+    AN EXPANSION LICENCE BELONGS TO THE ARCHITECTURE THAT MEASURED IT. The record
+    describes how one compute capability's compiler expanded the complex multiplies,
+    so a record measured on another architecture licenses nothing here -- however
+    it was supplied, by default or by ``--expansion-probe``. Every expansion record
+    states the capability it was measured on (``environment.compute_capability``);
+    one that states none cannot be shown to describe this card, and is refused
+    rather than assumed. With no device (``--no-device``) there is no card to
+    compare against, and nothing is refused on this account.
+    """
+    if device_capability is None:
+        return []
+    from meep_gpu import fastpath  # noqa: PLC0415
+
+    stated = (record.get("environment") or {}).get("compute_capability")
+    if stated is None:
+        return ["the record states no compute capability, so it cannot be shown "
+                "to describe the card this run is on"]
+    if (fastpath._normalized_capability(stated)
+            != fastpath._normalized_capability(device_capability)):
+        return [f"the record was measured on compute capability {stated} and this "
+                f"run is on {device_capability}; an expansion licence licenses only "
+                f"the architecture that measured it -- pass this card's own record "
+                f"with --expansion-probe"]
+    return []
+
+
+def licences(policy: str, record_path: Optional[str] = None,
+             device_capability: Optional[str] = None) -> Dict[str, Any]:
     """The THREE expansion licences these two products bind, by half AND by policy.
 
     TWO PER PRODUCT, AND THAT IS NOT A CONVENIENCE. Each product's halves sit in
@@ -246,26 +284,53 @@ def licences(policy: str) -> Dict[str, Any]:
     for the off-diagonal half and ``complex_fields.expansion_license`` for the two
     curls -- read from the modules rather than respelled, so a census row and a gate
     leg cannot disagree about what a record licenses.
+
+    ``record_path`` (``--expansion-probe``) replaces the per-policy table with ONE
+    record for all three halves, as the sibling gates take theirs: the unified
+    expansion record the Triton fleet measures carries every pattern the three
+    arbiters read, and on the card both were cut on it binds the same arm as the
+    table's records for each half under each policy. It is a path, absolute or
+    relative to the repository root, and it passes the same policy check.
+    ``device_capability`` is the card this run is on; each record is held to it by
+    :func:`architecture_reasons`, so a record from another architecture is refused
+    by name whether it was defaulted or handed in.
     """
     import cuda_predicate_battery as battery  # noqa: PLC0415
     import gate_cuda_complex_no_pml as no_pml_gate  # noqa: PLC0415
     from meep_gpu.triton_kernels import complex_fields  # noqa: PLC0415
     from meep_gpu.triton_kernels import folded_complex  # noqa: PLC0415
 
-    records = {
-        "constitutive": {"keep": battery.COMPLEX_PROBE_RECORD,
-                         "flush": COMPLEX_PROBE_RECORD_FLUSH}[policy],
-        "folded_curl": {"keep": battery.COMPLEX_PROBE_RECORD,
-                        "flush": COMPLEX_PROBE_RECORD_FLUSH}[policy],
-        "no_pml_curl": {"keep": battery.COMPLEX_NO_PML_PROBE_RECORD,
-                        "flush": no_pml_gate.PROBE_RECORD_FLUSH}[policy],
-    }
+    if record_path is not None:
+        records = {half: record_path
+                   for half in ("constitutive", "folded_curl", "no_pml_curl")}
+    else:
+        records = {
+            "constitutive": {"keep": battery.COMPLEX_PROBE_RECORD,
+                             "flush": COMPLEX_PROBE_RECORD_FLUSH}[policy],
+            "folded_curl": {"keep": battery.COMPLEX_PROBE_RECORD,
+                            "flush": COMPLEX_PROBE_RECORD_FLUSH}[policy],
+            "no_pml_curl": {"keep": battery.COMPLEX_NO_PML_PROBE_RECORD,
+                            "flush": no_pml_gate.PROBE_RECORD_FLUSH}[policy],
+        }
     out: Dict[str, Any] = {}
     for half, relative in records.items():
-        path = os.path.join(_REPO_API, relative)
-        with open(path, "rb") as handle:
-            raw = handle.read()
-        record = json.loads(raw.decode("utf-8"))
+        path = (relative if os.path.isabs(relative)
+                else os.path.join(_REPO_API, relative))
+        # A RECORD THAT CANNOT BE READ IS A NAMED REFUSAL of its half, not a crash
+        # that leaves no artifact: the archive defaults are absent from a clone, and
+        # "refused, and why" is the answer a round can act on.
+        try:
+            with open(path, "rb") as handle:
+                raw = handle.read()
+            record = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            out[half] = {"arm": None, "record": relative, "record_sha256": None,
+                         "refusals": [f"the expansion record {relative} could not be "
+                                      f"read: {type(exc).__name__}: {exc}"],
+                         "policy_reasons": [], "architecture_reasons": [],
+                         "record_subnormal_policy": None,
+                         "record_compute_capability": None, "arbiter": None}
+            continue
         # THE STAMP IS CHECKED, NOT THE FILENAME. A record named _flush that was cut
         # under keep would license the wrong bytes with no other symptom.
         stamped = (record.get("subnormal_policy") or {}).get("resolved")
@@ -283,11 +348,38 @@ def licences(policy: str) -> Dict[str, Any]:
         verdict["record"] = relative
         verdict["record_sha256"] = hashlib.sha256(raw).hexdigest()
         verdict["record_subnormal_policy"] = stamped
+        verdict["record_compute_capability"] = (
+            (record.get("environment") or {}).get("compute_capability"))
+        verdict["architecture_reasons"] = architecture_reasons(record,
+                                                               device_capability)
+        # THE FALLBACK IS NOT A MEASUREMENT OF THIS CARD. When the arbiter cannot
+        # classify from the record it may take its arm from the environment-default
+        # table, which is keyed on backend, machine and CuPy version but not on the
+        # compute capability, so on a second architecture it would license the card
+        # from the first one's row with nothing else to show for it.
+        if device_capability is not None and verdict.get("basis") != "measured":
+            verdict["architecture_reasons"].append(
+                f"the licence's basis is {verdict.get('basis')!r}, not 'measured': its "
+                f"arm comes from a table that does not record a compute capability, so "
+                f"it cannot be shown to describe the card this run is on")
         verdict["arbiter"] = ("folded_complex.parity_expansion_license"
                               if half == "constitutive"
                               else "complex_fields.expansion_license")
         out[half] = verdict
     return out
+
+
+def unusable_halves(licence: Dict[str, Any]) -> Dict[str, Any]:
+    """The halves whose licence this gate may not run under, keyed by half.
+
+    A half is unusable when its arbiter bound no arm, refused, disagreed with the
+    run's subnormal policy, or was measured on another architecture. Any one of
+    them refuses the whole run before a kernel is compiled.
+    """
+    return {half: verdict for half, verdict in licence.items()
+            if not verdict.get("arm") or verdict.get("refusals")
+            or verdict.get("policy_reasons")
+            or verdict.get("architecture_reasons")}
 
 
 def _arm(licence: Dict[str, Any]) -> str:
@@ -1954,6 +2046,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              "curl halves refuse an unnamed one because an "
                              "expansion licence is policy-conditional")
     parser.add_argument("--import-meep-for-host-policy", action="store_true")
+    parser.add_argument("--expansion-probe", default=None, help=(
+        "one expansion record for all three halves, measured on THIS card under "
+        "this run's policy (the Triton fleet's unified_expansion/gate.json), "
+        "overriding the per-policy archive records. Path, absolute or relative to "
+        "the repository root. The policy and architecture checks are unchanged: a "
+        "record cut under the other policy, or on another compute capability, "
+        "refuses whether it arrived by default or by hand."))
     parser.add_argument("--skip-mutations", action="store_true")
     parser.add_argument("--no-device", action="store_true")
     args = parser.parse_args(argv)
@@ -1986,7 +2085,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "value_classes": list(VALUE_CLASSES),
         "legs": {
             "S1": "complete driver steps, every stored volume, per step",
-            "S2": "S1 at every thread-block size",
+            "S2": "S1 at every thread-block size the compiled kernel can launch",
             "S3": "ONE launch against the driver's five D-seam passes alone, on "
                   "the planted adversarial word catalogue -- the only leg on which "
                   "the two complex parity spellings are decidable, because a "
@@ -2034,21 +2133,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "catalogue_source": "probe_cuda_complex_offdiag_scratch_weld"
                             ".ADVERSARIAL_WORDS -- imported, not respelled"}
 
-    licence = licences(args.subnormal_policy)
+    results["expansion_probe_given"] = args.expansion_probe
+    licence = licences(args.subnormal_policy, args.expansion_probe,
+                       (results["environment"] or {}).get("compute_capability"))
     results["licences"] = {
         half: {key: verdict.get(key) for key in
-               ("arm", "refusals", "policy_reasons", "record", "record_sha256",
-                "record_subnormal_policy", "arbiter")}
+               ("arm", "basis", "refusals", "policy_reasons", "record", "record_sha256",
+                "record_subnormal_policy", "record_compute_capability",
+                "architecture_reasons", "arbiter")}
         for half, verdict in licence.items()}
     results["expansion_arm"] = _arm(licence)
-    unusable = {half: verdict for half, verdict in licence.items()
-                if not verdict.get("arm") or verdict.get("refusals")
-                or verdict.get("policy_reasons")}
+    unusable = unusable_halves(licence)
     if unusable:
         results["status"] = "refused: an expansion licence is unusable"
         results["verdict"] = {"passed": False, "why": {
             half: {"arm": v.get("arm"), "refusals": v.get("refusals"),
-                   "policy_reasons": v.get("policy_reasons")}
+                   "policy_reasons": v.get("policy_reasons"),
+                   "architecture_reasons": v.get("architecture_reasons")}
             for half, v in unusable.items()}}
         save(results, args.out)
         return 1
@@ -2090,15 +2191,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ------------------------------------------------------------------ S2
     s2: List[Dict[str, Any]] = []
     for spec in specs:
+        shipped = int(products()[spec["product"]]._FUSED_THREADS)  # noqa: SLF001
         for threads in BLOCK_SIZES:
-            record = run_case(spec, COMPLEX_ARM_CLASS, steps=min(args.steps, 12),
-                              licence=licence, threads=threads,
-                              label_suffix=f"/b{threads}")
+            label = f"{spec['label']}/{COMPLEX_ARM_CLASS}/b{threads}"
+            try:
+                record = run_case(spec, COMPLEX_ARM_CLASS, steps=min(args.steps, 12),
+                                  licence=licence, threads=threads,
+                                  label_suffix=f"/b{threads}")
+            except cp.cuda.driver.CUDADriverError as refused:
+                # ONLY a refusal for want of resources, and only above the block
+                # size dispatch launches: any other error, or this one at a size
+                # dispatch uses, is a failure and propagates.
+                if ("CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES" not in str(refused)
+                        or threads <= shipped):
+                    raise
+                record = {"label": label, "spec": spec["label"],
+                          "product": spec["product"], "bit_identical": None,
+                          "launchable": False, "launch_refusal": str(refused)}
+                log(f"[S2] {label:56s} NOT LAUNCHABLE ({refused})")
+            else:
+                record["launchable"] = True
+                log(f"[S2] {record['label']:56s} "
+                    f"{'IDENTICAL' if record['bit_identical'] else 'DIVERGED'}")
+            record["threads"], record["shipped_threads"] = threads, shipped
             s2.append(record)
-            log(f"[S2] {record['label']:56s} "
-                f"{'IDENTICAL' if record['bit_identical'] else 'DIVERGED'}")
         save({**results, "S2_block_sizes": s2}, args.out)
     results["S2_block_sizes"] = s2
+    s2_launched = [r for r in s2 if r["launchable"]]
 
     # ------------------------------------------------------------------ S3
     results["S3_planted_seam"] = leg_planted_seam(specs, licence)
@@ -2133,8 +2252,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             all(r["non_vacuous"] for r in s1),
         "S1 covers both products":
             {r["product"] for r in s1} == {"folded", "no_pml"},
-        "S2 identical at every block size":
-            bool(s2) and all(r["bit_identical"] for r in s2),
+        "S2 identical at every block size the kernel can launch":
+            bool(s2_launched) and all(r["bit_identical"] for r in s2_launched),
+        "S2 the block size dispatch launches is launchable for every fixture":
+            all(any(r["spec"] == spec["label"] and r["launchable"]
+                    and r["threads"] == r["shipped_threads"] for r in s2)
+                for spec in specs),
         "S3 identical at the planted D seam, where the complex spellings differ":
             results["S3_planted_seam"]["passed"],
         "the subnormal band really contains subnormals":
@@ -2174,6 +2297,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                            for spec in specs}),
         "denominators": {
             "S1_cases": len(s1), "S2_cases": len(s2),
+            "S2_not_launchable": len(s2) - len(s2_launched),
             "S3_cases": len(results["S3_planted_seam"]["cases"]),
             "fixtures": len(specs), "block_sizes": len(BLOCK_SIZES),
             "value_classes": len(VALUE_CLASSES),

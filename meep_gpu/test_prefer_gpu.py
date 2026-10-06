@@ -30,7 +30,8 @@ from meep_gpu.driver import FdtdDriver
 
 SWITCHES = ("MEEP_GPU_DISPATCH", "MEEP_GPU_FUSED", "MEEP_GPU_KERNEL_TABLE",
             "MEEP_GPU_FUSE_ARMS", "MEEP_GPU_METAL_RESIDENCY", "MEEP_GPU_DISPATCH_LOG",
-            "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL")
+            "MEEP_GPU_SUBNORMAL_POLICY", "MEEP_GPU_SUBNORMAL_INSTALL",
+            "MEEP_GPU_ALLOW_UNCERTIFIED", "MEEP_GPU_BACKEND_PREFERENCE")
 STEPS = 5
 
 
@@ -182,18 +183,27 @@ def test_a_vetoed_gpu_driver_steps_the_array_path_quietly(monkeypatch, capsys, v
     assert _meep_lines(capsys.readouterr().err) == []
 
 
-def test_an_uncertified_toolchain_runs_on_the_host_cpu_and_says_so(monkeypatch, capsys):
+def test_certified_only_runs_an_uncertified_toolchain_on_the_host_cpu_and_says_so(
+        monkeypatch, capsys):
     """An Apple GPU request can finish on the host CPU: announced, recorded, not raised.
 
-    ``prefer_gpu=True`` resolves from the HARDWARE; whether this torch is one a Metal
-    weld ran on is rung 4M's question, asked at the freeze. A torch outside the
-    certified set is refused there by name, and on an Apple GPU the array path it
-    falls to is the host CPU, which the line a user reads says.
+    ``prefer_gpu=True`` resolves from the HARDWARE; whether this host's environment
+    is one the cited Metal welds ran on is rung 4M's question, asked at the freeze.
+    A run restricted to certified environments (``MEEP_GPU_ALLOW_UNCERTIFIED=0``)
+    refuses a torch outside them by name, and on an Apple GPU the array path it falls
+    to is the host CPU, which the line a user reads says.
     """
     _require_metal()
     from meep_gpu import metal_dispatch  # noqa: PLC0415
 
     real = metal_dispatch.metal_toolchain
+    host = real()
+    recorded = {"architecture": host["architecture"], "torch": host["version"],
+                "metal_frontend": metal_dispatch.frontend_key(host["metal_frontend"])}
+    # ONE CITED WELD WITH ONE LIVE RUN, for this host's architecture
+    # (``metal_dispatch.cited_environments``: ``(gate, runs)``).
+    monkeypatch.setattr(metal_dispatch, "cited_environments",
+                        lambda ledger=None: (("metal_test_device_gate", (recorded,)),))
 
     def other_torch():
         toolchain = dict(real())
@@ -201,6 +211,7 @@ def test_an_uncertified_toolchain_runs_on_the_host_cpu_and_says_so(monkeypatch, 
         return toolchain
 
     monkeypatch.setattr(metal_dispatch, "metal_toolchain", other_torch)
+    monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, "0")
     driver = _driver(True)
     assert driver.gpu == "metal" and driver.xp is np
     for _ in range(STEPS):
@@ -209,8 +220,8 @@ def test_an_uncertified_toolchain_runs_on_the_host_cpu_and_says_so(monkeypatch, 
     assert driver.active_step_path == "array"
     assert report["decision"] == "refused" and report["reference_driver"] is False
     assert report["refused_because"].startswith(
-        "torch 0.0.0-not-certified is not in the toolchains any Metal weld recorded "
-        "running on"), report["refused_because"]
+        "torch 0.0.0-not-certified is not the one every Metal weld this table cites "
+        "ran on"), report["refused_because"]
     assert report["environment"]["backend"] == "numpy"
     assert report["environment"]["torch_certified"] is False
     driver.close()
@@ -218,7 +229,7 @@ def test_an_uncertified_toolchain_runs_on_the_host_cpu_and_says_so(monkeypatch, 
     assert len(lines) == 1, lines
     assert lines[0].startswith(
         "meep_gpu: step path array on the host CPU; dispatch refused: torch "
-        "0.0.0-not-certified is not in the toolchains"), lines[0]
+        "0.0.0-not-certified is not the one every Metal weld"), lines[0]
 
 
 def _entry_point_simulation(mp):
@@ -407,6 +418,76 @@ def test_a_reference_driver_never_consults_the_planner(monkeypatch, capsys, enab
         assert "is not an accepted value either" in lines[0], lines[0]
     elif enable == "1":
         assert "is not an accepted value" not in lines[0], lines[0]
+
+
+@pytest.mark.parametrize("value", [None, "0", "1"])
+def test_a_reference_driver_ignores_the_uncertified_switch(monkeypatch, capsys, value):
+    """The switch decides which identities a GPU driver's kernels run on; a reference
+    driver runs none, so it is not read and nothing is said about it."""
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("a reference driver consulted the planner")
+
+    monkeypatch.setattr(driver_module, "plan_fast_path", refuse)
+    if value is not None:
+        monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+    driver = FdtdDriver(cell_size=(0.5, 0.5, 0.5), resolution=8)
+    for _ in range(3):
+        driver.step()
+    report = driver.fast_path_report()
+    assert report["reference_driver"] is True and driver.active_step_path == "array"
+    assert report["certified"] is None
+    assert report["uncertified"]["admitted"] == []
+    driver.close()
+    assert _meep_lines(capsys.readouterr().err) == []
+
+
+@pytest.mark.parametrize("value", [None, "1", "0"])
+def test_a_cuda_driver_on_a_supported_uncertified_device(monkeypatch, capsys, value):
+    """``prefer_gpu=True`` on an NVIDIA GPU the kernels support and no gate ran on.
+
+    The shipped default dispatches, records ``certified: False`` and says so once;
+    ``MEEP_GPU_ALLOW_UNCERTIFIED=0`` steps the array path (on this GPU, CuPy) and
+    says why. The engine is a NumPy-backed stand-in for CuPy that reports the device.
+    """
+    from meep_gpu.test_dispatch_contract import (  # noqa: PLC0415
+        CountingPlan, block_cuda, install_composer, numpy_backed_cupy_alias,
+        numpy_driver, step_plan, stub_triton, supported_uncertified_capabilities)
+
+    (capability,) = supported_uncertified_capabilities(1)
+    if value is not None:
+        monkeypatch.setenv(fastpath.UNCERTIFIED_SWITCH, value)
+    driver = numpy_driver()
+    xp = numpy_backed_cupy_alias()
+    xp.cuda = types.SimpleNamespace(runtime=types.SimpleNamespace(
+        getDevice=lambda: 0,
+        getDeviceProperties=lambda index: {"name": b"another device",
+                                           "major": capability[0],
+                                           "minor": capability[1]},
+        runtimeGetVersion=lambda: 11080, driverGetVersion=lambda: 12030))
+    monkeypatch.setattr(driver.grid, "xp", xp)
+    driver.gpu = "cuda"  # the engine is stubbed cupy-like: a CUDA driver plans
+    stub_triton(monkeypatch)
+    block_cuda(monkeypatch)
+    plan_b = CountingPlan("step_B")
+    install_composer(monkeypatch, step_plan({"step_B": plan_b}, {"step_B": "PML"}))
+    driver.run(num_steps=2)
+    report = driver.fast_path_report()
+    lines = _meep_lines(capsys.readouterr().err)
+    notes = [line for line in lines if "NOT CERTIFIED" in line]
+    spelled = f"{capability[0]}.{capability[1]}"
+    if value == "0":
+        assert driver.active_step_path == "array"
+        assert report["refused_because"].endswith(fastpath.CERTIFIED_ONLY_TAIL), \
+            report["refused_because"]
+        assert plan_b.runs == 0 and notes == [], lines
+    else:
+        assert driver.active_step_path == "fused", report.get("refused_because")
+        assert report["certified"] is False and plan_b.runs == 2
+        assert report["environment"]["device_supported"] is True
+        assert len(notes) == 1, lines
+        assert f"GPU compute capability {spelled} (certified:" in notes[0], notes
+        assert "supported but not certified bit-identical" in notes[0], notes
+    driver.close()
 
 
 def test_a_gpu_intent_numpy_refusal_says_host_cpu(monkeypatch, capsys):

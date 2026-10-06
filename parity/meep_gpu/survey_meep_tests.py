@@ -82,10 +82,14 @@ from pathlib import Path
 
 TESTS_DEFAULT = os.path.join(os.environ.get("MGPU_SITE_MEEP_SOURCE", os.path.join(os.path.expanduser("~"), "meep")), "python", "tests")
 
-# Third-party imports that are not in the pristine reference env. A test module that
-# needs one of these is not a fact about the engine until it is run in an env that
-# has it, so the inventory names the dependency rather than reporting an import
-# error as a refusal.
+# Imports a MEEP test module may need beyond MEEP's required dependencies: third-party
+# packages and MEEP's optional modules. A test module that needs one of these is not a
+# fact about the engine until it is run in an environment that has it, so the
+# inventory names the dependency rather than reporting an import error as a refusal.
+# Membership says nothing about the reference environments: both locks hold autograd
+# (added on 2026-10-05, so meep.adjoint imports there), pytest, h5py, matplotlib,
+# scipy and MPB, and neither holds jax, nlopt, gdspy, gdstk, PyMieScatt or
+# parameterized.
 OPTIONAL_DEPS = {
     "jax", "autograd", "nlopt", "gdspy", "gdstk", "PyMieScatt", "parameterized",
     "meep.adjoint", "meep.mpb", "mpb", "pytest", "h5py", "matplotlib", "scipy",

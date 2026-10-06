@@ -20,8 +20,8 @@ Apple GPU (a Torch build with MPS, an MPS device and
 caching the result, and it equals <code>available_gpu() is not None</code>.
 
 It is a hardware probe. It says nothing about whether compiled-kernel dispatch
-is enabled, whether the toolchain is a certified one, or which arms would serve.
-Use <code>driver.fast_path_report()</code> for that.
+is enabled, whether the device and toolchain are certified, or which arms would
+serve. Use <code>driver.fast_path_report()</code> for that.
 
 ### available_gpu
 
@@ -216,11 +216,16 @@ finally:
 | <code>SubnormalPolicyUnattainable</code> | The requested policy cannot be installed on one of the executors | <code>keep</code> is not attainable on an Apple GPU; <code>flush</code> with CuPy needs <code>CUPY_ACCELERATORS=''</code> set before CuPy is imported ([the floating-point contract](../design/floating-point.md#the-subnormal-policy)) |
 
 Not every refusal is an exception. A kernel table that cannot serve a
-configuration, a device or toolchain outside the certified list, and an
-environment switch with a value other than <code>0</code> or <code>1</code>
-leave the run on the array path, print one line on standard error, and record
-the reason in <code>driver.fast_path_report()</code>; see
-[Messages on standard error](#messages-on-standard-error).
+configuration, an NVIDIA device or toolchain outside the supported range, an
+identity outside the certified one under
+<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, and an environment switch with a
+value other than <code>0</code> or <code>1</code> leave the run on the array
+path, print one line on standard error, and record the reason in
+<code>driver.fast_path_report()</code>; see
+[Messages on standard error](#messages-on-standard-error). Without that
+setting, an Apple GPU outside the certified environment runs the Metal kernels,
+since every Apple GPU is supported, and says they are not certified there
+([Certification on an Apple GPU](../guides/kernel-dispatch.md#certification-on-an-apple-gpu)).
 
 ## Subnormal policy
 
@@ -230,8 +235,8 @@ declares the policy its certification was cut under: the two NVIDIA tables
 (Triton and hand-written CUDA) under <code>keep</code>, the Metal table under
 <code>flush</code>. When dispatch is
 enabled it installs that policy on all three executors or refuses by name.
-Dispatch is on by default. So on a certified host a run that dispatches gets that
-policy for the whole process, including its array-path sub-steps, unless it sets
+Dispatch is on by default. So a run that dispatches gets that policy for the
+whole process, including its array-path sub-steps, unless it sets
 <code>MEEP_GPU_DISPATCH=0</code>. The policy per executor, and what it does to
 a comparison, is in
 [the floating-point contract](../design/floating-point.md).
@@ -266,9 +271,11 @@ configuration freeze, so a long run's dispatch state is readable with
 The record is a dictionary of more than twenty keys. The ones to read first are
 <code>step_path</code>, <code>decision</code>, <code>refused_because</code>,
 <code>table</code>, <code>composition</code>, <code>slots</code>,
-<code>certified</code> (three-valued: <code>True</code>, <code>False</code>
-under <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code>, <code>None</code> when nothing
-dispatched or an identity could not be read) and <code>reference_driver</code>;
+<code>certified</code> (three-valued: <code>True</code>; <code>False</code>
+when an identity that served is not certified, by default on a supported
+NVIDIA device or toolchain and on an Apple GPU outside the certified
+environment; <code>None</code> when nothing dispatched or
+an identity could not be judged) and <code>reference_driver</code>;
 [Reading what ran](../getting-started/reading-what-ran.md) describes each, and
 why <code>tables</code> and <code>arbitration</code> can read as not reached on a
 dispatched run.
@@ -280,10 +287,10 @@ them is an exception; each reason is also in the dispatch record.
 
 | Line begins | Meaning |
 |---|---|
-| <code>meep_gpu: step path fused;</code> | Compiled kernels served part of the step: which sub-steps, which kernels, the table, the subnormal policy installed, and the certified identity |
+| <code>meep_gpu: step path fused;</code> | Compiled kernels served part of the step: which sub-steps, which kernels, the table, the subnormal policy installed, and the device and toolchain, each marked certified or not; on a Mac the GPU with its architecture, marked <code>supported, UNCERTIFIED</code> on an Apple GPU outside the certified environment |
 | <code>meep_gpu: step path array on the host CPU; dispatch refused:</code> | On an Apple GPU no kernel could serve; the whole run stepped on the host CPU |
 | <code>meep_gpu: step path array; dispatch refused:</code> | On an NVIDIA GPU no kernel could serve; the run stepped on the array path on the device |
-| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code> admitted an identity outside the certified list |
+| <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code> | The kernels ran on an identity outside the certified list: by default on a supported one (an Apple GPU outside the certified environment, because every Apple GPU is supported; an NVIDIA GPU of compute capability 7.0 to 9.0 or a Triton 3.1 release outside the certified identity); on an NVIDIA identity outside the supported range because <code>MEEP_GPU_ALLOW_UNCERTIFIED=1</code> admitted it |
 | <code>meep_gpu: step path array (NumPy reference, prefer_gpu=False);</code> | <code>MEEP_GPU_DISPATCH</code> is set on a reference driver, where it does not apply |
 | <code>meep_gpu: this MEEP build is double precision</code> | The lift read a double-precision MEEP; the engine steps single precision |
 

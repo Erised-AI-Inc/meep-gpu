@@ -2,11 +2,12 @@
 
 meep-gpu is aimed at large three-dimensional problems on one NVIDIA or Apple
 GPU, for users without a cluster. Expect no gain over MEEP on two-dimensional
-problems, on small grids, on short runs of large grids, or on a GPU outside the
-certified set; most of these cases have not been timed against MEEP, and the
-table below says which rest on a measurement. This page states each case with
-what it rests on, and says what has not been measured. To measure your own
-problem, see [Time your own simulation](time-your-simulation.md).
+problems, on small grids, on short runs of large grids, or on an NVIDIA GPU
+outside the supported range (compute capability 7.0 to 9.0); most of these cases
+have not been timed against MEEP, and the table below says which rest on a
+measurement. This page states each case with what it rests on, and says what has
+not been measured. To measure your own problem, see
+[Time your own simulation](time-your-simulation.md).
 
 ## How to read the numbers
 
@@ -20,11 +21,14 @@ Rates are in million cell updates per second (Mcell-steps/s): cells in the grid
 times steps taken, divided by the wall time of the step loop. All stepping is
 single precision.
 
+The run records behind these figures are not in this repository.
+
 ## The comparison with MEEP
 
 One comparison with MEEP has been made on the identical problem, on one machine,
 on 2026-09-28, on the development tree this release was prepared from. A timing
-campaign from the release tag is still to be run.
+campaign from the release tag, with the released timing ladder
+([Running the timing ladder](../development/timing.md)), is still to be run.
 
 | Cells | Triton route | CUDA-only route | MEEP, fastest of the rank counts tried |
 |---:|---:|---:|---:|
@@ -42,8 +46,8 @@ table, the table a host without Triton uses, serves every dispatched sub-step
 alone. It was timed on this host, which also had Triton installed; the
 composition a host without Triton builds has not been timed
 ([What has not been measured](#what-has-not-been-measured)). **The CUDA-only
-route is being improved for the next release, and these figures will be updated
-then.**
+figures have not been re-timed since the 0.9.1 change to the hand-written CUDA
+off-diagonal electric kernel.**
 
 **Read every number with these conditions:**
 
@@ -51,8 +55,9 @@ then.**
   8.6) against the 48 physical cores (2 × 24, Intel Xeon Gold 5220R) of the
   same machine. No other GPU and no other CPU has been compared with MEEP.
 - **Single precision on both sides.** Stock MEEP 1.33.0 built from source with
-  `--enable-single` (`-O2`, a portable binary, Open MPI 5.0.10); the GPU side
-  steps float32 (CuPy 13.5.1, Triton 3.1.0). The MEEP builds on conda-forge are
+  `--enable-single` (`-O2`, a portable binary, Open MPI 5.0.10), one thread per
+  rank with `OMP_NUM_THREADS=1`; the GPU side steps float32 (CuPy 13.5.1,
+  Triton 3.1.0). The MEEP builds on conda-forge are
   double precision, and no speed comparison with one has been made.
 - **This one 3-D case, with one flux monitor.** The same simulation on both
   sides: a 4 × 4 × 4 cell with a 0.8 PML on every side, a sphere of
@@ -61,7 +66,9 @@ then.**
   sizes the geometry digest of the package's lift equals MEEP's (6 of 6 MEEP
   runs compared at each size), with the same cell count, time step, PML
   thickness, and source and monitor counts. One flux monitor is the lightest
-  real monitor load; expect less with more monitors.
+  real monitor load; expect less with more monitors. 78 % of the cells are PML,
+  and the source sits off the fused seams, so the case pays no deposit-repair
+  cost; a case with a thin PML or a source on a fused seam may gain less.
 - **Steady-state stepping, not the one-off lift.** The rates time the step loop
   after a warm-up. The lift that precedes the first step took about 19 s,
   68 s and 216 s at the three sizes, and on the Triton route the GPU run
@@ -73,13 +80,14 @@ then.**
   fastest of the seven. An unbound run at 32 and 48 ranks, checked once at each
   size, was slower than the bound one in 6 of 6 cases, so the ratios do not rest
   on a binding that handicaps MEEP. MPI ranks with OpenMP threads each were not
-  tried.
-- **Two-dimensional problems and small three-dimensional problems are slower
-  than on MEEP.** That rests on the trend and on how the package steps, not on
-  a matched timing: the ratio falls as the grid gets smaller (1.80× at
-  512,000 cells), the dispatched step has a fixed cost that dominates a small
-  grid, and no grid below 512,000 cells and no two-dimensional problem has been
-  timed against MEEP on the identical problem
+  tried in this comparison, nor a MEEP build other than the portable `-O2` one; the
+  released ladder times both as controls.
+- **Two-dimensional problems and small three-dimensional problems are expected
+  to be slower than on MEEP** (inferred; not timed). That rests on the trend
+  and on how the package steps, not on a matched timing: the ratio falls as the
+  grid gets smaller (1.80× at 512,000 cells), the dispatched step has a fixed
+  cost that dominates a small grid, and no grid below 512,000 cells and no
+  two-dimensional problem has been timed against MEEP on the identical problem
   ([below](#where-it-does-not-help-or-has-not-been-measured)).
 - **Which numbers are reported.** A run passes the timing check when the timing
   windows of each of its three passes spread by at most 5 % and its three pass
@@ -89,6 +97,13 @@ then.**
   them MEEP runs that are not the fastest at their size (16 and 48 ranks at
   512,000 cells; 1 and 64 ranks at 2,097,152 cells), and no ratio on this page
   uses one.
+- **The quiet check in front of the MEEP runs could not fail.** The ladder of
+  2026-09-28 read the host's busy CPUs as a busy fraction times a CPU count that
+  its own thread setting reduced to one, so the reading could never reach its
+  threshold of 10. The GPU runs were held to a load-average check that worked; the
+  MEEP runs carry no evidence of a quiet CPU. The released ladder sums the busy CPUs
+  per CPU and refuses a reading it cannot take; the figures above are unchanged
+  until the release-tag campaign re-measures them.
 - **Warm-up.** MEEP's timing windows still rose slightly at the two smaller
   sizes. Against MEEP's fastest single window of any pass, the Triton ratios
   read 1.77×, 3.09× and 3.65× instead of 1.80×, 3.13× and 3.67×.
@@ -122,7 +137,9 @@ behind each of these ratios passed the timing check.
 | 3-D on an Apple device | Measure your case | No comparison with MEEP on the identical problem has been made on Apple hardware. Against the package's own NumPy reference, a default run is slower below about 125,000 cells in 3-D ([below](#small-grids-use-the-reference-or-meep-itself)) | not measured against MEEP |
 | 2-D, any size | Keep using MEEP | Not a target: see [below](#two-dimensional-problems) | not measured against MEEP |
 | A short run on a large grid | Keep using MEEP below the break-even step count | [Short runs](#short-runs-the-lift-comes-first) | derived |
-| A GPU or library version outside the certified set | Expect a run slower than MEEP at your rank count | It takes the array path. On the one NVIDIA card measured, with dispatch off, the array path read 0.22×, 0.58× and 0.73× MEEP's fastest at the three sizes above ([below](#a-gpu-outside-the-certified-set)); no other card has been measured. On Apple hardware the array path is NumPy on the host CPU, not timed against MEEP | measured on one card; not measured elsewhere |
+| A supported NVIDIA GPU or Triton 3.1 release outside the certified set (compute capability 7.0 to 9.0) | Measure your case | The compiled kernels run on it by default, uncertified ([below](#a-gpu-outside-the-certified-set)); no such card has been timed | not measured |
+| An NVIDIA GPU or library version outside the supported range | Expect a run slower than MEEP at your rank count | It takes the array path. On the one NVIDIA card measured, with dispatch off, the array path read 0.22×, 0.58× and 0.73× MEEP's fastest at the three sizes above ([below](#a-gpu-outside-the-certified-set)); no other card has been measured | measured on one card; not measured elsewhere |
+| An Apple GPU, PyTorch version or macOS build outside the certified environment | Measure your case | Every Apple GPU is supported: the Metal kernels run on it by default, uncertified ([below](#a-gpu-outside-the-certified-set)). No Apple GPU but one M1 Max has been timed, and none against MEEP on the identical problem | not measured |
 | Bloch-periodic, cylindrical with m ≠ 0, or complex β | Expect the array path for the affected sub-steps | These runs store complex fields, and their kernels need an evidence record the package does not ship; 50 of the 194 accepted simulations of the MEEP corpus use complex storage | coverage, not speed |
 | Many DFT monitors | Expect less gain | One flux monitor and zero DFT monitors were timed. Monitor accumulation runs on the array path on every kernel table | not measured |
 | Dispersive, conductive or nonlinear media in 3-D | Unknown | The kernels exist; the only 3-D case timed is the one above | not measured |
@@ -175,16 +192,30 @@ cells, about 227 s on the GPU against about 86 s on MEEP at 48 ranks.
 
 ### A GPU outside the certified set
 
-Kernels are certified on one device identity per kernel table: compute
-capability 8.6 with Triton 3.1.0, or compute capability 8.6 for the hand-written
-CUDA table, on NVIDIA hardware; PyTorch 2.10.0 with Metal frontend 32023.850.10
-on Apple hardware. Any other device or version is refused by name and the run
-takes the array path. On the NVIDIA card measured, with dispatch off, the array
-path read 128.9, 373.2 and 404.5 Mcell-steps/s at 512,000, 2,097,152 and
-7,077,888 cells: 0.22×, 0.58× and 0.73× MEEP's fastest, slower than MEEP at
-each size (of record, under the same conditions as the table above). On Apple
-hardware the array path is NumPy on the host CPU. A device whose identity cannot
-be read is not refused.
+On NVIDIA hardware, kernels are certified on one device identity per kernel
+table: compute capability 8.6 with Triton 3.1.0, or compute capability 8.6 for
+the hand-written CUDA table. They are supported on compute capability 7.0 to 9.0
+with Triton 3.1, where they run by default, uncertified, and print a note saying
+so; their speed there has not been measured
+([Certification on an NVIDIA GPU](kernel-dispatch.md#certification-on-an-nvidia-gpu)).
+A device or version outside the supported range is refused by name and the run
+takes the array path, as is any uncertified one under
+`MEEP_GPU_ALLOW_UNCERTIFIED=0`. On the NVIDIA card measured, with dispatch off,
+the array path read 128.9, 373.2 and 404.5 Mcell-steps/s at 512,000, 2,097,152
+and 7,077,888 cells: 0.22×, 0.58× and 0.73× MEEP's fastest, slower than MEEP at
+each size (of record, under the same conditions as the table above). A device
+whose identity cannot be read is not refused.
+
+On Apple hardware every GPU is supported: the Metal kernels are meant to run
+on each, and run there by default. They are certified on one environment: GPU
+architecture `applegpu_g13s` (an M1 Max), PyTorch 2.10.0, Metal frontend
+`metalfe-32023.850.10`, and `PYTORCH_MPS_FAST_MATH` unset or `0`. Another
+Apple GPU architecture, PyTorch version or macOS build runs the same kernels
+uncertified, and prints a note saying so; their speed there has not been
+measured. With `MEEP_GPU_ALLOW_UNCERTIFIED=0`, an environment that is not
+certified, or that cannot be judged, is refused by name and the run takes the
+array path, NumPy on the host CPU
+([Certification on an Apple GPU](kernel-dispatch.md#certification-on-an-apple-gpu)).
 
 ## Small grids: use the reference, or MEEP itself
 

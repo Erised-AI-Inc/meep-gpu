@@ -221,17 +221,32 @@ is never given a CPU run in place of the GPU one it asked for. The caller may
 choose a CPU-MEEP fallback at a higher workflow layer, but that choice must be
 visible in its own result metadata and logs.
 
-One case is announced rather than raised. On an Apple GPU the device runs
+Two cases are announced rather than raised. On an Apple GPU the device runs
 compiled kernels only, and the array path runs on NumPy host arrays. A
 <code>prefer_gpu=True</code> run there whose configuration no certified Metal kernel
-covers, or whose torch or Metal frontend is outside the certified pair, steps the
-same equations on the host CPU. The driver still reports
-<code>gpu == "metal"</code>; the run prints one line beginning
-<code>meep_gpu: step path array on the host CPU; dispatch refused:</code> and
-records the reason in <code>driver.fast_path_report()</code>. A run that turned
-kernels off itself (<code>MEEP_GPU_DISPATCH=0</code> or
+covers, or, under <code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, whose environment
+(GPU architecture, PyTorch, Metal frontend, <code>PYTORCH_MPS_FAST_MATH</code>) is
+not certified or cannot be judged, steps the same equations on the host CPU. The
+driver still reports <code>gpu == "metal"</code>; the run prints one line
+beginning <code>meep_gpu: step path array on the host CPU; dispatch refused:</code>
+and records the reason in <code>driver.fast_path_report()</code>. A run that
+turned kernels off itself (<code>MEEP_GPU_DISPATCH=0</code> or
 <code>MEEP_GPU_FUSED=0</code>) is on the host CPU there too, and prints nothing.
-On a CUDA host the array path stays on the device.
+On a CUDA host the array path stays on the device: a run on an NVIDIA GPU or
+Triton version outside the supported range, or, under
+<code>MEEP_GPU_ALLOW_UNCERTIFIED=0</code>, outside the certified list, steps
+there with the same one-line announcement.
+
+The second case is a run outside the certified identity on a supported GPU, with
+the switch unset or <code>1</code>. On an Apple GPU, every one of which is
+supported, it steps on the Metal kernels; on an NVIDIA GPU of compute capability
+7.0 to 9.0 (with Triton 3.1 on the Triton table) it steps on the NVIDIA kernels,
+except that a kernel table certified for that device and toolchain runs alone in
+place of one that is only supported. The run is uncertified, prints one line
+beginning <code>meep_gpu: NOTE the kernels are NOT CERTIFIED on this host:</code>,
+and <code>driver.fast_path_report()</code> carries <code>certified: False</code>
+([Certification on an NVIDIA GPU](kernel-dispatch.md#certification-on-an-nvidia-gpu),
+[Certification on an Apple GPU](kernel-dispatch.md#certification-on-an-apple-gpu)).
 
 ## What MEEP continues to own
 
@@ -251,8 +266,8 @@ that failure mode.
 The preflight decides whether a simulation can be **lifted**. It is a separate
 question from which implementation then steps it: the array path handles every
 lifted configuration, and compiled kernels replace it slot by slot where a
-released arm covers that slot on a certified host. On a driver built with
-<code>prefer_gpu=True</code> dispatch is on by default, and
+released arm covers that slot on a host its kernel table admits. On a driver
+built with <code>prefer_gpu=True</code> dispatch is on by default, and
 <code>MEEP_GPU_DISPATCH=0</code> turns it off; a <code>prefer_gpu=False</code>
 driver is the NumPy reference and never dispatches. Neither decision changes the
 other's answer, and a kernel that does not cover a slot is never a reason a
@@ -267,8 +282,9 @@ For a run whose result will be relied on, keep:
 2. the preflight verdict and reasons,
 3. the selected backend and device,
 4. **the dispatch state** — the enable's value (unset, <code>1</code> or
-   <code>0</code>), which kernel table served, which arms, and the subnormal
-   policy installed, all of which
+   <code>0</code>), which kernel table served, which arms, the subnormal
+   policy installed, and whether the kernels are certified on this host
+   (<code>certified</code>), all of which
    <code>driver.fast_path_report()</code> reports and
    <code>MEEP_GPU_DISPATCH_LOG</code> persists per configuration freeze,
 5. the returned step count, simulation time, and timing, and

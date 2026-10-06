@@ -522,7 +522,10 @@ PINNED_BUT_NOT_A_WELD = {
     "driver_dispatch":
         "the dispatch WIRING record — which consult sites exist and what the "
         "kill switch does — not a device run; it has no host and no artifact "
-        "because no gate produced it",
+        "because no gate produced it. Its verdict is its route runs', filed "
+        "under runs[<cc>], and the record is checked through them by "
+        "test_triton_weld_contract.py::"
+        "test_the_dispatch_record_stands_on_a_live_passing_route_run",
     "bit_identity_gate":
         "pins its harness (probe_sha256, adapter_sha256) rather than a package "
         "source map; its verdict shape is pinned by test_triton_kernels.py::"
@@ -555,7 +558,12 @@ PINNED_BUT_NOT_A_WELD = {
 #: its delegation was deleted.
 CHECKED_ENTRY_FLOOR = 44
 SOURCE_PIN_FLOOR = 268          # (entry, path) pairs from live source_sha256 maps
-SIBLING_PIN_FLOOR = 22          # <name>/<name>_sha256 pairs naming an in-tree file
+#: <name>/<name>_sha256 pairs naming an in-tree file. 22 until release 0.9.1
+#: (24c9b47), which removed the eight slurm_launcher/slurm_launcher_sha256 pairs:
+#: they named run_triton_*.slurm batch launchers that this repository does not
+#: track. 14 resolve in-tree on the shipped record (measured 2026-10-05), and a
+#: record that loses one more fails here.
+SIBLING_PIN_FLOOR = 14
 
 #: THE TOTAL, and it is the floor the other three cannot substitute for. Those
 #: count what is CHECKED; this counts what the walk FINDS, so a digest that stops
@@ -780,6 +788,18 @@ def _drifted(found, root=REPO):
         unbound_placeholder=UNBOUND_PLACEHOLDER,
         rebind_tool="parity/meep_gpu/rebind_triton_welds.py",
     )
+
+
+def _measured_drift(name, entry, root=REPO):
+    """The set of paths this entry pins in the RAW tier that no longer match the tree.
+
+    Derived from the census over ``{name: entry}`` rather than from
+    ``entry["source_sha256"]``, so a raw pin the entry grows in some other shape is
+    measured here too. The same measurement, under the same name, as the CUDA
+    contract's, so the route-record rule below reads drift the same way in all three.
+    """
+    raw = _of_tier(_census({name: entry}), walk.TIER_RAW)
+    return {subject for _, subject, _ in _drifted(raw, root=root)}
 
 
 def test_the_triton_welds_are_bound_to_the_live_sources():
@@ -1512,6 +1532,123 @@ def test_the_weld_tier_and_the_pinned_tier_differ_only_where_it_is_written_down(
         f"direction")
     stale = sorted(set(PINNED_BUT_NOT_A_WELD) - pinned)
     assert not stale, f"declared non-welds that are not in the record: {stale}"
+
+
+# ---------------------------------------------------------------------------
+# THE ROUTE RECORD: checked through its runs, not as a weld
+# ---------------------------------------------------------------------------
+#
+# The same rule, in the same words, as the other two weld contracts. What differs
+# per suite is only where this suite declares the record a non-weld, how it spells a
+# run's key, and which route-run fields its shape check reads.
+
+#: This ledger's dispatch record, and the table that declares it a non-weld.
+DISPATCH_RECORD = "driver_dispatch"
+DISPATCH_RECORD_DECLARED_BY = PINNED_BUT_NOT_A_WELD
+
+#: The key the armed control files a planted route run under: a compute capability.
+PLANTED_RUN_KEY = "8.6"
+
+
+def _dispatch_shape_reasons(entry):
+    """Why the record is not in the per-capability shape, read against the
+    ROUTE-run fields, which name ``status``; the weld run fields do not."""
+    return fastpath.retired_shape_reasons(entry, run_fields=fastpath.DISPATCH_RUN_FIELDS)
+
+
+def _tree_digest(name):
+    """The live raw digest of a path the record pins, resolved as this suite's drift
+    check resolves it."""
+    return _raw_digest(_resolve(name))
+
+
+def _dispatch_record_problems(record):
+    """What ``weld_record_walk.route_record_problems`` reports for this ledger's
+    dispatch record, from this suite's own measurements: liveness by
+    ``fastpath.live_capabilities``, drift by :func:`_measured_drift` (the raw tier,
+    as for a weld), and shape by :func:`_dispatch_shape_reasons`."""
+    entry = record[DISPATCH_RECORD]
+    return walk.route_record_problems(
+        entry, live=fastpath.live_capabilities(entry),
+        moved=sorted(_measured_drift(DISPATCH_RECORD, entry)),
+        stranded=_dispatch_shape_reasons(entry))
+
+
+def test_the_dispatch_record_stands_on_a_live_passing_route_run():
+    """The dispatch record is not a weld: it stands on its route runs and the tree.
+
+    ``driver_dispatch`` pins the bytes of the dispatch wiring, and no single gate
+    produced it, so the weld status rule does not apply to it. Its verdict is the
+    route campaign's: ``recut_driver_dispatch_record.py`` files each run under
+    ``runs[<key>]``, one per environment, with that run's ``status``. The rule is the
+    same in the three weld contracts (``weld_record_walk.route_record_problems``):
+
+      (a) at least one run is live (``fastpath.live_capabilities``), so an empty
+          ``runs``, or one whose every run binds bytes that have since moved, fails;
+      (b) every live run reads ``status`` PASS;
+      (c) every file the record pins in the raw tier matches the tree. A run stays
+          live after the files move, because it binds the record's digests and not
+          the tree, so liveness alone cannot say the record describes what ships;
+      (d) the route-run fields, ``status`` among them, appear only under
+          ``runs[<key>]``. A status beside the digests would be a second answer to
+          what the route campaign measured, and is refused.
+
+    Cleared by a route campaign that releases on these bytes and a recut that files
+    its run; never by writing a status beside the digests.
+    """
+    record = _record()
+    assert DISPATCH_RECORD in DISPATCH_RECORD_DECLARED_BY, (
+        f"{DISPATCH_RECORD} is no longer declared a non-weld, so the weld rules would "
+        f"apply to it as well as this one; declare it, or retire this test")
+    assert isinstance(record.get(DISPATCH_RECORD), dict), (
+        f"the ledger carries no {DISPATCH_RECORD} record")
+    problems = _dispatch_record_problems(record)
+    assert not problems, (
+        f"{DISPATCH_RECORD}: {problems} - run the route campaign on these bytes and "
+        f"cut its run with parity/meep_gpu/recut_driver_dispatch_record.py; never "
+        f"write a status beside the digests")
+
+
+def test_the_dispatch_record_rule_refuses_what_its_route_runs_do_not_support():
+    """ARMED, on this ledger's own record, because the test above fails until a route
+    campaign has run on these bytes, and a rule watched only while it fails has not
+    been watched refusing what it is meant to refuse.
+
+    The control first: a copy of the record re-pinned to the tree, holding one live
+    run that reads PASS, is accepted, so the rule can pass. Then four plants on that
+    control, each refused by its own clause and by nothing else: an entry-level
+    ``status`` (d), an emptied ``runs`` (a), a run that reads PASS but binds bytes
+    other than the record's, so that no run is live (a), and the live run reading
+    FAIL (b). The stale run is what holds liveness to ``fastpath.live_capabilities``:
+    a check that read every recorded run as live would accept it."""
+    record = _record()
+    source = {name: _tree_digest(name)
+              for name in record[DISPATCH_RECORD]["source_sha256"]}
+    bound = fastpath.bound_digest(dict(record[DISPATCH_RECORD], source_sha256=source))
+
+    def problems_with(**fields):
+        planted = json.loads(json.dumps(record))
+        planted[DISPATCH_RECORD].update({"source_sha256": source, fastpath.RUNS: {
+            PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": bound}}})
+        planted[DISPATCH_RECORD].update(fields)
+        return _dispatch_record_problems(planted)
+
+    control = problems_with()
+    assert control == [], control
+    stated = problems_with(status="PASS")
+    assert len(stated) == 1 and "beside the digests" in stated[0], stated
+    assert "'status'" in stated[0], stated
+    emptied = problems_with(**{fastpath.RUNS: {}})
+    assert len(emptied) == 1 and emptied[0].startswith("no live run"), emptied
+    other_bytes = "0" * 64
+    assert other_bytes != bound
+    stale = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "PASS", "bound_sha256": other_bytes}}})
+    assert len(stale) == 1 and stale[0].startswith("no live run"), stale
+    failed = problems_with(**{fastpath.RUNS: {
+        PLANTED_RUN_KEY: {"status": "FAIL", "bound_sha256": bound}}})
+    assert len(failed) == 1 and failed[0].startswith(
+        f"{fastpath.RUNS}[{PLANTED_RUN_KEY!r}] reads status 'FAIL', not PASS"), failed
 
 
 def test_the_bare_basename_resolver_finds_the_files_the_old_entries_pin():

@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "about": "The numerics-relevant set of each certification reference lock: the packages whose builds can change what MEEP or the GPU route computes. tools/compare_reference_environment.py judges every name below against the lock files of its platform (conda packages by version and build, PyPI packages by version, origin and, where pypi_build_tags names one, the wheel's build tag) and does not judge the rest of the lock, the compilers included: the build scripts' step 1b holds the build to every artifact of the lock. Package versions live in the lock files; this file adds only what a lock cannot hold: the MEEP the reference builds from source (meep, judged by tools/check_install.py --require-reference, which imports it), the certified environment's own build of a package the lock takes differently by design (by_design), and wheel build tags.",
+  "platforms": {
+    "osx-arm64": {
+      "conda_lock": "meep-gpu-ref-osx-arm64.conda.txt",
+      "pip_lock": "meep-gpu-ref-osx-arm64.pip.txt",
+      "basis": "MEASURED 2026-10-03: the libraries the certified libmeep and its Python module load (otool closure), the BLAS/LAPACK and OpenMP runtimes NumPy and MEEP reach, the MPI stack, and the Python numerics.",
+      "host_floor": {
+        "macos": "11.0"
+      },
+      "conda": {
+        "meep_links": [
+          "libctl",
+          "fftw",
+          "gsl",
+          "harminv",
+          "mpb",
+          "hdf5",
+          "openmpi",
+          "libopenblas",
+          "libgfortran5",
+          "libgcc",
+          "libcxx"
+        ],
+        "blas_lapack": [
+          "libopenblas",
+          "libblas",
+          "libcblas",
+          "liblapack"
+        ],
+        "openmp": [
+          "llvm-openmp",
+          "_openmp_mutex"
+        ],
+        "mpi": [
+          "openmpi",
+          "mpi",
+          "libpmix",
+          "libhwloc",
+          "libfabric",
+          "libfabric1",
+          "libevent",
+          "mpi4py"
+        ],
+        "fortran_runtime": [
+          "libgfortran",
+          "libgfortran5",
+          "libgcc"
+        ],
+        "python_numerics": [
+          "python",
+          "python_abi",
+          "numpy",
+          "scipy"
+        ]
+      },
+      "pypi": [
+        "torch"
+      ],
+      "pypi_build_tags": {
+        "torch": "2"
+      },
+      "meep": {
+        "version": "1.33.0",
+        "single_precision": true,
+        "mpi": true
+      },
+      "by_design": {
+        "hdf5": {
+          "rule": "certified_build",
+          "version": "1.14.6",
+          "build": "nompi_had3affe_106",
+          "md5": "2d1270d283403c542680e969bea70355",
+          "why": "the certified environment holds this nompi build of hdf5; the lock takes the mpi_openmpi build because a nompi HDF5 deadlocks multi-rank MEEP output"
+        }
+      }
+    },
+    "linux-64": {
+      "conda_lock": "meep-gpu-ref-linux-64.conda.txt",
+      "pip_lock": "meep-gpu-ref-linux-64.pip.txt",
+      "basis": "The Apple silicon set carried over to the Linux packages (libstdcxx for libcxx, libgomp for llvm-openmp, since the Linux MEEP is configured --with-openmp), the UCX/UCC transports of the Linux Open MPI, and the CUDA libraries of the GPU route; checked 2026-10-03 against readelf -d of the round environment's libmeep.so and _meep.so, whose every NEEDED library belongs to a judged package.",
+      "host_floor": {
+        "glibc": "2.28"
+      },
+      "conda": {
+        "meep_links": [
+          "libctl",
+          "fftw",
+          "gsl",
+          "harminv",
+          "mpb",
+          "hdf5",
+          "openmpi",
+          "libopenblas",
+          "libgfortran5",
+          "libgcc",
+          "libstdcxx",
+          "libgomp"
+        ],
+        "blas_lapack": [
+          "libopenblas",
+          "libblas",
+          "libcblas",
+          "liblapack"
+        ],
+        "openmp": [
+          "libgomp",
+          "_openmp_mutex"
+        ],
+        "mpi": [
+          "openmpi",
+          "mpi",
+          "libpmix",
+          "libhwloc",
+          "libfabric",
+          "libfabric1",
+          "libevent",
+          "ucx",
+          "ucc",
+          "mpi4py"
+        ],
+        "fortran_runtime": [
+          "libgfortran",
+          "libgfortran5",
+          "libgcc"
+        ],
+        "python_numerics": [
+          "python",
+          "python_abi",
+          "numpy",
+          "scipy"
+        ],
+        "gpu": [
+          "cupy",
+          "cupy-core",
+          "cuda-version",
+          "cudatoolkit"
+        ]
+      },
+      "pypi": [
+        "torch",
+        "triton"
+      ],
+      "meep": {
+        "version": "1.33.0",
+        "single_precision": true,
+        "mpi": true
+      },
+      "by_design": {}
+    }
+  }
+}

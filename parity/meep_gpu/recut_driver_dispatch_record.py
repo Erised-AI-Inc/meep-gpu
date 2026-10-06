@@ -24,8 +24,10 @@ refuses unless
 * every leg stamped the SAME compute capability, and the run directory is the one
   :func:`fastpath.route_campaign` spells for it (``<stamp>_cc86``);
 * every dispatching row planned against a device the tables it dispatched through
-  certify (``plan.environment.device_certified_by_table``), so a row admitted by
-  the uncertified opt-in cannot enter a record.
+  certify (``plan.environment.device_certified_by_table``) and, for the Triton
+  table, a certified Triton version (``plan.environment.triton_certified``), so a
+  row admitted uncertified (a supported identity by default, or any identity
+  under ``MEEP_GPU_ALLOW_UNCERTIFIED=1``) cannot enter a record.
 
 Any of those failing prints the disagreement and exits non-zero with nothing
 written. A stale record is then fixed the only way it can be: re-run the gate.
@@ -53,6 +55,16 @@ which architecture a record describes from the directory name alone.
 ``--supersede 8.6,9.0`` is how a cut on MOVED bytes says, by name, which other
 capabilities it is retiring; without it such a cut is refused.
 
+ONE RECORD PER GPU ARCHITECTURE ON THE METAL RECORD, by the same rule
+(``meep_gpu.metal_runs``). The architecture is READ from every leg's
+``provenance.apple_gpu.architecture``, the legs must agree, and the campaign directory
+must be ``metal_runs.route_campaign(metal_dispatch.METAL_DRIVER_ROUTE_GATE,
+<architecture>)``. The route run's facts (``metal_runs.DISPATCH_RUN_FIELDS``: the
+status, legs, records, timestamp, the run's subkeys of ``released_fused_arms``, and the
+``residency`` and ``lift`` blocks read off the legs) go into
+``runs[<architecture>]``; ``--supersede applegpu_g13s`` retires an architecture by
+name on a cut whose bytes moved.
+
 THE DEFAULT AND ITS LICENCE LIVE IN THE PRIMARY TABLE'S RECORD.
 ``dispatch_by_default`` is written from ``fastpath.DISPATCH_BY_DEFAULT`` on every
 cut, never typed. While it reads True the record of
@@ -66,7 +78,7 @@ table, and an existing licence is carried forward only while the slot it sits in
 still binds this cut's bytes — so the default and its evidence move together or the
 cut stops.
 
-    python recut_driver_dispatch_record.py --run dispatch_fused_route_2026-09-30_091_cc86
+    python recut_driver_dispatch_record.py --run dispatch_fused_route_2026-10-05_092_cc86
     python recut_driver_dispatch_record.py --run ... --write
     python recut_driver_dispatch_record.py --backend metal --run dispatch_metal_route_<stamp>
     python recut_driver_dispatch_record.py --run <stamp>_cc86 \\
@@ -98,6 +110,7 @@ if str(_API) not in sys.path:
     sys.path.insert(0, str(_API))
 
 from meep_gpu import fastpath                          # noqa: E402
+from meep_gpu import metal_runs                        # noqa: E402
 
 #: The substitution verdicts that count as a measured drop: the two the route gate
 #: spells in ``gate_dispatch_fused_route.EXACT_SUBSTITUTION_VERDICTS``, and its
@@ -361,13 +374,14 @@ def stamped_capabilities(artifacts: dict) -> dict:
 def _uncertified_dispatch_reasons(case: str, plan: dict, tables) -> list:
     """Why this dispatching row's device was not certified by a table that served it.
 
-    THE RECORD MAY NOT REST ON A ROW THE OPT-IN ADMITTED. ``MEEP_GPU_ALLOW_UNCERTIFIED``
-    takes a run past rung 4b on a device no cited weld ran on, and the plan says so:
-    ``environment.device_certified_by_table[t]`` stays False under the opt-in
-    (``fastpath._environment_block``) while the kernels dispatch anyway. Without this
-    check a campaign run that way would cut a record — and a licence — for an
-    architecture nothing had certified, which is exactly the hole the per-capability
-    container exists to close.
+    THE RECORD MAY NOT REST ON A ROW ADMITTED UNCERTIFIED. A supported device or
+    Triton version no cited weld ran on dispatches by default, and
+    ``MEEP_GPU_ALLOW_UNCERTIFIED=1`` takes an unsupported one past rungs 4 and 4b too;
+    the plan says so: ``environment.device_certified_by_table[t]`` and, for the Triton
+    table, ``environment.triton_certified`` stay False (``fastpath._environment_block``)
+    while the kernels dispatch anyway. Without this check a campaign run that way would
+    cut a record — and a licence — for an architecture or a compiler nothing had
+    certified, which is exactly the hole the per-capability container exists to close.
 
     A row that dispatched through no table is not a dispatching row and is skipped;
     a dispatching row whose plan records no answer refuses rather than passing,
@@ -384,10 +398,58 @@ def _uncertified_dispatch_reasons(case: str, plan: dict, tables) -> list:
         return [f"{case} dispatched through {sorted(tables)} and its plan recorded no "
                 f"device_certified_by_table; re-run the current gate"]
     device = (environment.get("device") or {}).get("compute_capability")
-    return [f"{case} dispatched through {table!r} on compute capability "
-            f"{device or 'unrecorded'}, which that table's ledger does not certify "
-            f"(device_certified_by_table[{table!r}] = {by_table.get(table)!r})"
-            for table in sorted(tables) if by_table.get(table) is not True]
+    reasons = [f"{case} dispatched through {table!r} on compute capability "
+               f"{device or 'unrecorded'}, which that table's ledger does not certify "
+               f"(device_certified_by_table[{table!r}] = {by_table.get(table)!r})"
+               for table in sorted(tables) if by_table.get(table) is not True]
+    if "triton" in tables and environment.get("triton_certified") is not True:
+        reasons.append(f"{case} dispatched through 'triton' on Triton "
+                       f"{environment.get('triton') or 'unrecorded'}, which that "
+                       "table's ledger does not certify (triton_certified = "
+                       f"{environment.get('triton_certified')!r})")
+    return reasons
+
+
+#: The three verdicts a Metal plan records for its environment, in the order a
+#: refusal names them (``metal_dispatch.environment_block``).
+METAL_ENVIRONMENT_VERDICTS = (("device_certified", "GPU architecture", "device"),
+                              ("torch_certified", "torch", "torch"),
+                              ("frontend_certified", "Metal frontend", "metal_frontend"))
+
+
+def _uncertified_metal_dispatch_reasons(case: str, plan: dict, tables) -> list:
+    """Why this dispatching Metal row ran on an environment the cited welds do not certify.
+
+    THE METAL TABLE RUNS AN UNCERTIFIED ENVIRONMENT BY DEFAULT, and says so in the
+    plan: its device verdict is ``True`` only when every cited weld has a live run for
+    the GPU architecture, and its torch and frontend verdicts only when every such run
+    recorded this host's (``metal_dispatch.environment_verdict``). A route campaign run on any
+    other Mac would otherwise cut a record for an environment no weld ran on, as an
+    NVIDIA campaign run on an identity admitted uncertified would
+    (:func:`_uncertified_dispatch_reasons`).
+    ``None`` refuses as ``False`` does: a record cannot rest on a fact its welds did
+    not stamp, so a Metal route campaign runs after the welds it cites are bound.
+    """
+    if not tables:
+        return []
+    environment = plan.get("environment")
+    if not isinstance(environment, dict):
+        return [f"{case} dispatched through {sorted(tables)} and its plan recorded no "
+                f"environment; re-run the current gate"]
+    reasons = []
+    for key, what, read_key in METAL_ENVIRONMENT_VERDICTS:
+        if key not in environment:
+            reasons.append(f"{case} dispatched through {sorted(tables)} and its plan "
+                           f"recorded no {key}; re-run the current gate")
+            continue
+        if environment[key] is not True:
+            read = environment.get(read_key)
+            if isinstance(read, dict):
+                read = read.get("architecture")
+            reasons.append(f"{case} dispatched on {what} {read or 'unrecorded'}, which "
+                           f"the Metal welds this table cites do not certify "
+                           f"({key} = {environment[key]!r})")
+    return reasons
 
 
 def _end_to_end_dirs(argument: str):
@@ -737,7 +799,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", required=True,
                         help="results/ directory name of the campaign, e.g. "
-                             "dispatch_fused_route_2026-09-30_091_cc86. On the NVIDIA "
+                             "dispatch_fused_route_2026-10-05_092_cc86. On the NVIDIA "
                              "tables it must be fastpath.route_campaign(<the table's "
                              "route gate constant>, <the capability the legs stamped>)")
     parser.add_argument("--write", action="store_true", help="apply (default: report)")
@@ -752,11 +814,11 @@ def main(argv=None) -> int:
                              "(fastpath.primary_table); required there while "
                              "fastpath.DISPATCH_BY_DEFAULT is True unless the "
                              "capability's existing record still binds these bytes")
-    parser.add_argument("--supersede", default="", metavar="CC[,CC...]",
-                        help="compute capabilities whose records this cut retires. "
-                             "A cut on bytes that MOVED leaves every other "
-                             "capability's record certifying code that no longer "
-                             "ships; those capabilities are named in the refusal and "
+    parser.add_argument("--supersede", default="", metavar="KEY[,KEY...]",
+                        help="compute capabilities (NVIDIA) or GPU architectures "
+                             "(Metal) whose records this cut retires. A cut on bytes "
+                             "that MOVED leaves every other record certifying code "
+                             "that no longer ships; those are named in the refusal and "
                              "must be re-run on these bytes or listed here")
     arguments = parser.parse_args(argv)
     supersede = tuple(sorted({name.strip() for name in arguments.supersede.split(",")
@@ -807,11 +869,8 @@ def main(argv=None) -> int:
     # whole name once one release is driven on more than one architecture. Triton
     # used to only PRINT this disagreement, which is how records came to be cut from
     # re-run and superseded directories.
-    if arguments.backend == "metal" and arguments.run != route_gate:
-        print(f"REFUSING: {arguments.backend}'s release cites {route_gate!r} and this "
-              f"run is {arguments.run!r}. The constant edit belongs BEFORE the "
-              f"campaign, never after.", file=sys.stderr)
-        return 2
+    # THE METAL TABLE IS CHECKED BELOW TOO, against the per-architecture campaign name
+    # its legs' recorded GPU decides (``run_is_not_this_architecture_campaign``).
     legs = _legs(run)
     names = tuple(sorted(p.parent.name for p in legs))
     allowed = tuple(sorted(set(required) | (set(names) & set(optional))))
@@ -835,12 +894,10 @@ def main(argv=None) -> int:
         document["driver_dispatch"] = {"source_sha256": {name: None for name
                                                          in backend["bound"]},
                                        "exclusions": {"released_fused_arms": {}}}
-        if arguments.backend in ("triton", "cuda"):
-            # THE CONTAINER IS PART OF THE EMPTY SHAPE on the NVIDIA tables, so a
-            # first cut is in the per-capability shape before it writes a record
-            # rather than after. The Metal ledger is not keyed by capability yet and
-            # is left exactly as it is.
-            document["driver_dispatch"][fastpath.RUNS] = {}
+        # THE CONTAINER IS PART OF THE EMPTY SHAPE on every table, so a first cut is
+        # in the per-capability (per-architecture, on Metal) shape before it writes a
+        # record rather than after.
+        document["driver_dispatch"][fastpath.RUNS] = {}
     record = document["driver_dispatch"]
     record.setdefault("exclusions", {}).setdefault("released_fused_arms", {})
     bound = sorted(record["source_sha256"])
@@ -866,6 +923,18 @@ def main(argv=None) -> int:
             print("REFUSING: record_carries_route_run_fields_at_entry_level: "
                   f"{'; '.join(stranded)}. The route run's facts belong in "
                   f"{fastpath.RUNS}[<capability>]; migrate the record first.",
+                  file=sys.stderr)
+            return 2
+    if arguments.backend == "metal":
+        # THE SAME REFUSAL ON THE METAL RECORD, keyed by GPU architecture: a record
+        # still holding its route run beside its digests is migrated by
+        # migrate_metal_runs.py, never read both ways here.
+        stranded = metal_runs.shape_reasons(
+            record, run_fields=metal_runs.DISPATCH_RUN_FIELDS)
+        if stranded:
+            print("REFUSING: record_carries_route_run_fields_at_entry_level: "
+                  f"{'; '.join(stranded)}. The route run's facts belong in "
+                  f"{metal_runs.RUNS}[<architecture>]; run migrate_metal_runs.py first.",
                   file=sys.stderr)
             return 2
     # THE BOUND BEFORE THE REFRESH, which is the only moment it can be read: the
@@ -928,6 +997,43 @@ def main(argv=None) -> int:
                   f"BEFORE the campaign, never after.", file=sys.stderr)
             return 2
 
+    # WHICH APPLE GPU THIS RECORD IS ABOUT, read off the legs the same way: the route
+    # gate stamps ``provenance.apple_gpu`` on every leg, so the pinned gate does not
+    # move for this. A campaign whose legs name two architectures, or a leg that names
+    # none, refuses -- a route record filed under the wrong GPU is the label/evidence
+    # mismatch the per-architecture records exist to close.
+    architecture = None
+    if arguments.backend == "metal":
+        stamped = {leg: ((artifact.get("provenance") or {}).get("apple_gpu") or {})
+                   .get("architecture") for leg, artifact in artifacts.items()}
+        values = sorted({value for value in stamped.values() if value})
+        unstamped = sorted(leg for leg, value in stamped.items() if not value)
+        if len(values) != 1 or unstamped:
+            print(f"REFUSING: legs_do_not_name_one_gpu_architecture: {stamped}; every "
+                  f"leg's gate.json must record provenance.apple_gpu.architecture, and "
+                  f"all the same one", file=sys.stderr)
+            return 1
+        try:
+            architecture = metal_runs.require_architecture(values[0])
+            expected_run = metal_runs.route_campaign(route_gate, architecture)
+        except metal_runs.ArchitectureRecordError as refused:
+            print(f"REFUSING: legs_do_not_name_one_gpu_architecture: {refused}",
+                  file=sys.stderr)
+            return 1
+        if arguments.run != expected_run:
+            print(f"REFUSING: run_is_not_this_architecture_campaign: the legs ran on "
+                  f"{architecture}, so the Metal release cites {expected_run!r} "
+                  f"(metal_runs.route_campaign of {route_gate!r}) and this run is "
+                  f"{arguments.run!r}. The constant edit belongs BEFORE the campaign, "
+                  f"never after.", file=sys.stderr)
+            return 2
+        for name in supersede:
+            try:
+                metal_runs.require_architecture(name)
+            except metal_runs.ArchitectureRecordError as refused:
+                print(f"REFUSING: --supersede: {refused}", file=sys.stderr)
+                return 2
+
     # ONE CAMPAIGN, ONE TREE, AND THE TREE THAT SHIPS. Three comparisons, because
     # the defect had three digests: leg against leg, leg against the file on disk.
     ran = {}
@@ -977,14 +1083,17 @@ def main(argv=None) -> int:
                                 f"{case!r}; no dispatching leg's artifact shows it")
 
     # THE DEVICE EVERY DISPATCHING ROW PLANNED AGAINST, read off that row's own plan.
-    # This is what keeps a capability admitted by ``MEEP_GPU_ALLOW_UNCERTIFIED`` from
-    # producing a record: the opt-in takes a run past rung 4b, the kernels launch, and
+    # This is what keeps a capability admitted uncertified (a supported one by
+    # default, any one under ``MEEP_GPU_ALLOW_UNCERTIFIED=1``) from producing a
+    # record: the admission takes a run past rung 4b, the kernels launch, and
     # the plan keeps answering ``device_certified_by_table[t]`` False -- so a campaign
     # driven that way would otherwise cut a record for an architecture no cited weld
     # had run on, and the record would then be the evidence admitting it. Checked per
     # ROW rather than per leg because the answer is per table and a row's composition
     # names the tables that served it.
-    if arguments.backend in ("triton", "cuda"):
+    screen = (_uncertified_metal_dispatch_reasons if arguments.backend == "metal"
+              else _uncertified_dispatch_reasons)
+    if arguments.backend in ("triton", "cuda", "metal"):
         for leg_name in sorted(dispatching):
             rows_path = run / leg_name / "cases.jsonl"
             if not rows_path.is_file():
@@ -998,8 +1107,7 @@ def main(argv=None) -> int:
                 tables = (plan.get("composition") or {}).get("tables_dispatched") or []
                 problems.extend(
                     f"{leg_name}: row_dispatched_on_an_uncertified_device: {reason}"
-                    for reason in _uncertified_dispatch_reasons(
-                        row.get("case"), plan, tables))
+                    for reason in screen(row.get("case"), plan, tables))
 
     if arguments.backend == "cuda":
         # THE WALK IS ``(arm, case, LEG)`` ON THIS TABLE, and the third dimension is
@@ -1417,7 +1525,10 @@ def main(argv=None) -> int:
                         invariants.add(block["invariant"])
         mode_of_record = (next(iter(modes)) if len(modes) == 1
                           else sorted(modes) if modes else None)
-        record["residency"] = {
+        # THE RESIDENCY AND THE LIFT ARE READ OFF THIS ARCHITECTURE'S LEGS, case by
+        # case, so they are run facts: written into ``runs[<architecture>]`` below,
+        # where a second Mac's cut adds its own beside them instead of overwriting.
+        route_run["residency"] = {
             "invariant": (next(iter(invariants)) if len(invariants) == 1
                           else sorted(invariants) if invariants
                           else "unrecorded: no dispatching leg's case carried one"),
@@ -1465,10 +1576,29 @@ def main(argv=None) -> int:
                 "harness_keep leg's cliff control records the bound it was confined "
                 "to."),
         }
+        # WHAT THE CITED WELDS CERTIFY, AS OF THIS CUT. Entry-level, so a later rebind
+        # (a second Mac's runs joining) changes the ledger and leaves this copy behind
+        # until the next cut; the admission never reads it, it reads the runs.
+        recorded = _table.recorded_environments()
+        record["environments"] = {
+            "recorded": recorded,
+            "read_from": ("the live per-architecture runs (runs[<architecture>]: its "
+                          "key, torch and metal_frontend) of the welds "
+                          "metal_dispatch.ARM_CERTIFICATION cites, in "
+                          "metal_kernels/fingerprints.json, as of this cut; a later "
+                          "rebind changes them until the next cut, and the dispatch "
+                          "admission reads the ledger, never this copy"),
+        }
+        # THE TOOLCHAIN PAIRS THOSE RUNS RECORDED, rewritten on every cut for the same
+        # reason. Before 2026-10-05 no tool in this tree wrote the block: it was carried
+        # from cut to cut, still naming the one-run weld host strings it was read from.
         record["toolchain"] = {
-            "validated": [list(pair) for pair in _table.validated_toolchains()],
-            "read_from": ("metal_kernels/fingerprints.json weld host strings; a "
-                          "hand-kept copy drifts the moment a gate runs"),
+            "validated": [list(pair) for pair in sorted(
+                {(row["torch"], row["metal_frontend"])
+                 for row in recorded if row["architecture"]}, key=repr)],
+            "read_from": ("the torch and metal_frontend of the live per-architecture "
+                          "runs of the welds metal_dispatch.ARM_CERTIFICATION cites, "
+                          "as of this cut (environments.recorded)"),
         }
         record["pending_device_gate_arms"] = sorted(
             _table.METAL_PENDING_DEVICE_GATE_ARMS)
@@ -1487,7 +1617,7 @@ def main(argv=None) -> int:
             for lift in lifts.values()})
         lifted_by = " and ".join(spellings) if spellings else (
             "lift_simulation (no dispatching leg recorded how)")
-        record["lift"] = {"per_leg": lifts, "read_from": (
+        route_run["lift"] = {"per_leg": lifts, "read_from": (
             "provenance.lift on every dispatching leg's gate.json; an empty block is "
             "a leg cut before 2026-09-27, lifted prefer_gpu=False under the enable")}
         released["what_was_measured"] = (
@@ -1513,6 +1643,31 @@ def main(argv=None) -> int:
             "band, or the flush-equivalence this record rests on is about nothing.")
 
     staled: tuple = ()
+    if arguments.backend == "metal":
+        # THE ROUTE RUN, FILED UNDER ITS ARCHITECTURE, by the same rule as the NVIDIA
+        # records below: the run's subkeys of ``released_fused_arms`` move with it, and
+        # a cut on bytes that moved names every other architecture it would strand.
+        route_run["released_fused_arms"] = {
+            name: released.pop(name) for name in RELEASED_RUN_SUBKEYS
+            if name in released}
+        route_run["status"] = "PASS"
+        route_run["verdict_read_from"] = "release.released"
+        route_run["legs"] = [f"{name}/gate.json" for name in names]
+        route_run["records"] = f"apps/api/parity/meep_gpu/results/{arguments.run}"
+        route_run["recorded_utc"] = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        try:
+            staled = metal_runs.bind_architecture(
+                record, bound_before=bound_before, architecture=architecture,
+                run=route_run, run_fields=metal_runs.DISPATCH_RUN_FIELDS,
+                supersede=supersede)
+        except metal_runs.ArchitectureStale as refused:
+            print(f"REFUSING: architecture_runs_would_be_stranded: {refused}",
+                  file=sys.stderr)
+            return 1
+        except metal_runs.ArchitectureRecordError as refused:
+            print(f"REFUSING: architecture_record_refused: {refused}", file=sys.stderr)
+            return 1
     if arguments.backend in ("triton", "cuda"):
         # WHICH CAMPAIGN DROVE THE ARMS IS A FACT ABOUT ONE RUN; which arms the
         # release admits, on which cases, under which envelope is a fact about the
@@ -1582,8 +1737,14 @@ def main(argv=None) -> int:
     if arguments.backend == "cuda":
         print(f"  cuda_alone   {route_run['cuda_alone_leg']['status']}")
     if arguments.backend == "metal":
-        print(f"  residency    {record['residency']['mode']} "
-              f"{record['residency']['cases_by_mode']}")
+        slot = record[metal_runs.RUNS][architecture]
+        print(f"  architecture {architecture}  ({metal_runs.RUNS}[{architecture!r}], "
+              f"bound {slot['bound_sha256'][:12]}; live "
+              f"{list(metal_runs.live_architectures(record))})")
+        if staled:
+            print(f"  superseded   {list(staled)} (their runs now read stale)")
+        print(f"  residency    {slot['residency']['mode']} "
+              f"{slot['residency']['cases_by_mode']}")
 
     if arguments.write:
         record_path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n",

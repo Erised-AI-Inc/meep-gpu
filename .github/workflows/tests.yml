@@ -64,7 +64,7 @@ jobs:
       - name: Harness suite
         run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
         continue-on-error: true
-      - name: Certification suite (red until the certification round; reported)
+      - name: Certification suite (two pending failures declared; reported)
         run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
         continue-on-error: true
       - name: Every failure is a declared one
@@ -113,7 +113,7 @@ jobs:
       - name: Harness suite
         run: python -m pytest parity/meep_gpu -q -p no:cacheprovider -rfEs --junitxml=reports/harness.xml
         continue-on-error: true
-      - name: Certification suite (red until the certification round; reported)
+      - name: Certification suite (two pending failures declared; reported)
         run: python -m pytest meep_gpu parity/meep_gpu -m certification -q -p no:cacheprovider -rfEs --junitxml=reports/certification.xml
         continue-on-error: true
       - name: Examples, reference and MEEP legs

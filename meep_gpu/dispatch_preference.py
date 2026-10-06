@@ -571,8 +571,9 @@ def record_path(table: str, capability: str, root: Optional[str] = None) -> str:
 
     ``root`` defaults to the package directory, beside the kernel tables, which is
     where the shipped records are. A capability outside :data:`CAPABILITY`'s spelling
-    is refused by name: Metal's environment is a toolchain pair rather than a
-    capability, and naming its record is a rule this function does not have.
+    is refused by name: Metal's environment is a GPU architecture with a torch and
+    a Metal frontend rather than a capability, and naming its record is a rule this
+    function does not have.
     """
     if table not in TABLES:
         raise ConsultRefused("unknown_table", f"{table!r} is not one of {TABLES}")
